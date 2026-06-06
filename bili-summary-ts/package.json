@@ -1,0 +1,22 @@
+﻿{
+  "name": "bili-study",
+  "version": "2.0.0",
+  "description": "B站视频摘要与学习库 - Node.js + TypeScript 版",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "launcher": "node dist/launcher.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "open": "^10.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "ts-node": "^10.9.0"
+  }
+}

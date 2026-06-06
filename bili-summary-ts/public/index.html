@@ -1,0 +1,803 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BiliStudy - B站学习库</title>
+<style>
+  :root {
+    --bg: #f4f7fb;
+    --surface: #ffffff;
+    --surface-2: #f8fafc;
+    --ink: #18202f;
+    --muted: #667085;
+    --line: #dfe5ef;
+    --blue: #2563eb;
+    --blue-2: #dce9ff;
+    --green: #138a68;
+    --red: #c2413b;
+    --amber: #b7791f;
+    --shadow: 0 18px 45px rgba(31, 41, 55, .08);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--ink); letter-spacing: 0; }
+  button, input, textarea, select { font: inherit; }
+  button { border: 0; cursor: pointer; }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .app { min-height: 100vh; display: grid; grid-template-columns: 260px minmax(0, 1fr); }
+  .sidebar { position: sticky; top: 0; height: 100vh; background: #101828; color: #edf2f7; padding: 22px 16px; display: flex; flex-direction: column; gap: 20px; border-right: 1px solid rgba(255,255,255,.08); }
+  .brand { display: flex; align-items: center; gap: 12px; padding: 4px 6px 18px; border-bottom: 1px solid rgba(255,255,255,.09); }
+  .brand-mark { width: 38px; height: 38px; display: grid; place-items: center; background: #fb7299; border-radius: 8px; color: #fff; font-weight: 800; box-shadow: 0 10px 24px rgba(251,114,153,.26); }
+  .brand-title { font-size: 17px; font-weight: 800; }
+  .brand-sub { font-size: 12px; color: #aab4c4; margin-top: 3px; }
+  .nav { display: grid; gap: 7px; }
+  .nav button { width: 100%; text-align: left; padding: 11px 12px; border-radius: 8px; color: #cbd5e1; background: transparent; display: flex; align-items: center; gap: 10px; font-weight: 700; }
+  .nav button::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: #64748b; }
+  .nav button:hover { background: rgba(255,255,255,.07); color: #fff; }
+  .nav button.active { background: #fff; color: #111827; box-shadow: 0 12px 28px rgba(0,0,0,.18); }
+  .nav button.active::before { background: #fb7299; }
+  .sidebar-note { margin-top: auto; font-size: 12px; line-height: 1.65; color: #c9d3e4; padding: 13px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.08); border-radius: 8px; }
+  .main { padding: 28px; max-width: 1280px; width: 100%; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-head { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+  .page-head h1 { margin: 0; font-size: 26px; color: #111827; }
+  .page-head p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 18px; margin-bottom: 16px; }
+  .hero-panel { padding: 22px; background: linear-gradient(135deg, #ffffff 0%, #eef5ff 62%, #fff3f7 100%); }
+  .hero-panel .input-row { margin-top: 2px; }
+  .grid { display: grid; gap: 12px; }
+  .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .field label { display: block; font-size: 12px; font-weight: 750; color: #475467; margin-bottom: 7px; }
+  .field input, .field textarea, .field select, .library-tools input, .library-tools select { width: 100%; min-height: 42px; border: 1px solid #d7deea; background: rgba(255,255,255,.8); border-radius: 8px; padding: 10px 12px; color: var(--ink); outline: none; transition: border-color .15s, box-shadow .15s, background .15s; }
+  .field textarea { min-height: 98px; resize: vertical; line-height: 1.55; }
+  .field input:focus, .field textarea:focus, .field select:focus, .library-tools input:focus, .library-tools select:focus { border-color: var(--blue); background: #fff; box-shadow: 0 0 0 4px rgba(37,99,235,.11); }
+  .input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: end; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 14px; border-radius: 8px; background: #e8edf5; color: var(--ink); font-weight: 750; min-height: 42px; white-space: nowrap; border: 1px solid transparent; transition: transform .15s, box-shadow .15s, background .15s; }
+  .btn:hover { transform: translateY(-1px); text-decoration: none; }
+  .btn.primary { background: #fb7299; color: #fff; box-shadow: 0 10px 22px rgba(251,114,153,.24); }
+  .btn.danger { background: #fff1f0; color: var(--red); border-color: #ffd5d2; }
+  .btn.ghost { background: #fff; color: var(--blue); border-color: #c9dcff; }
+  .btn:disabled { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .status { display: none; margin-top: 13px; padding: 11px 13px; border-radius: 8px; font-size: 13px; border: 1px solid transparent; }
+  .status.show { display: block; }
+  .status.info { background: #eef6ff; color: #1d4ed8; border-color: #c8ddff; }
+  .status.error { background: #fff1f0; color: var(--red); border-color: #ffd5d2; }
+  .status.ok { background: #effaf5; color: var(--green); border-color: #c5ead9; }
+  .video-meta { display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 9px 14px; font-size: 13px; }
+  .video-meta .label { color: var(--muted); }
+  .video-meta .title { color: #111827; font-weight: 800; }
+  .summary { line-height: 1.78; font-size: 14px; color: #263244; }
+  .summary h2 { font-size: 18px; margin: 20px 0 8px; color: #111827; }
+  .summary h3 { font-size: 15px; margin: 15px 0 7px; color: #18202f; }
+  .summary ul { padding-left: 22px; }
+  .summary code { background: #eef2f7; padding: 2px 5px; border-radius: 5px; }
+  .video-embed { position: relative; width: 100%; padding-bottom: 56.25%; background: #05070d; overflow: hidden; border-radius: 8px; }
+  .video-embed iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+  .save-row { display: grid; grid-template-columns: 180px 1fr; gap: 12px; margin-top: 14px; }
+  .library-tools { display: grid; grid-template-columns: minmax(0, 1fr) 170px 170px auto; gap: 10px; margin-bottom: 14px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 15px; display: grid; gap: 11px; box-shadow: 0 8px 24px rgba(31,41,55,.05); }
+  .card h3 { margin: 0; font-size: 15px; line-height: 1.45; color: #111827; }
+  .card .meta { font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; min-height: 22px; }
+  .tag { font-size: 12px; color: #175cd3; background: var(--blue-2); border-radius: 999px; padding: 3px 8px; }
+  .empty { color: var(--muted); text-align: center; padding: 34px 16px; border: 1px dashed #cbd5e1; border-radius: 8px; background: #fff; }
+  .detail { display: none; }
+  .detail.active { display: block; }
+  .small { font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .tag-picker { display: flex; flex-direction: column; gap: 8px; }
+  .tag-picker-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .tag-picker-head .small { margin: 0; }
+  .tag-picker-head .link-btn { background: transparent; color: var(--blue); font-weight: 700; font-size: 12px; padding: 2px 4px; }
+  .tag-picker-head .link-btn:disabled { color: var(--muted); cursor: not-allowed; }
+  .tag-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 22px; }
+  .tag-chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: #f1f5f9; color: #334155; border: 1px solid #dbe3ef; cursor: pointer; user-select: none; transition: background .12s, color .12s, border-color .12s, transform .08s; }
+  .tag-chip:hover { background: #e8edf5; }
+  .tag-chip.selected { background: var(--blue-2); color: #1d4ed8; border-color: #b7d1ff; font-weight: 700; }
+  .tag-chip.selected::before { content: "✓ "; font-weight: 800; }
+  .tag-chip-empty { font-size: 12px; color: var(--muted); }
+  .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  .settings-grid .panel { margin-bottom: 0; display: flex; flex-direction: column; gap: 14px; }
+  .settings-card-head { display: flex; align-items: center; gap: 12px; }
+  .settings-card-head .panel-icon { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 14px; flex: 0 0 auto; box-shadow: 0 8px 20px rgba(15,23,42,.12); }
+  .settings-card-head .panel-icon.deepseek { background: #2563eb; box-shadow: 0 8px 20px rgba(37,99,235,.22); }
+  .settings-card-head .panel-icon.whisper { background: #0ea5e9; box-shadow: 0 8px 20px rgba(14,165,233,.22); }
+  .settings-card-head .panel-icon.bilibili { background: #fb7299; box-shadow: 0 8px 20px rgba(251,114,153,.26); }
+  .settings-card-head .panel-icon.obsidian { background: #7c3aed; box-shadow: 0 8px 20px rgba(124,58,237,.22); }
+  .settings-card-title { margin: 0; font-size: 15px; font-weight: 800; color: #111827; }
+  .settings-card-sub { margin: 2px 0 0; font-size: 12px; color: var(--muted); line-height: 1.55; }
+  .settings-footer { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
+  .settings-footer .small { margin: 0; }
+  @media (max-width: 980px) { .settings-grid { grid-template-columns: 1fr; } }
+  .result-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; gap: 10px; }
+  .result-title { font-weight: 800; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .result-layout { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(320px, .88fr); gap: 16px; align-items: start; min-height: 68vh; }
+  .result-left { display: grid; gap: 16px; }
+  .result-right { display: grid; gap: 16px; align-content: start; position: sticky; top: 22px; }
+  .result-video { background: #05070d; border-radius: 8px; overflow: hidden; box-shadow: var(--shadow); }
+  .result-video .video-meta { padding: 14px 16px; background: #fff; border-bottom: 1px solid var(--line); }
+  .panel-head { font-size: 15px; font-weight: 800; color: #111827; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .result-summary-panel .summary { max-height: 42vh; overflow-y: auto; padding-right: 6px; }
+  .result-transcript-panel { display: flex; flex-direction: column; max-height: 56vh; }
+  .timeline { overflow-y: auto; flex: 1; font-size: 14px; line-height: 1.7; padding-right: 4px; }
+  .timeline-entry { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px solid #eef0f4; }
+  .timeline-entry:last-child { border-bottom: 0; }
+  .timeline-time { color: var(--amber); font-family: "Cascadia Code", "Fira Code", monospace; font-size: 12px; padding-top: 2px; text-align: right; user-select: none; }
+  .timeline-text { color: #263244; }
+  .result-empty { color: var(--muted); text-align: center; padding: 40px 16px; }
+  .detail-card { margin-top: 16px; }
+  .detail-card .tags { margin: 10px 0; }
+  .detail-card .video-embed { margin: 14px 0; }
+  .detail-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
+  .detail-top strong { font-size: 18px; line-height: 1.4; }
+
+  @media (max-width: 920px) {
+    .app { grid-template-columns: 1fr; }
+    .sidebar { position: static; height: auto; }
+    .nav { grid-template-columns: repeat(3, 1fr); }
+    .nav button { justify-content: center; }
+    .sidebar-note { display: none; }
+    .main { padding: 16px; }
+    .grid.two, .input-row, .save-row, .library-tools, .result-layout { grid-template-columns: 1fr; }
+    .result-transcript-panel { max-height: none; }
+    .result-summary-panel .summary { max-height: none; }
+    .result-right { position: static; }
+    .result-header { align-items: stretch; flex-direction: column; }
+    .result-title { white-space: normal; }
+  }
+
+  @media (max-width: 560px) {
+    .page-head h1 { font-size: 22px; }
+    .cards { grid-template-columns: 1fr; }
+    .nav button { padding: 10px 8px; }
+    .detail-top { display: grid; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">B</div>
+      <div>
+        <div class="brand-title">BiliStudy</div>
+        <div class="brand-sub">视频总结与学习库</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="active" data-page="summaryPage" onclick="showPage('summaryPage')">总结</button>
+      <button data-page="libraryPage" onclick="showPage('libraryPage'); loadLibrary();">收藏库</button>
+      <button data-page="settingsPage" onclick="showPage('settingsPage')">设置</button>
+    </nav>
+    <div class="sidebar-note">本地保存配置和收藏，不上传你的 API Key、SESSDATA 或学习资料。</div>
+  </aside>
+
+  <main class="main">
+    <section id="summaryPage" class="page active">
+      <div class="page-head">
+        <!-- summary-page-head -->
+        <!-- summary-page-head -->
+        <div>
+          <h1>总结视频</h1>
+          <p>粘贴 B站链接，生成可以收藏和复习的学习笔记。</p>
+        </div>
+      </div>
+      <div class="panel hero-panel">
+        <div class="input-row">
+          <div class="field">
+            <label>B站视频链接</label>
+            <input id="urlInput" placeholder="https://www.bilibili.com/video/BV..." autofocus>
+          </div>
+          <button class="btn" id="clearUrlBtn" onclick="clearUrl()">清空</button>
+          <button class="btn primary" id="summarizeBtn" onclick="summarize()">开始总结</button>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:#475467;cursor:pointer;">
+          <input type="checkbox" id="useWhisperInput" style="width:16px;height:16px;cursor:pointer;">
+          没有字幕时，自动用 Whisper 语音转写（需在设置里填写 API Key）
+        </label>
+        <div class="grid two" style="margin-top:12px;">
+          <div class="field">
+            <label>总结模式</label>
+            <select id="modeInput">
+              <option value="brief">简洁总结</option>
+              <option value="detailed">详细笔记</option>
+              <option value="timeline">时间线</option>
+              <option value="knowledge">知识卡片</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>保存分类</label>
+            <input id="categoryInput" value="待整理">
+          </div>
+        </div>
+        <div id="status" class="status"></div>
+      </div>
+
+      <div id="resultPanel" class="detail">
+        <div class="panel result-header">
+          <button class="btn ghost" onclick="backToInput()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg> 返回</button>
+          <span id="resultTitle" class="result-title"></span>
+          <div class="actions">
+            <button class="btn ghost" onclick="copySummary()">复制总结</button>
+            <button class="btn primary" id="saveBtn" onclick="saveCurrent()">保存</button>
+          </div>
+        </div>
+       <div class="result-layout">
+         <div class="result-left">
+           <div class="result-video" id="resultVideoPanel">
+             <div class="video-meta" id="videoMeta"></div>
+             <div class="video-embed" id="videoEmbedWrap"></div>
+           </div>
+           <div class="panel result-transcript-panel">
+             <div class="panel-head"><span>视频文本</span><button class="btn ghost" onclick="copyTranscript()">复制文本</button></div>
+             <div id="transcriptTimeline" class="timeline"></div>
+           </div>
+         </div>
+          <div class="result-right">
+            <div class="panel result-summary-panel">
+              <div class="panel-head">AI 总结</div>
+              <div id="summaryContent" class="summary"></div>
+              <div class="save-row" style="margin-top:14px;">
+                <div class="field">
+                  <div class="tag-picker">
+                    <div class="tag-picker-head">
+                      <label style="margin:0;">标签</label>
+                      <button type="button" class="link-btn" id="regenTagsBtn" onclick="regenerateTags()" disabled>重新生成</button>
+                    </div>
+                    <div id="tagChips" class="tag-chips"><span class="tag-chip-empty">AI 会在总结完成后给出建议。</span></div>
+                    <input id="tagsInput" placeholder="自定义标签，用逗号或空格分隔">
+                  </div>
+                </div>
+                <div class="field"><label>我的笔记</label><textarea id="notesInput" placeholder="写下自己的理解、问题或行动项"></textarea></div>
+              </div>
+            </div>
+          </div>
+       </div>
+      </div>
+    </section>
+
+    <section id="libraryPage" class="page">
+      <div class="page-head">
+        <div>
+          <h1>收藏库</h1>
+          <p>搜索、筛选、打开和导出你的学习资料。</p>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="library-tools">
+          <input id="searchInput" placeholder="搜索标题、UP主、总结、标签" onkeydown="if(event.key==='Enter') loadLibrary()">
+          <select id="categoryFilter"></select>
+          <select id="tagFilter"></select>
+          <button class="btn" onclick="loadLibrary()">搜索</button>
+        </div>
+        <div id="libraryCards" class="cards"></div>
+      </div>
+      <div id="libraryDetail" class="detail"></div>
+    </section>
+
+    <section id="settingsPage" class="page">
+      <div class="page-head">
+        <div>
+          <h1>设置</h1>
+          <p>DeepSeek 和 B站登录信息会保存到本地 data/config.json。</p>
+        </div>
+      </div>
+      <div class="settings-grid">
+        <div class="panel">
+          <div class="settings-card-head">
+            <div class="panel-icon deepseek">DS</div>
+            <div>
+              <h2 class="settings-card-title">DeepSeek API</h2>
+              <p class="settings-card-sub">用于生成视频总结，兼容 OpenAI 协议。</p>
+            </div>
+          </div>
+          <div class="field"><label>API Key</label><input type="password" id="apiKeyInput" placeholder="sk-..."></div>
+          <div class="grid two">
+            <div class="field"><label>模型</label><input id="modelInput" value="deepseek-chat"></div>
+            <div class="field"><label>API 地址</label><input id="baseUrlInput" value="https://api.deepseek.com/v1"></div>
+          </div>
+          
+        </div>
+
+        <div class="panel">
+          <div class="settings-card-head">
+            <div class="panel-icon whisper">W</div>
+            <div>
+              <h2 class="settings-card-title">Whisper API</h2>
+              <p class="settings-card-sub">把没有字幕的视频转写成文本，推荐硅基流动 / OpenAI。</p>
+            </div>
+          </div>
+          <div class="field"><label>API Key</label><input type="password" id="whisperApiKeyInput" placeholder="sk-..."></div>
+          <div class="grid two">
+            <div class="field"><label>API 地址</label><input id="whisperBaseUrlInput" value="https://api.siliconflow.cn/v1"></div>
+            <div class="field"><label>模型</label><input id="whisperModelInput" value="FunAudioLLM/SenseVoiceSmall"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="settings-card-head">
+            <div class="panel-icon bilibili">B</div>
+            <div>
+              <h2 class="settings-card-title">B 站登录</h2>
+              <p class="settings-card-sub">SESSDATA 用于拉取需要登录的视频字幕，相当于登录凭证。</p>
+            </div>
+          </div>
+          <div class="field">
+            <label>SESSDATA</label>
+            <input id="sessdataInput" placeholder="从浏览器 Cookie 复制 SESSDATA">
+            <span class="small">只保存在你自己的电脑，不会上传。</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="settings-card-head">
+            <div class="panel-icon obsidian">O</div>
+            <div>
+              <h2 class="settings-card-title">Obsidian Vault</h2>
+              <p class="settings-card-sub">导出总结时同步写入到本地 vault 目录。</p>
+            </div>
+          </div>
+          <div class="field">
+            <label>Vault 路径</label>
+            <input id="obsidianVaultInput" placeholder="例如 D:\\Notes\\MyVault">
+            <span class="small">留空则不写入 Obsidian。</span>
+          </div>
+          <div class="field"><label>Vault 中的子文件夹</label><input id="obsidianFolderInput" placeholder="BiliStudy"></div>
+        </div>
+      </div>
+
+      <div class="settings-footer">
+        <div id="settingsStatus" class="status"></div>
+        <button class="btn primary" onclick="saveConfig()">保存设置</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+let appConfig = {};
+let currentResult = null;
+let selectedTagSet = new Set();
+
+window.addEventListener('DOMContentLoaded', async () => {
+  await loadConfig();
+});
+
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.page === id));
+}
+
+async function api(path, options = {}) {
+  const resp = await fetch(path, options);
+  const contentType = resp.headers.get('content-type') || '';
+  const data = contentType.includes('application/json') ? await resp.json() : await resp.text();
+  if (!resp.ok) throw new Error(data.error || data || resp.statusText);
+  return data;
+}
+
+async function loadConfig() {
+  const data = await api('/api/config');
+  appConfig = data.config || {};
+  document.getElementById('apiKeyInput').value = appConfig.api_key || '';
+  document.getElementById('modelInput').value = appConfig.model || 'deepseek-chat';
+  document.getElementById('baseUrlInput').value = appConfig.base_url || 'https://api.deepseek.com/v1';
+  document.getElementById('sessdataInput').value = appConfig.bili_sessdata || '';
+  document.getElementById('defaultCategoryInput').value = appConfig.default_category || '待整理';
+  document.getElementById('obsidianVaultInput').value = appConfig.obsidian_vault_path || '';
+  document.getElementById('obsidianFolderInput').value = appConfig.obsidian_folder || 'BiliStudy';
+  document.getElementById('whisperApiKeyInput').value = appConfig.whisper_api_key || '';
+  document.getElementById('whisperBaseUrlInput').value = appConfig.whisper_base_url || 'https://api.siliconflow.cn/v1';
+  document.getElementById('whisperModelInput').value = appConfig.whisper_model || 'FunAudioLLM/SenseVoiceSmall';
+  document.getElementById('useWhisperInput').checked = Boolean(appConfig.whisper_api_key);
+  document.getElementById('categoryInput').value = appConfig.default_category || '待整理';
+}
+
+async function saveConfig() {
+  const payload = {
+    api_key: document.getElementById('apiKeyInput').value.trim(),
+    model: document.getElementById('modelInput').value.trim(),
+    base_url: document.getElementById('baseUrlInput').value.trim(),
+    bili_sessdata: document.getElementById('sessdataInput').value.trim(),
+    default_category: document.getElementById('defaultCategoryInput').value.trim() || '待整理',
+    obsidian_vault_path: document.getElementById('obsidianVaultInput').value.trim(),
+    obsidian_folder: document.getElementById('obsidianFolderInput').value.trim() || 'BiliStudy',
+    whisper_api_key: document.getElementById('whisperApiKeyInput').value.trim(),
+    whisper_base_url: document.getElementById('whisperBaseUrlInput').value.trim() || 'https://api.siliconflow.cn/v1',
+    whisper_model: document.getElementById('whisperModelInput').value.trim() || 'FunAudioLLM/SenseVoiceSmall',
+  };
+  const data = await api('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+  appConfig = data.config;
+  document.getElementById('useWhisperInput').checked = Boolean(appConfig.whisper_api_key);
+  showStatus('settingsStatus', '设置已保存', 'ok');
+}
+
+async function summarize() {
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url) return showStatus('status', '请输入视频链接', 'error');
+  const btn = document.getElementById('summarizeBtn');
+  btn.disabled = true;
+  showStatus('status', '正在获取视频信息、字幕…', 'info');
+  try {
+    const payload = {
+      url,
+      mode: document.getElementById('modeInput').value,
+      use_whisper: document.getElementById('useWhisperInput').checked,
+      api_key: appConfig.api_key || '',
+      model: appConfig.model || 'deepseek-chat',
+      base_url: appConfig.base_url || 'https://api.deepseek.com/v1',
+      bili_sessdata: appConfig.bili_sessdata || '',
+    };
+    const data = await api('/api/summarize', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    if (!data.success) throw new Error(data.error || '总结失败');
+    currentResult = data;
+    renderResult(data);
+    checkSavedStatus(data.video?.bvid);
+    const srcLabel = data.transcript_source === 'whisper' ? '语音转写' : '字幕';
+    showStatus('status', data.subtitle_count ? `完成。${srcLabel} ${data.subtitle_count} 条。` : '已生成底座总结：未获取到字幕。可勾选“语音转写”后重试。', data.subtitle_count ? 'ok' : 'info');
+  } catch (err) {
+    showStatus('status', err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function checkSavedStatus(bvid) {
+  if (!bvid) return;
+  try {
+    const data = await api('/api/library/check/' + encodeURIComponent(bvid));
+    if (data.saved) markSaved(); else markUnSaved();
+  } catch {
+    markUnSaved();
+  }
+}
+
+function renderResult(data) {
+
+  const v = data.video;
+  document.getElementById('resultPanel').classList.add('active');
+  document.getElementById('resultTitle').textContent = v.title || '视频总结';
+  document.getElementById('videoMeta').innerHTML = `
+    <span class="label">标题</span><span class="title">${escapeHtml(v.title)}</span>
+    <span class="label">UP主</span><span>${escapeHtml(v.author)}</span>
+    <span class="label">时长</span><span>${formatDuration(v.duration)}</span>
+    <span class="label">链接</span><span><a href="${v.link}" target="_blank">${v.link}</a></span>
+  `;
+  var embedWrap = document.getElementById('videoEmbedWrap');
+  embedWrap.innerHTML = '<iframe src="https://player.bilibili.com/player.html?bvid=' + v.bvid + '&autoplay=0&high_quality=1" frameborder="0" allowfullscreen></iframe>';
+  document.getElementById('summaryContent').innerHTML = markdownToHtml(data.summary);
+  renderTimeline(data.subtitle_segments);
+  renderTagSuggestions(data.suggested_tags || []);
+}
+
+function renderTimeline(segments) {
+  var el = document.getElementById('transcriptTimeline');
+  if (!segments || segments.length === 0) {
+    el.innerHTML = '<div class="result-empty">未获取到字幕文本。</div>';
+    return;
+  }
+  // Group segments into paragraphs (gap > 3s = new paragraph)
+  var active = segments.filter(function(s) { return s.content && s.content.trim(); });
+  if (!active.length) { el.innerHTML = '<div class="result-empty">无可用字幕文本。</div>'; return; }
+  var paragraphs = [];
+  var cur = { from: active[0].from, to: active[0].to, texts: [active[0].content.trim()] };
+  for (var i = 1; i < active.length; i++) {
+    var s = active[i];
+    if (s.from - active[i-1].to >= 3 || s.from - active[i-1].from >= 9) {
+      paragraphs.push(cur);
+      cur = { from: s.from, to: s.to, texts: [s.content.trim()] };
+    } else {
+      cur.to = s.to;
+      cur.texts.push(s.content.trim());
+    }
+  }
+  paragraphs.push(cur);
+  
+  el.innerHTML = paragraphs.map(function(p) {
+    var m = Math.floor((p.from || 0) / 60);
+    var sec = Math.floor((p.from || 0) % 60);
+    var time = String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+    var text = p.texts.join('\u3002');
+    return '<div class="timeline-entry"><span class="timeline-time">' + time + '</span><span class="timeline-text">' + escapeHtml(text) + '</span></div>';
+  }).join('');
+}
+
+function renderTagSuggestions(tags) {
+  const box = document.getElementById('tagChips');
+  const regenBtn = document.getElementById('regenTagsBtn');
+  if (regenBtn) regenBtn.disabled = false;
+  document.getElementById('tagsInput').value = '';
+  selectedTagSet = new Set((tags || []).map(t => String(t).trim()).filter(Boolean));
+  if (!tags || !tags.length) {
+    box.innerHTML = '<span class="tag-chip-empty">AI 没给出标签建议，你可以手动填写。</span>';
+    return;
+  }
+  box.innerHTML = tags.map(t => {
+    const safe = escapeHtml(t);
+    return `<span class="tag-chip selected" data-tag="${safe}" onclick="toggleTagChip(this)">${safe}</span>`;
+  }).join('');
+}
+
+function toggleTagChip(el) {
+  const tag = el.getAttribute('data-tag');
+  if (!tag) return;
+  if (el.classList.contains('selected')) {
+    el.classList.remove('selected');
+    selectedTagSet.delete(tag);
+  } else {
+    el.classList.add('selected');
+    selectedTagSet.add(tag);
+  }
+}
+
+function collectTags() {
+  const extra = (document.getElementById('tagsInput').value || '')
+    .split(/[,，;；\s]+/)
+    .map(s => s.trim().replace(/^#+/, ''))
+    .filter(Boolean);
+  const merged = new Set();
+  for (const t of selectedTagSet) merged.add(t);
+  for (const t of extra) merged.add(t);
+  return Array.from(merged);
+}
+
+async function regenerateTags() {
+  if (!currentResult) return;
+  const btn = document.getElementById('regenTagsBtn');
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = '生成中…';
+  try {
+    const resp = await fetch('/api/suggest-tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: currentResult.video?.title || '',
+        author: currentResult.video?.author || '',
+        summary: currentResult.summary || '',
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.success) throw new Error(data.error || resp.statusText);
+    currentResult.suggested_tags = data.tags || [];
+    renderTagSuggestions(currentResult.suggested_tags);
+  } catch (err) {
+    showStatus('status', '生成标签失败：' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+function backToInput() {
+  document.getElementById('resultPanel').classList.remove('active');
+
+  document.getElementById('urlInput').focus();
+}
+
+async function saveCurrent() {
+  if (!currentResult) return;
+  const payload = {
+    video: currentResult.video,
+    summary: currentResult.summary,
+    transcript: currentResult.transcript || '',
+    subtitle_count: currentResult.subtitle_count,
+    mode: currentResult.mode,
+    category: document.getElementById('categoryInput').value.trim() || '待整理',
+    tags: collectTags(),
+    notes: document.getElementById('notesInput').value.trim(),
+  };
+  const data = await api('/api/library', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+  showStatus('status', `已保存：${data.item.title}`, 'ok');
+  await loadLibrary();
+  markSaved();
+}
+
+function markSaved() {
+  const btn = document.getElementById('saveBtn');
+  if (!btn) return;
+  btn.textContent = '已收藏 ✓';
+  btn.disabled = true;
+  btn.classList.remove('primary');
+  btn.classList.add('ghost');
+}
+
+function markUnSaved() {
+  const btn = document.getElementById('saveBtn');
+  if (!btn) return;
+  btn.textContent = '保存';
+  btn.disabled = false;
+  btn.classList.remove('ghost');
+  btn.classList.add('primary');
+}
+
+async function loadLibrary() {
+  const q = encodeURIComponent(document.getElementById('searchInput')?.value || '');
+  const category = encodeURIComponent(document.getElementById('categoryFilter')?.value || '');
+  const tag = encodeURIComponent(document.getElementById('tagFilter')?.value || '');
+  const data = await api(`/api/library?q=${q}&category=${category}&tag=${tag}`);
+  renderFilters(data.categories || [], data.tags || []);
+  renderLibrary(data.items || []);
+}
+
+function renderFilters(categories, tags) {
+  const categoryFilter = document.getElementById('categoryFilter');
+  const tagFilter = document.getElementById('tagFilter');
+  if (!categoryFilter || !tagFilter) return;
+  const selectedCategory = categoryFilter.value;
+  const selectedTag = tagFilter.value;
+  categoryFilter.innerHTML = '<option value="">全部分类</option>' + categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  tagFilter.innerHTML = '<option value="">全部标签</option>' + tags.map(t => `<option value="${escapeHtml(t)}">#${escapeHtml(t)}</option>`).join('');
+  categoryFilter.value = selectedCategory;
+  tagFilter.value = selectedTag;
+}
+
+function renderLibrary(items) {
+  const box = document.getElementById('libraryCards');
+  if (!items.length) {
+    box.innerHTML = '<div class="empty">还没有收藏。先总结一个视频，然后保存到收藏库。</div>';
+    return;
+  }
+  box.innerHTML = items.map(item => `
+    <article class="card">
+      <h3>${escapeHtml(item.title)}</h3>
+      <div class="meta"><span>${escapeHtml(item.author)}</span><span>${escapeHtml(item.category || '待整理')}</span><span>${formatDate(item.created_at)}</span></div>
+      <div class="tags">${(item.tags || []).map(t => `<span class="tag">#${escapeHtml(t)}</span>`).join('')}</div>
+      <div class="actions">
+        <button class="btn ghost" onclick="openItem('${item.id}')">打开</button>
+       <button class="btn ghost" onclick="exportPdf('${item.id}')">导出 PDF</button>
+       <button class="btn primary" onclick="sendToObsidian('${item.id}')">送进 Obsidian</button>
+       <button class="btn danger" onclick="deleteItem('${item.id}')">删除</button>
+      </div>
+    </article>
+  `).join('');
+}
+
+async function openItem(id) {
+  const data = await api(`/api/library/${id}`);
+  const item = data.item;
+  document.getElementById('libraryDetail').classList.add('active');
+  document.getElementById('libraryDetail').innerHTML = `
+    <div class="panel detail-card">
+      <div class="detail-top">
+        <strong>${escapeHtml(item.title)}</strong>
+        <div class="actions">
+          <a class="btn ghost" href="${item.link}" target="_blank">打开原视频</a>
+         <button class="btn ghost" onclick="exportPdf('${item.id}')">导出 PDF</button>
+         <button class="btn primary" onclick="sendToObsidian('${item.id}')">送进 Obsidian</button>
+       </div>
+      </div>
+      <div class="small">${escapeHtml(item.author)} · ${escapeHtml(item.category || '')} · ${formatDate(item.created_at)}</div>
+      <div class="tags">${(item.tags || []).map(t => `<span class="tag">#${escapeHtml(t)}</span>`).join('')}</div>
+      ${item.bvid ? `<div class="video-embed"><iframe src="https://player.bilibili.com/player.html?bvid=${item.bvid}&autoplay=0&high_quality=1" frameborder="0" allowfullscreen></iframe></div>` : ''}
+      <div class="summary">${markdownToHtml(item.summary)}</div>
+      ${item.notes ? `<h3>我的笔记</h3><div class="summary">${markdownToHtml(item.notes)}</div>` : ''}
+    </div>
+  `;
+  document.getElementById('libraryDetail').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+async function deleteItem(id) {
+  if (!confirm('确定删除这条收藏吗？')) return;
+  await fetch(`/api/library/${id}`, {method:'DELETE'});
+  document.getElementById('libraryDetail').classList.remove('active');
+  await loadLibrary();
+  markSaved();
+}
+
+function markSaved() {
+  const btn = document.getElementById('saveBtn');
+  if (!btn) return;
+  btn.textContent = '已收藏 ✓';
+  btn.disabled = true;
+  btn.classList.remove('primary');
+  btn.classList.add('ghost');
+}
+
+function markUnSaved() {
+  const btn = document.getElementById('saveBtn');
+  if (!btn) return;
+  btn.textContent = '保存';
+  btn.disabled = false;
+  btn.classList.remove('ghost');
+  btn.classList.add('primary');
+}
+
+function exportPdf(id) {
+  window.open('/api/export/' + id + '.pdf', '_blank');
+}
+
+async function sendToObsidian(id, overwrite = false, includeTranscript = null) {
+  if (!appConfig.obsidian_vault_path) {
+    showStatus('status', '请先在"设置"里填写 Obsidian Vault 路径', 'error');
+    showPage('settingsPage');
+    return;
+  }
+  if (includeTranscript === null) {
+    includeTranscript = false;
+  }
+  try {
+    const resp = await fetch(`/api/export/${id}/obsidian`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ overwrite, include_transcript: includeTranscript }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.status === 409 && data && data.error === 'already_exists') {
+      if (confirm('Vault 中已存在同名笔记，是否覆盖？')) return sendToObsidian(id, true, includeTranscript);
+      return;
+    }
+    if (!resp.ok || !data.success) throw new Error(data.error || resp.statusText);
+    const el = document.getElementById('status');
+    el.className = 'status show ok';
+    el.innerHTML = `已写入 <code>${escapeHtml(data.relative)}</code>` + (data.obsidian_uri ? ` &mdash; <a href="${data.obsidian_uri}" style="font-weight:700">在 Obsidian 中打开</a>` : '');
+    if (data.obsidian_uri) setTimeout(() => { window.location.href = data.obsidian_uri; }, 300);
+  } catch (err) {
+    showStatus('status', '导入 Obsidian 失败：' + err.message, 'error');
+  }
+}
+
+async function copySummary() {
+  if (!currentResult) return;
+  await navigator.clipboard.writeText(currentResult.summary);
+  showStatus('status', '总结已复制', 'ok');
+}
+
+async function copyTranscript() {
+  if (!currentResult) return;
+  await navigator.clipboard.writeText(currentResult.transcript || '');
+  showStatus('status', '视频文本已复制', 'ok');
+}
+
+function clearUrl() {
+  const input = document.getElementById('urlInput');
+  input.value = '';
+  input.focus();
+}
+
+function showStatus(id, msg, type) {
+  const el = document.getElementById(id);
+  el.className = 'status show ' + type;
+  el.textContent = msg;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text == null ? '' : String(text);
+  return div.innerHTML;
+}
+
+function formatDuration(seconds) {
+  seconds = Number(seconds || 0);
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return h ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function formatDate(value) {
+  if (!value) return '';
+  return String(value).replace('T', ' ').slice(0, 16);
+}
+
+function markdownToHtml(md) {
+  let html = escapeHtml(md || '');
+  html = html
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h2>$1</h2>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>')
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+  return '<p>' + html + '</p>';
+}
+</script>
+</body>
+</html>

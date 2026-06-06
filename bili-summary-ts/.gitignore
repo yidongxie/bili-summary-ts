@@ -1,0 +1,12 @@
+﻿node_modules/
+dist/
+data/
+logs/
+*.log
+*_hidden.vbs
+_run-*
+run.bat
+run.js
+start.bat
+start-daemon.bat
+stop.bat

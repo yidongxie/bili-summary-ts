@@ -1,0 +1,217 @@
+/** Audio download (yt-dlp via ffmpeg fallback) + OpenAI-compatible Whisper transcription */
+
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import https from 'https';
+import http from 'http';
+import { URL } from 'url';
+import { spawn } from 'child_process';
+import { BiliCookies } from '../bilibili/api';
+
+export interface WhisperConfig {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+}
+
+export interface TranscribedSegment {
+  from: number;
+  to: number;
+  content: string;
+}
+
+const BILI_HEADERS_FOR_MEDIA: Record<string, string> = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  Referer: 'https://www.bilibili.com',
+};
+
+function cookieHeader(cookies?: BiliCookies): string {
+  if (!cookies) return '';
+  return Object.entries(cookies)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `${k}=${v}`)
+    .join('; ');
+}
+
+function requestJson<T>(url: string, headers: Record<string, string>, timeout = 15000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const mod = parsed.protocol === 'https:' ? https : http;
+    const req = mod.get(url, { headers, timeout }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString('utf-8')));
+        } catch (e) {
+          reject(new Error(`JSON parse: ${e}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+  });
+}
+
+interface PlayUrlResponse {
+  code: number;
+  message: string;
+  data: {
+    dash?: {
+      audio?: Array<{ id: number; baseUrl: string; base_url?: string; bandwidth: number }>;
+    };
+    durl?: Array<{ url: string; size: number }>;
+  };
+}
+
+/** Get a direct audio (or fallback combined) stream URL from Bilibili. */
+async function getAudioStreamUrl(bvid: string, cid: number, cookies?: BiliCookies): Promise<string> {
+  const headers = { ...BILI_HEADERS_FOR_MEDIA, Cookie: cookieHeader(cookies) };
+  // fnval=16 = request DASH; 4048 enables most formats
+  const url = `https://api.bilibili.com/x/player/playurl?bvid=${bvid}&cid=${cid}&qn=64&fnval=4048&fnver=0&fourk=1`;
+  const res = await requestJson<PlayUrlResponse>(url, headers);
+  if (res.code !== 0) throw new Error(`playurl error: ${res.message}`);
+  const audio = res.data.dash?.audio;
+  if (audio && audio.length) {
+    // pick smallest bandwidth (cheapest, fastest) - quality irrelevant for ASR
+    const pick = [...audio].sort((a, b) => a.bandwidth - b.bandwidth)[0];
+    return pick.baseUrl || pick.base_url || '';
+  }
+  if (res.data.durl && res.data.durl.length) {
+    return res.data.durl[0].url; // MP4 fallback (no separate audio track)
+  }
+  throw new Error('?????????');
+}
+
+/** Download stream to a local file (handles redirect, requires Bilibili Referer). */
+function downloadToFile(url: string, dest: string, cookies?: BiliCookies, redirects = 5): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const headers = { ...BILI_HEADERS_FOR_MEDIA, Cookie: cookieHeader(cookies) };
+    const parsed = new URL(url);
+    const mod = parsed.protocol === 'https:' ? https : http;
+    const req = mod.get(url, { headers, timeout: 60000 }, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
+        res.resume();
+        const next = new URL(res.headers.location, url).toString();
+        downloadToFile(next, dest, cookies, redirects - 1).then(resolve, reject);
+        return;
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        reject(new Error(`download HTTP ${res.statusCode}`));
+        return;
+      }
+      const out = fs.createWriteStream(dest);
+      res.pipe(out);
+      out.on('finish', () => out.close(() => resolve()));
+      out.on('error', reject);
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('download timeout')); });
+  });
+}
+
+/** Run ffmpeg to convert any input audio/video into a 16k mono mp3 (small + Whisper-friendly). */
+function ffmpegToMp3(input: string, output: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const args = ['-y', '-i', input, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k', output];
+    const p = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    p.stderr.on('data', (c) => { stderr += c.toString(); });
+    p.on('error', (e) => reject(new Error(`ffmpeg spawn: ${e.message}`)));
+    p.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg exit ${code}: ${stderr.slice(-500)}`));
+    });
+  });
+}
+
+/** Multipart upload to OpenAI-compatible /audio/transcriptions endpoint. */
+function postMultipartTranscribe(filePath: string, config: WhisperConfig): Promise<{ text: string; segments?: TranscribedSegment[] }> {
+  return new Promise((resolve, reject) => {
+    const base = config.baseUrl.replace(/\/+$/, '');
+    const url = new URL(base + '/audio/transcriptions');
+    const boundary = '----BiliStudyBoundary' + Math.random().toString(16).slice(2);
+    const fileBuf = fs.readFileSync(filePath);
+    const filename = path.basename(filePath);
+    const header = (name: string, value: string) =>
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`, 'utf-8');
+    const parts: Buffer[] = [
+      header('model', config.model),
+      header('response_format', 'verbose_json'),
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: audio/mpeg\r\n\r\n`,
+        'utf-8',
+      ),
+      fileBuf,
+      Buffer.from(`\r\n--${boundary}--\r\n`, 'utf-8'),
+    ];
+    const body = Buffer.concat(parts);
+    const mod = url.protocol === 'https:' ? https : http;
+    const req = mod.request(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'Content-Length': body.length,
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        timeout: 600000,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf-8');
+          if (res.statusCode && res.statusCode >= 400) {
+            reject(new Error(`Whisper HTTP ${res.statusCode}: ${text.slice(0, 400)}`));
+            return;
+          }
+          try {
+            const j = JSON.parse(text);
+            const segments: TranscribedSegment[] = Array.isArray(j.segments)
+              ? j.segments.map((s: any) => ({ from: Number(s.start) || 0, to: Number(s.end) || 0, content: String(s.text || '').trim() })).filter((s: TranscribedSegment) => s.content)
+              : [];
+            resolve({ text: String(j.text || '').trim(), segments });
+          } catch (e) {
+            reject(new Error(`Whisper JSON parse: ${e}`));
+          }
+        });
+      },
+    );
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Whisper timeout')); });
+    req.write(body);
+    req.end();
+  });
+}
+
+export interface AudioTranscribeResult {
+  text: string;
+  segments: TranscribedSegment[];
+}
+
+/** End-to-end: pull bilibili audio, convert, send to whisper, return segments. */
+export async function transcribeBilibiliAudio(
+  bvid: string,
+  cid: number,
+  cookies: BiliCookies | undefined,
+  whisper: WhisperConfig,
+): Promise<AudioTranscribeResult> {
+  if (!whisper.apiKey) throw new Error('??? Whisper API Key');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bilistudy-'));
+  const rawFile = path.join(tmpDir, 'audio.bin');
+  const mp3File = path.join(tmpDir, 'audio.mp3');
+  try {
+    const streamUrl = await getAudioStreamUrl(bvid, cid, cookies);
+    await downloadToFile(streamUrl, rawFile, cookies);
+    await ffmpegToMp3(rawFile, mp3File);
+    const result = await postMultipartTranscribe(mp3File, whisper);
+    return { text: result.text, segments: result.segments || [] };
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+}
