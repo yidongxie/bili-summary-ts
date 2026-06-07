@@ -15,6 +15,7 @@ import {
   saveLibraryItem,
   deleteLibraryItem,
 } from "../db/libraryStore";
+import { suggestTags } from "../llm/summarize";
 
 function nowIso(): string {
   return new Date().toISOString().slice(0, 19).replace("T", "T");
