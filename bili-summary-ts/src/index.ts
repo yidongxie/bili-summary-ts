@@ -1,4 +1,4 @@
-﻿/** BiliStudy V2 – main server entry point */
+/** BiliStudy V2 �C main server entry point */
 
 import path from "path";
 import express from "express";
@@ -24,7 +24,7 @@ app.use(
   session({
     secret: SESSION_SECRET,
     resave: false,
-    saveUninitialized: false,
+    saveUninitialized: true,
     cookie: {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       httpOnly: true,
