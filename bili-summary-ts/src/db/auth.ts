@@ -53,10 +53,10 @@ export function createAuthRouter(db: Database.Database): Router {
       const negId = -Math.abs(buf.readInt32BE(0));
       db.prepare("UPDATE users SET github_id = ? WHERE id = ?").run(negId, userId);
       db.prepare("INSERT OR IGNORE INTO user_configs (user_id) VALUES (?)").run(userId);
-      db.prepare("UPDATE user_configs SET api_key_enc = ? WHERE user_id = ?").run(
-        "email_pwd:" + hashPassword(password),
-        userId
-      );
+       db.prepare("UPDATE user_configs SET password_hash = ? WHERE user_id = ?").run(
+         hashPassword(password),
+         userId
+       );
 
       // Create session
       const sid = req.sessionID;
@@ -92,15 +92,15 @@ export function createAuthRouter(db: Database.Database): Router {
         return;
       }
 
-      const config = db.prepare("SELECT api_key_enc FROM user_configs WHERE user_id = ?").get(user.id) as any;
-      const stored = config?.api_key_enc || "";
+       const config = db.prepare("SELECT password_hash FROM user_configs WHERE user_id = ?").get(user.id) as any;
+       const stored = config?.password_hash || "";
 
-      if (!stored.startsWith("email_pwd:")) {
-        res.status(401).json({ success: false, error: "该账号没有设置密码，请使用 GitHub 登录。" });
-        return;
-      }
+       if (!stored) {
+         res.status(401).json({ success: false, error: "该账号没有设置密码" });
+         return;
+       }
 
-      if (!verifyPassword(password, stored.replace("email_pwd:", ""))) {
+       if (!verifyPassword(password, stored)) {
         res.status(401).json({ success: false, error: "邮箱或密码错误" });
         return;
       }

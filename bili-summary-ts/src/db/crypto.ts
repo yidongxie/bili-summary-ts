@@ -37,7 +37,8 @@ export function decrypt(ciphertext: string): string {
   decipher.setAuthTag(tag);
   try {
     return decipher.update(encrypted) + decipher.final("utf-8");
-  } catch {
-    return "";
-  }
+ } catch {
+   console.warn("[crypto] decrypt failed (data may be corrupted):", ciphertext.slice(0, 30));
+   return "";
+ }
 }

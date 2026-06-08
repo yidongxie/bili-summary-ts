@@ -38,10 +38,11 @@ export interface DbLibraryItem {
   mode: string;
 }
 
-export interface DbUserConfig {
-  user_id: number;
-  api_key_enc: string;
-  bili_sessdata_enc: string;
+   export interface DbUserConfig {
+     user_id: number;
+     api_key_enc: string;
+     password_hash: string;
+     bili_sessdata_enc: string;
   whisper_api_key_enc: string;
   whisper_base_url: string;
   whisper_model: string;
@@ -101,10 +102,11 @@ export function createDb(dataDir: string): Database.Database {
       mode TEXT NOT NULL DEFAULT 'brief'
     );
 
-    CREATE TABLE IF NOT EXISTS user_configs (
-      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      api_key_enc TEXT NOT NULL DEFAULT '',
-      bili_sessdata_enc TEXT NOT NULL DEFAULT '',
+   CREATE TABLE IF NOT EXISTS user_configs (
+     user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+     api_key_enc TEXT NOT NULL DEFAULT '',
+     password_hash TEXT NOT NULL DEFAULT '',
+     bili_sessdata_enc TEXT NOT NULL DEFAULT '',
       whisper_api_key_enc TEXT NOT NULL DEFAULT '',
       whisper_base_url TEXT NOT NULL DEFAULT 'https://api.siliconflow.cn/v1',
       whisper_model TEXT NOT NULL DEFAULT 'FunAudioLLM/SenseVoiceSmall',

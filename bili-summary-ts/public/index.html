@@ -172,6 +172,9 @@
     .cards { grid-template-columns: 1fr; }
     .nav button { padding: 10px 8px; }
   }
+.key-status { font-size: 12px; margin-top: 2px; min-height: 18px; }
+.key-status.configured { color: #059669; }
+.key-status.not-configured { color: #9ca3af; }
 </style>
 </head>
 <body>
@@ -323,7 +326,8 @@
               <p class="settings-card-sub">用于生成视频总结，兼容 OpenAI 协议。</p>
             </div>
           </div>
-          <div class="field"><label>API Key</label><input type="password" id="apiKeyInput" placeholder="sk-..."></div>
+         <div class="field"><label>API Key</label><input type="password" id="apiKeyInput" placeholder="sk-..."></div>
+         <div class="key-status" id="apiKeyStatus"></div>
           <div class="grid two">
             <div class="field"><label>模型</label><input id="deepseekModelInput" value="deepseek-chat"></div>
             <div class="field"><label>API 地址</label><input id="deepseekBaseUrlInput" value="https://api.deepseek.com/v1"></div>
@@ -338,7 +342,8 @@
               <p class="settings-card-sub">把没有字幕的视频转写成文本，推荐硅基流动 / OpenAI。</p>
             </div>
           </div>
-          <div class="field"><label>API Key</label><input type="password" id="whisperApiKeyInput" placeholder="sk-..."></div>
+          <div class="field"><label>API Key</label><input type="password" id="whisperApiKeyInput" placeholder="sk-...">
+          <div class="key-status" id="whisperApiKeyStatus"></div></div>
           <div class="grid two">
             <div class="field"><label>API 地址</label><input id="whisperBaseUrlInput" value="https://api.siliconflow.cn/v1"></div>
             <div class="field"><label>模型</label><input id="whisperModelInput" value="FunAudioLLM/SenseVoiceSmall"></div>
@@ -356,6 +361,7 @@
           <div class="field">
             <label>SESSDATA</label>
             <input id="sessdataInput" placeholder="从浏览器 Cookie 复制 SESSDATA">
+          <div class="key-status" id="sessdataStatus"></div>
             <span class="small">只保存在你自己的电脑，不会上传。</span>
           </div>
         </div>
@@ -452,6 +458,13 @@ async function checkAuth() {
   }
 }
 
+async function setKeyStatus(id, configured) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  if (configured) { el.textContent = '\u2713 已配置'; el.className = 'key-status configured'; }
+  else { el.textContent = '未配置'; el.className = 'key-status not-configured'; }
+}
+
 async function loadConfig() {
   try {
     const data = await api('/api/config');
@@ -468,6 +481,10 @@ async function loadConfig() {
   document.getElementById('whisperModelInput').value = appConfig.whisper_model || 'FunAudioLLM/SenseVoiceSmall';
   document.getElementById('useWhisperInput').checked = Boolean(appConfig.whisper_api_key_set);
   document.getElementById('categoryInput').value = appConfig.default_category || '待整理';
+  // Key status indicators
+  setKeyStatus('apiKeyStatus', appConfig.api_key_set);
+  setKeyStatus('sessdataStatus', appConfig.bili_sessdata_set);
+  setKeyStatus('whisperApiKeyStatus', appConfig.whisper_api_key_set);
 }
 
 async function loadSettings() {

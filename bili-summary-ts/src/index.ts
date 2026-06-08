@@ -1,7 +1,7 @@
 /** BiliStudy V2 ¨C main server entry point */
 
 import path from "path";
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import session from "express-session";
 import { createDb } from "./db/schema";
 import { createAuthRouter } from "./db/auth";
@@ -38,6 +38,30 @@ app.use(
 const dataDir = path.resolve(__dirname, "..", "data");
 const db = createDb(dataDir);
 
+// Attach the authenticated user (if any) to req.user for downstream routes.
+// All API handlers read `(req as any).user`, so this middleware must run
+// before any router that depends on it.
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  try {
+    const sid = req.sessionID;
+    if (sid) {
+      const sessionRow = db
+        .prepare("SELECT user_id FROM sessions WHERE sid = ? AND expires_at > datetime('now')")
+        .get(sid) as { user_id: number } | undefined;
+      if (sessionRow) {
+        const user = db
+          .prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?")
+          .get(sessionRow.user_id);
+        if (user) {
+          (req as any).user = user;
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[auth-middleware]", err);
+  }
+  next();
+});
 // Auth routes (must be before static files so /api/auth/* are not caught by SPA fallback)
 app.use(createAuthRouter(db));
 
@@ -79,9 +103,6 @@ if (require.main === module) {
     console.error("ERROR: ENCRYPTION_KEY environment variable is required");
     console.error("Generate one: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"");
     process.exit(1);
-  }
-  if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
-    console.warn("WARNING: GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET not set. GitHub OAuth login will be disabled.");
   }
   startServer().then((url) => {
     console.log(`Open: ${url}`);

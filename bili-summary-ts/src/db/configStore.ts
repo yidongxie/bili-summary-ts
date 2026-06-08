@@ -100,9 +100,9 @@ export function saveConfig(
   const updates: string[] = [];
   const params: Record<string, any> = {};
 
-  if ("api_key" in patch) { updates.push("api_key_enc = @api_key_enc"); params.api_key_enc = encrypt(patch.api_key || ""); }
-  if ("bili_sessdata" in patch) { updates.push("bili_sessdata_enc = @bili_sessdata_enc"); params.bili_sessdata_enc = encrypt(patch.bili_sessdata || ""); }
-  if ("whisper_api_key" in patch) { updates.push("whisper_api_key_enc = @whisper_api_key_enc"); params.whisper_api_key_enc = encrypt(patch.whisper_api_key || ""); }
+  if ("api_key" in patch && patch.api_key) { updates.push("api_key_enc = @api_key_enc"); params.api_key_enc = encrypt(patch.api_key); }
+ if ("bili_sessdata" in patch && patch.bili_sessdata) { updates.push("bili_sessdata_enc = @bili_sessdata_enc"); params.bili_sessdata_enc = encrypt(patch.bili_sessdata); }
+ if ("whisper_api_key" in patch && patch.whisper_api_key) { updates.push("whisper_api_key_enc = @whisper_api_key_enc"); params.whisper_api_key_enc = encrypt(patch.whisper_api_key); }
   if ("whisper_base_url" in patch) { updates.push("whisper_base_url = @whisper_base_url"); params.whisper_base_url = patch.whisper_base_url; }
   if ("whisper_model" in patch) { updates.push("whisper_model = @whisper_model"); params.whisper_model = patch.whisper_model; }
   if ("deepseek_base_url" in patch) { updates.push("deepseek_base_url = @deepseek_base_url"); params.deepseek_base_url = patch.deepseek_base_url; }

@@ -1,4 +1,4 @@
-﻿/** Express routes – config, library, export */
+/** Express routes – config, library, export */
 
 import { Router, Request, Response } from "express";
 import crypto from "crypto";
@@ -62,12 +62,18 @@ function formatDate(value: string): string {
 }
 
 function yamlString(value: unknown): string {
-  return JSON.stringify(String(value ?? ""));
+  const s = String(value ?? "");
+  if (typeof value === "number" || (typeof value === "string" && /^\-?\d+(\.\d+)?$/.test(s))) return s;
+  if (typeof value === "boolean") return s;
+ let escaped = s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+ // Replace control characters that would break YAML double-quoted strings
+ escaped = escaped.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+ return '"' + escaped + '"';
 }
 
-function yamlList(items: string[]): string {
-  return items.map((i) => `  - ${yamlString(i)}`).join("\n");
-}
+   function yamlList(items: string[]): string {
+     return "\n" + items.filter(Boolean).map((i) => `  - ${yamlString(i)}`).join("\n");
+   }
 
 function obsidianTags(tags: string[], category: string): string[] {
   const cleaned = [...tags, category]
@@ -78,10 +84,11 @@ function obsidianTags(tags: string[], category: string): string[] {
 
 function itemToMarkdown(item: any): string {
   const tags = obsidianTags(item.tags || [], item.category || "");
-  const parts = [
-    "---",
-    `title: ${yamlString(item.title)}`,
-    `author: ${yamlString(item.author)}`,
+   const parts = [
+     "---",
+     `title: ${yamlString(item.title)}`,
+     `source: ${yamlString(item.link || "")}`,
+     `author: ${yamlString(item.author)}`,
     `site: ${yamlString("Bilibili")}`,
     `bvid: ${yamlString(item.bvid)}`,
     `duration: ${yamlString(formatDuration(item.duration))}`,
@@ -90,16 +97,24 @@ function itemToMarkdown(item: any): string {
     `subtitle_count: ${Number(item.subtitle_count || 0)}`,
     `created: ${yamlString(item.created_at)}`,
     `updated: ${yamlString(item.updated_at)}`,
-    `tags: ${yamlList(tags)}`,
+     `tags:${yamlList(tags)}`,
     "---",
-    "",
-    `# ${item.title}`,
-    "",
-    "## AI 总结",
+   "",
+   `# ${item.title}`,
+   "",
+  "> [!info] Source",
+  `> - UP主: ${item.author || ""}`,
+  `> - 原视频: ${item.link || ""}`,
+  `> - 时长: ${formatDuration(item.duration)}`,
+  `> - 分类: ${item.category || ""}`,
+  `> - 字幕条数: ${item.subtitle_count || 0}`,
+   "",
+   `![](https://player.bilibili.com/player.html?bvid=${item.bvid}&autoplay=0)`,
+   "",
+  "## AI 总结",
     "",
     item.summary,
   ];
-  if (item.link) parts.push("", "---", "", "视频链接：" + item.link);
   if (item.notes) parts.push("", "## 我的笔记", "", item.notes);
   return parts.filter((part, index, all) => part !== "" || all[index - 1] !== "").join("\n").trim() + "\n";
 }
@@ -113,7 +128,7 @@ function itemToPrintableHtml(item: any): string {
     item.created_at ? `保存: ${escapeHtml(item.created_at)}` : "",
   ].filter(Boolean).join(" · ");
   const notesBlock = item.notes ? `<h2>我的笔记</h2>${markdownToHtml(item.notes)}` : "";
-  const videoLinkBlock = item.link ? `<p style="margin-top:12px"><a href="${escapeHtml(item.link)}" target="_blank">🎬 打开原视频 →</a></p>` : "";
+  const videoLinkBlock = item.link ? `<p style="margin-top:12px"><a href="${escapeHtml(item.link)}" target="_blank">?? 打开原视频 →</a></p>` : "";
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -345,7 +360,7 @@ export function createApiRouter(db: Database.Database): Router {
       const relativeFolder = String(rawFolder || "")
         .split(/[\\/]+/)
         .map((part: string) => slugify(part))
-        .filter(Boolean)
+        .filter((part: string) => part && part !== "." && part !== "..")
         .join(path.sep);
       const targetDir = path.resolve(rawPath, relativeFolder);
       const targetFile = path.resolve(targetDir, slugify(item.title) + ".md");
