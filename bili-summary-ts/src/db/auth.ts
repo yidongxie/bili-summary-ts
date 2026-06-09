@@ -92,8 +92,13 @@ export function createAuthRouter(db: Database.Database): Router {
         return;
       }
 
-       const config = db.prepare("SELECT password_hash FROM user_configs WHERE user_id = ?").get(user.id) as any;
-       const stored = config?.password_hash || "";
+      let stored = "";
+      const pwdConfig = db.prepare("SELECT * FROM user_configs WHERE user_id = ?").get(user.id) as any;
+      if (pwdConfig?.password_hash) {
+        stored = pwdConfig.password_hash;
+      } else if (pwdConfig?.api_key_enc?.startsWith("email_pwd:")) {
+        stored = pwdConfig.api_key_enc.substring(10);
+      }
 
        if (!stored) {
          res.status(401).json({ success: false, error: "该账号没有设置密码" });
