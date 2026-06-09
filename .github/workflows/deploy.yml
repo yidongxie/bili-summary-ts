@@ -1,4 +1,4 @@
-﻿name: Deploy to Alibaba Cloud
+name: Deploy to Alibaba Cloud
 
 on:
   push:
@@ -15,34 +15,34 @@ jobs:
           username: ${{ secrets.ALIYUN_USER }}
           key: ${{ secrets.ALIYUN_SSH_KEY }}
           port: 22
-   script: |
-     set -e
-     git config --global http.version HTTP/1.1
-     REPO_DIR="/opt/bili-summary"
-     PROJ_DIR="$REPO_DIR/bili-summary-ts"
-     if [ -d "$PROJ_DIR" ]; then
-       cd "$PROJ_DIR"
-       git fetch origin
-       git checkout v2
-       git pull origin v2
-     else
-       git clone -b v2 https://github.com/yidongxie/bili-summary-ts.git "$REPO_DIR"
-       cd "$PROJ_DIR"
-     fi
-     echo "=== PM2 status ==="
-     pm2 status bilistudy 2>&1 || echo "PM2: not running"
-     echo "=== Port 8080 ==="
-     ss -tlnp | grep 8080 || echo "Port 8080: not listening"
-     echo "=== ENCRYPTION_KEY ==="
-     test -n "$ENCRYPTION_KEY" && echo "ENCRYPTION_KEY: set" || echo "ENCRYPTION_KEY: NOT SET"
-     echo "=== Node process ==="
-     ps aux | grep "node" | grep -v grep || echo "No node process"
-     npm install
-     npx tsc
-     source "$REPO_DIR/.env" 2>/dev/null || true
-     echo "=== After deploy check ==="
-     pm2 restart bilistudy || pm2 start dist/index.js --name bilistudy
-     sleep 2
-     echo "=== Health check ==="
-     curl -s http://127.0.0.1:8080/health || echo "Health check FAILED"
-     ss -tlnp | grep 8080 || echo "Port 8080: not listening after start"
+          script: |
+            set -e
+            git config --global http.version HTTP/1.1
+            REPO_DIR="/opt/bili-summary"
+            PROJ_DIR="$REPO_DIR/bili-summary-ts"
+            if [ -d "$PROJ_DIR" ]; then
+              cd "$PROJ_DIR"
+              git fetch origin
+              git checkout v2
+              git pull origin v2
+            else
+              git clone -b v2 https://github.com/yidongxie/bili-summary-ts.git "$REPO_DIR"
+              cd "$PROJ_DIR"
+            fi
+            echo "=== PM2 status ==="
+            pm2 status bilistudy 2>&1 || echo "PM2: not running"
+            echo "=== Port 8080 ==="
+            ss -tlnp | grep 8080 || echo "Port 8080: not listening"
+            echo "=== ENCRYPTION_KEY ==="
+            test -n "$ENCRYPTION_KEY" && echo "ENCRYPTION_KEY: set" || echo "ENCRYPTION_KEY: NOT SET"
+            echo "=== Node process ==="
+            ps aux | grep "node" | grep -v grep || echo "No node process"
+            npm install
+            npx tsc
+            source "$REPO_DIR/.env" 2>/dev/null || true
+            echo "=== After deploy check ==="
+            pm2 restart bilistudy || pm2 start dist/index.js --name bilistudy
+            sleep 2
+            echo "=== Health check ==="
+            curl -s http://127.0.0.1:8080/health || echo "Health check FAILED"
+            ss -tlnp | grep 8080 || echo "Port 8080: not listening after start"
