@@ -1,0 +1,34 @@
+﻿name: Deploy to Alibaba Cloud
+
+on:
+  push:
+    branches: [ v2 ]
+    tags: [ 'v*' ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ALIYUN_HOST }}
+          username: ${{ secrets.ALIYUN_USER }}
+          key: ${{ secrets.ALIYUN_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+            REPO_DIR="/opt/bili-summary"
+            if [ -d "$REPO_DIR" ]; then
+              cd "$REPO_DIR"
+              git fetch origin
+              git checkout v2
+              git pull origin v2
+            else
+              git clone -b v2 https://github.com/yidongxie/bili-summary-ts.git "$REPO_DIR"
+              cd "$REPO_DIR"
+            fi
+            npm install
+            npx tsc
+            source .env 2>/dev/null || true
+            pm2 restart bilistudy || pm2 start dist/index.js --name bilistudy
