@@ -23,7 +23,7 @@ jobs:
 
             # Create .env if missing
             if [ ! -f "$REPO_DIR/.env" ]; then
-              KEY=$(node -e "console.log(require('\''crypto'\'').randomBytes(32).toString('\''hex'\''))")
+              KEY=$(openssl rand -hex 32)
               echo "ENCRYPTION_KEY=$KEY" > "$REPO_DIR/.env"
               echo "PORT=8080" >> "$REPO_DIR/.env"
               echo "Created .env with new ENCRYPTION_KEY"
@@ -43,7 +43,7 @@ jobs:
             npm install
             npx tsc
 
-            # Start with fresh environment
+            # Start fresh (PM2 restart keeps old env, so delete + start)
             source "$REPO_DIR/.env"
             pm2 delete bilistudy 2>/dev/null || true
             ENCRYPTION_KEY=$ENCRYPTION_KEY pm2 start dist/index.js --name bilistudy
