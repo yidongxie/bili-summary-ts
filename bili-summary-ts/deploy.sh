@@ -1,5 +1,5 @@
 ﻿#!/bin/bash
-# BiliStudy V2 - 一键部署脚本（Ubuntu / Debian / CentOS）
+# BiliStudy V2 - 一键部署脚本（GitHub Actions + 阿里云）
 set -e
 
 echo "===== BiliStudy V2 部署脚本 ====="
