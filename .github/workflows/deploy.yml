@@ -20,6 +20,16 @@ jobs:
             git config --global http.version HTTP/1.1
             REPO_DIR="/opt/bili-summary"
             PROJ_DIR="$REPO_DIR/bili-summary-ts"
+
+            # Create .env if missing
+            if [ ! -f "$REPO_DIR/.env" ]; then
+              KEY=$(node -e "console.log(require('\''crypto'\'').randomBytes(32).toString('\''hex'\''))")
+              echo "ENCRYPTION_KEY=$KEY" > "$REPO_DIR/.env"
+              echo "PORT=8080" >> "$REPO_DIR/.env"
+              echo "Created .env with new ENCRYPTION_KEY"
+            fi
+
+            # Update code
             if [ -d "$PROJ_DIR" ]; then
               cd "$PROJ_DIR"
               git fetch origin
@@ -29,20 +39,17 @@ jobs:
               git clone -b v2 https://github.com/yidongxie/bili-summary-ts.git "$REPO_DIR"
               cd "$PROJ_DIR"
             fi
-            echo "=== PM2 status ==="
-            pm2 status bilistudy 2>&1 || echo "PM2: not running"
-            echo "=== Port 8080 ==="
-            ss -tlnp | grep 8080 || echo "Port 8080: not listening"
-            echo "=== ENCRYPTION_KEY ==="
-            test -n "$ENCRYPTION_KEY" && echo "ENCRYPTION_KEY: set" || echo "ENCRYPTION_KEY: NOT SET"
-            echo "=== Node process ==="
-            ps aux | grep "node" | grep -v grep || echo "No node process"
+
             npm install
             npx tsc
-            source "$REPO_DIR/.env" 2>/dev/null || true
-            echo "=== After deploy check ==="
-            pm2 restart bilistudy || pm2 start dist/index.js --name bilistudy
+
+            # Start with fresh environment
+            source "$REPO_DIR/.env"
+            pm2 delete bilistudy 2>/dev/null || true
+            ENCRYPTION_KEY=$ENCRYPTION_KEY pm2 start dist/index.js --name bilistudy
+            pm2 save
+
+            echo "=== Verify ==="
             sleep 2
-            echo "=== Health check ==="
-            curl -s http://127.0.0.1:8080/health || echo "Health check FAILED"
-            ss -tlnp | grep 8080 || echo "Port 8080: not listening after start"
+            curl -s http://127.0.0.1:8080/health && echo " - OK" || echo "Health check FAILED"
+            ss -tlnp | grep 8080 || echo "Port 8080 not listening"
