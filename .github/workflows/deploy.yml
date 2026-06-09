@@ -17,6 +17,7 @@ jobs:
           port: 22
           script: |
             set -e
+            git config --global http.version HTTP/1.1
             REPO_DIR="/opt/bili-summary"
             PROJ_DIR="$REPO_DIR/bili-summary-ts"
             if [ -d "$PROJ_DIR" ]; then
