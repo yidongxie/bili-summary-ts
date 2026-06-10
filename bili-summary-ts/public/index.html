@@ -823,11 +823,34 @@ async function deleteItem(id) {
   markSaved();
 }
 
+async function fetchAndDownload(url) {
+  try {
+    const r = await fetch(url, { credentials: 'same-origin' });
+    if (!r.ok) { const t = await r.text(); throw new Error(t || r.statusText); }
+    const cd = r.headers.get('Content-Disposition');
+    let name = 'download';
+    if (cd) {
+      cd.split(';').forEach(function(kv) {
+        if (kv.trim().startsWith('filename=')) {
+          name = decodeURIComponent(kv.trim().slice(9).replace(/"/g, ''));
+        }
+      });
+    }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() { URL.revokeObjectURL(a.href); a.remove(); }, 100);
+  } catch (err) { alert(String(err)); }
+}
+
 function exportPdf(id) {
-  window.open('/api/export/' + id + '.pdf', '_blank');
+  fetchAndDownload('/api/export/' + id + '.pdf');
 }
 function downloadMarkdown(id) {
-  window.open('/api/export/' + id + '.md', '_blank');
+  fetchAndDownload('/api/export/' + id + '.md');
 }
 
 async function sendToObsidian(id, overwrite, includeTranscript) {
