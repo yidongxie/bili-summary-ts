@@ -20,6 +20,32 @@ jobs:
             set -e
             echo "=== STEP: probe ffmpeg ==="
             git config --global http.version HTTP/1.1
+            # One-shot installer: if ffmpeg is not on the host yet, install it.
+            if ! command -v ffmpeg >/dev/null 2>&1 && [ ! -x "/opt/bili-summary/bin/ffmpeg" ]; then
+              echo "=== STEP: install ffmpeg (one-shot) ==="
+              if command -v apt-get >/dev/null 2>&1; then
+                (apt-get update -y && apt-get install -y ffmpeg) || true
+              fi
+              if ! command -v ffmpeg >/dev/null 2>&1 && command -v dnf >/dev/null 2>&1; then
+                (dnf install -y epel-release || true; dnf install -y ffmpeg) || true
+              fi
+              if ! command -v ffmpeg >/dev/null 2>&1 && command -v yum >/dev/null 2>&1; then
+                (yum install -y epel-release || true; yum install -y ffmpeg) || true
+              fi
+              if ! command -v ffmpeg >/dev/null 2>&1; then
+                echo "Pkg manager failed; trying static binary from Aliyun mirror"
+                mkdir -p /opt/bili-summary/bin /tmp/ffstatic && cd /tmp/ffstatic
+                # Aliyun OSS-hosted static build (CN-friendly). Falls back to johnvansickle.
+                curl -fL --connect-timeout 20 -o ff.tar.xz \
+                  "https://mirrors.aliyun.com/zabbix/agent2plugins/ffmpeg-release-amd64-static.tar.xz" \
+                  || curl -fL --connect-timeout 20 -o ff.tar.xz \
+                  "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+                tar xf ff.tar.xz
+                cp ffmpeg-*/ffmpeg /opt/bili-summary/bin/ffmpeg
+                chmod +x /opt/bili-summary/bin/ffmpeg
+                cd /
+              fi
+            fi
             # ffmpeg is installed manually on the host. Pick it up from PATH or
             # the well-known /opt/bili-summary/bin/ffmpeg location.
             if command -v ffmpeg >/dev/null 2>&1; then
