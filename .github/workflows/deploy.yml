@@ -18,7 +18,31 @@ jobs:
           script: |
             set -e
             git config --global http.version HTTP/1.1
-            # ffmpeg is provided via the ffmpeg-static npm package; no host install needed.
+            # Ensure a usable ffmpeg binary exists at /opt/bili-summary/bin/ffmpeg.
+            # We grab the johnvansickle static build to avoid depending on the
+            # host package manager or sudo privileges.
+            FFMPEG_DIR="/opt/bili-summary/bin"
+            FFMPEG_BIN="$FFMPEG_DIR/ffmpeg"
+            if [ ! -x "$FFMPEG_BIN" ]; then
+              echo "Installing static ffmpeg binary into $FFMPEG_DIR ..."
+              mkdir -p "$FFMPEG_DIR"
+              TMPDIR=$(mktemp -d)
+              cd "$TMPDIR"
+              ARCH=$(uname -m)
+              case "$ARCH" in
+                x86_64|amd64) FF_TARBALL="ffmpeg-release-amd64-static.tar.xz" ;;
+                aarch64|arm64) FF_TARBALL="ffmpeg-release-arm64-static.tar.xz" ;;
+                *) echo "Unsupported arch: $ARCH" >&2; exit 1 ;;
+              esac
+              curl -fsSL -o ffmpeg.tar.xz "https://johnvansickle.com/ffmpeg/releases/$FF_TARBALL"
+              tar -xf ffmpeg.tar.xz
+              FF_EXTRACTED=$(find . -maxdepth 1 -type d -name 'ffmpeg-*-static' | head -n1)
+              cp "$FF_EXTRACTED/ffmpeg" "$FFMPEG_BIN"
+              chmod +x "$FFMPEG_BIN"
+              cd -
+              rm -rf "$TMPDIR"
+            fi
+            "$FFMPEG_BIN" -version | head -n1
             REPO_DIR="/opt/bili-summary"
             PROJ_DIR="$REPO_DIR/bili-summary-ts"
 
@@ -49,7 +73,7 @@ jobs:
             # Start fresh (PM2 restart keeps old env, so delete + start)
             source "$REPO_DIR/.env"
             pm2 delete bilistudy 2>/dev/null || true
-            ENCRYPTION_KEY=$ENCRYPTION_KEY pm2 start dist/index.js --name bilistudy
+            ENCRYPTION_KEY=$ENCRYPTION_KEY FFMPEG_PATH=$FFMPEG_BIN pm2 start dist/index.js --name bilistudy
             pm2 save
 
             echo "=== Verify ==="

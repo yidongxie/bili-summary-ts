@@ -9,20 +9,27 @@ import { URL } from 'url';
 import { spawn } from 'child_process';
 import { BiliCookies } from '../bilibili/api';
 
-// Resolve a working ffmpeg binary path. Prefer a bundled binary so we don't
-// depend on the host having ffmpeg installed; fall back to PATH lookup.
+// Resolve a working ffmpeg binary path. Order of preference:
+//   1. FFMPEG_PATH env var (set by the deploy script to a static binary)
+//   2. @ffmpeg-installer/ffmpeg npm bundle (no postinstall network needed)
+//   3. ffmpeg-static npm bundle
+//   4. 'ffmpeg' on PATH
 let ffmpegBinary: string = 'ffmpeg';
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { path: installerPath } = require('@ffmpeg-installer/ffmpeg');
-  if (typeof installerPath === 'string' && installerPath) ffmpegBinary = installerPath;
-} catch {
+if (process.env.FFMPEG_PATH && fs.existsSync(process.env.FFMPEG_PATH)) {
+  ffmpegBinary = process.env.FFMPEG_PATH;
+} else {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const staticPath = require('ffmpeg-static');
-    if (typeof staticPath === 'string' && staticPath) ffmpegBinary = staticPath;
+    const { path: installerPath } = require('@ffmpeg-installer/ffmpeg');
+    if (typeof installerPath === 'string' && installerPath) ffmpegBinary = installerPath;
   } catch {
-    // Neither bundle is available; fall back to PATH lookup.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const staticPath = require('ffmpeg-static');
+      if (typeof staticPath === 'string' && staticPath) ffmpegBinary = staticPath;
+    } catch {
+      // Fall back to PATH lookup.
+    }
   }
 }
 
