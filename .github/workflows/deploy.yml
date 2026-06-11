@@ -18,6 +18,23 @@ jobs:
           script: |
             set -e
             git config --global http.version HTTP/1.1
+            # Ensure ffmpeg is installed (required by Whisper transcription)
+            if ! command -v ffmpeg >/dev/null 2>&1; then
+              echo "Installing ffmpeg..."
+              if command -v apt-get >/dev/null 2>&1; then
+                sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+                sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg
+              elif command -v dnf >/dev/null 2>&1; then
+                sudo dnf install -y ffmpeg || sudo dnf install -y epel-release && sudo dnf install -y ffmpeg
+              elif command -v yum >/dev/null 2>&1; then
+                sudo yum install -y epel-release || true
+                sudo yum install -y ffmpeg
+              else
+                echo "No supported package manager (apt/dnf/yum) found for ffmpeg install" >&2
+                exit 1
+              fi
+            fi
+            ffmpeg -version | head -n1
             REPO_DIR="/opt/bili-summary"
             PROJ_DIR="$REPO_DIR/bili-summary-ts"
 
