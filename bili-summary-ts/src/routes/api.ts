@@ -25,6 +25,15 @@ function slugify(text: string): string {
   return text.replace(/[\\/:*?"<>|\r\n]+/g, "_").replace(/\s+/g, " ").trim().slice(0, 80) || "summary";
 }
 
+// RFC 5987-compliant Content-Disposition value. Node refuses non latin-1 in
+// header values, so we keep a plain ASCII fallback in `filename=` and put the
+// real (possibly non-ASCII) name in `filename*=UTF-8''<percent-encoded>`.
+function contentDisposition(name: string): string {
+  const asciiFallback = name.replace(/[^\x20-\x7e]+/g, "_") || "download";
+  const encoded = encodeURIComponent(name).replace(/['()]/g, escape).replace(/\*/g, "%2A");
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+}
+
 function escapeHtml(text: string): string {
   return String(text ?? "")
     .replace(/&/g, "&amp;")
@@ -330,7 +339,7 @@ export function createApiRouter(db: Database.Database): Router {
     const md = itemToMarkdown(item);
     const filename = slugify(item.title) + ".md";
     res.setHeader("Content-Type", "text/markdown; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Disposition", contentDisposition(filename));
     res.send(md);
   });
 

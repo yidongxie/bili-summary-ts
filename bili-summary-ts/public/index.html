@@ -823,11 +823,17 @@ async function fetchAndDownload(url) {
     const cd = r.headers.get('Content-Disposition');
     let name = 'download';
     if (cd) {
-      cd.split(';').forEach(function(kv) {
-        if (kv.trim().startsWith('filename=')) {
-          name = decodeURIComponent(kv.trim().slice(9).replace(/"/g, ''));
-        }
-      });
+      // Prefer RFC 5987 filename* (UTF-8) over the ASCII fallback in filename=
+      var starMatch = cd.match(/filename\*\s*=\s*([^;]+)/i);
+      if (starMatch) {
+        var v = starMatch[1].trim();
+        var idx = v.indexOf("''");
+        if (idx >= 0) v = v.slice(idx + 2);
+        try { name = decodeURIComponent(v); } catch (e) { name = v; }
+      } else {
+        var plainMatch = cd.match(/filename\s*=\s*"?([^";]+)"?/i);
+        if (plainMatch) name = plainMatch[1].trim();
+      }
     }
     const blob = await r.blob();
     const a = document.createElement('a');
