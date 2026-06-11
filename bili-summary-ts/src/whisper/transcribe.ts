@@ -9,15 +9,21 @@ import { URL } from 'url';
 import { spawn } from 'child_process';
 import { BiliCookies } from '../bilibili/api';
 
-// Resolve a working ffmpeg binary path. Prefer the bundled static binary so we
-// don't depend on the host having ffmpeg installed; fall back to PATH lookup.
+// Resolve a working ffmpeg binary path. Prefer a bundled binary so we don't
+// depend on the host having ffmpeg installed; fall back to PATH lookup.
 let ffmpegBinary: string = 'ffmpeg';
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const staticPath = require('ffmpeg-static');
-  if (typeof staticPath === 'string' && staticPath) ffmpegBinary = staticPath;
+  const { path: installerPath } = require('@ffmpeg-installer/ffmpeg');
+  if (typeof installerPath === 'string' && installerPath) ffmpegBinary = installerPath;
 } catch {
-  // ffmpeg-static not installed; fall back to PATH
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const staticPath = require('ffmpeg-static');
+    if (typeof staticPath === 'string' && staticPath) ffmpegBinary = staticPath;
+  } catch {
+    // Neither bundle is available; fall back to PATH lookup.
+  }
 }
 
 export interface WhisperConfig {
