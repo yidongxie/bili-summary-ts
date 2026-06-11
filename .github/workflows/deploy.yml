@@ -18,31 +18,51 @@ jobs:
           script: |
             set -e
             git config --global http.version HTTP/1.1
-            # Ensure a usable ffmpeg binary exists at /opt/bili-summary/bin/ffmpeg.
-            # We grab the johnvansickle static build to avoid depending on the
-            # host package manager or sudo privileges.
+            # Ensure ffmpeg is available. Try system package manager first, then
+            # fall back to a static binary in /opt/bili-summary/bin/ffmpeg.
+            # We never let this block fail the whole deploy (||true at the end).
             FFMPEG_DIR="/opt/bili-summary/bin"
             FFMPEG_BIN="$FFMPEG_DIR/ffmpeg"
-            if [ ! -x "$FFMPEG_BIN" ]; then
-              echo "Installing static ffmpeg binary into $FFMPEG_DIR ..."
+            install_ffmpeg() {
+              if command -v ffmpeg >/dev/null 2>&1; then
+                FFMPEG_BIN="$(command -v ffmpeg)"
+                echo "ffmpeg already on PATH: $FFMPEG_BIN"
+                return 0
+              fi
+              if [ -x "$FFMPEG_BIN" ]; then
+                echo "Reusing existing static ffmpeg: $FFMPEG_BIN"
+                return 0
+              fi
+              echo "Installing ffmpeg via package manager..."
+              if command -v apt-get >/dev/null 2>&1; then
+                DEBIAN_FRONTEND=noninteractive apt-get update -y && \
+                  DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg && \
+                  FFMPEG_BIN="$(command -v ffmpeg)" && return 0
+              elif command -v dnf >/dev/null 2>&1; then
+                dnf install -y epel-release || true
+                dnf install -y ffmpeg && FFMPEG_BIN="$(command -v ffmpeg)" && return 0
+              elif command -v yum >/dev/null 2>&1; then
+                yum install -y epel-release || true
+                yum install -y ffmpeg && FFMPEG_BIN="$(command -v ffmpeg)" && return 0
+              fi
+              echo "Package manager install failed; trying static binary download..."
               mkdir -p "$FFMPEG_DIR"
               TMPDIR=$(mktemp -d)
-              cd "$TMPDIR"
               ARCH=$(uname -m)
               case "$ARCH" in
                 x86_64|amd64) FF_TARBALL="ffmpeg-release-amd64-static.tar.xz" ;;
                 aarch64|arm64) FF_TARBALL="ffmpeg-release-arm64-static.tar.xz" ;;
-                *) echo "Unsupported arch: $ARCH" >&2; exit 1 ;;
+                *) echo "Unsupported arch: $ARCH"; return 1 ;;
               esac
-              curl -fsSL -o ffmpeg.tar.xz "https://johnvansickle.com/ffmpeg/releases/$FF_TARBALL"
-              tar -xf ffmpeg.tar.xz
-              FF_EXTRACTED=$(find . -maxdepth 1 -type d -name 'ffmpeg-*-static' | head -n1)
-              cp "$FF_EXTRACTED/ffmpeg" "$FFMPEG_BIN"
-              chmod +x "$FFMPEG_BIN"
-              cd -
+              curl --max-time 180 -fsSL -o "$TMPDIR/ffmpeg.tar.xz" \
+                "https://johnvansickle.com/ffmpeg/releases/$FF_TARBALL" || return 1
+              tar -xf "$TMPDIR/ffmpeg.tar.xz" -C "$TMPDIR" || return 1
+              FF_EXTRACTED=$(find "$TMPDIR" -maxdepth 1 -type d -name 'ffmpeg-*-static' | head -n1)
+              cp "$FF_EXTRACTED/ffmpeg" "$FFMPEG_BIN" && chmod +x "$FFMPEG_BIN"
               rm -rf "$TMPDIR"
-            fi
-            "$FFMPEG_BIN" -version | head -n1
+            }
+            install_ffmpeg || echo "WARN: ffmpeg install failed; whisper transcription will not work"
+            ("$FFMPEG_BIN" -version | head -n1) || true
             REPO_DIR="/opt/bili-summary"
             PROJ_DIR="$REPO_DIR/bili-summary-ts"
 
