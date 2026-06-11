@@ -85,13 +85,25 @@ async function chatCompletion(config: LlmConfig, messages: { role: string; conte
 // ?? Public API ??????????????????????????????????????????????????????
 
 export async function summarizeText(text: string, config: LlmConfig, mode: SummaryMode): Promise<string> {
-  if (!text.trim()) return '\u89c6\u9891\u6ca1\u6709\u5b57\u5e55\u5185\u5bb9\uff0c\u65e0\u6cd5\u603b\u7ed3\u3002';
+  if (!text.trim()) return '视频没有可用的转写文本，无法总结。';
   const maxInput = 16000;
-  const input = text.length > maxInput ? text.slice(0, maxInput) + '\n\n...[\u5185\u5bb9\u8f83\u957f\uff0c\u5df2\u622a\u65ad]' : text;
+  const input = text.length > maxInput ? text.slice(0, maxInput) + '\n\n...[内容较长，已截断]' : text;
   const instruction = SUMMARY_PROMPTS[mode] ?? SUMMARY_PROMPTS.brief;
   const messages = [
-    { role: 'system', content: '\u4f60\u662f\u4e00\u4e2a\u4e2d\u6587\u7b14\u8bb0\u52a9\u624b\u3002\u8bf7\u4e25\u683c\u9075\u5b88\uff1a1\uff09\u53ea\u63d0\u53d6\u5b57\u5e55\u6587\u672c\u4e2d\u660e\u786e\u63d0\u5230\u7684\u4fe1\u606f\uff0c\u4e0d\u7f16\u9020\u3001\u4e0d\u8865\u5145\u3001\u4e0d\u63a8\u65ad\u5b57\u5e55\u6ca1\u6709\u7684\u5185\u5bb9\u30022\uff09\u5982\u679c\u67d0\u70b9\u6765\u81ea\u63a8\u65ad\uff0c\u5fc5\u987b\u6807\u6ce8\u201c\uff08\u5b57\u5e55\u4e2d\u672a\u660e\u786e\u8bf4\u660e\uff09\u201d\u30023\uff09\u751f\u6210 Markdown \u683c\u5f0f\uff0c\u7ed3\u6784\u6e05\u6670\u30024\uff09\u53ea\u56de\u7b54\u57fa\u4e8e\u5df2\u7ed9\u5b57\u5e55\u7684\u5185\u5bb9\u3002' },
-    { role: 'user', content: `\u603b\u7ed3\u8981\u6c42\uff1a${instruction}\n\n\u8bf7\u603b\u7ed3\u4ee5\u4e0b B\u7ad9\u89c6\u9891\u5b57\u5e55\uff1a\n\n${input}` },
+    {
+      role: 'system',
+      content:
+        '你是一个中文笔记助手，输入是一段 B 站视频的语音转写文本。请严格遵守：\n' +
+        '1) 只提取视频内容中明确提到的信息，不编造、不补充、不推断视频里没有出现的内容；\n' +
+        '2) 如果某点来自合理推断，请在该点后标注"（视频中未明确说明）"；\n' +
+        '3) 输出使用 Markdown 格式，结构清晰；\n' +
+        '4) 不要在输出中出现"字幕""转写""转录"这类字眼，统一以"视频"指代来源；不要描述自己拿到的是什么形式的素材；\n' +
+        '5) 直接给总结正文，不要写"以下是总结""根据视频内容"等开场白。',
+    },
+    {
+      role: 'user',
+      content: `总结要求：${instruction}\n\n以下是该 B 站视频的内容文本，请据此生成总结：\n\n${input}`,
+    },
   ];
   return chatCompletion(config, messages, 2400, mode);
 }
