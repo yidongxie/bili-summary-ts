@@ -219,10 +219,6 @@
           <button class="btn" id="clearUrlBtn" onclick="clearUrl()">清空</button>
           <button class="btn primary" id="summarizeBtn" onclick="startSummarize()">开始总结</button>
         </div>
-        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:#475467;cursor:pointer;">
-          <input type="checkbox" id="useWhisperInput" style="width:16px;height:16px;cursor:pointer;">
-          始终使用 Whisper 语音转写（需在设置里填写 API Key）
-        </label>
         <div class="grid two" style="margin-top:12px;">
           <div class="field">
             <label>总结模式</label>
@@ -479,7 +475,6 @@ async function loadConfig() {
   document.getElementById('whisperApiKeyInput').value = '';
   document.getElementById('whisperBaseUrlInput').value = appConfig.whisper_base_url || 'https://api.siliconflow.cn/v1';
   document.getElementById('whisperModelInput').value = appConfig.whisper_model || 'FunAudioLLM/SenseVoiceSmall';
-  document.getElementById('useWhisperInput').checked = true;
   document.getElementById('categoryInput').value = appConfig.default_category || '待整理';
   // Key status indicators
   setKeyStatus('apiKeyStatus', appConfig.api_key_set);
@@ -508,7 +503,6 @@ async function saveConfig() {
   try {
     const data = await api('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
     appConfig = data.config;
-    document.getElementById('useWhisperInput').checked = true;
     showStatus('settingsStatus', '设置已保存', 'ok');
   } catch (err) {
     showStatus('settingsStatus', err.message, 'error');
@@ -531,7 +525,6 @@ async function startSummarize() {
     const payload = {
       url,
       mode: document.getElementById('modeInput').value,
-      use_whisper: 'true',
       api_key: appConfig.api_key || '',
       model: appConfig.deepseek_model || 'deepseek-chat',
       base_url: appConfig.deepseek_base_url || 'https://api.deepseek.com/v1',
