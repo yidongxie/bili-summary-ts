@@ -9,6 +9,17 @@ import { URL } from 'url';
 import { spawn } from 'child_process';
 import { BiliCookies } from '../bilibili/api';
 
+// Resolve a working ffmpeg binary path. Prefer the bundled static binary so we
+// don't depend on the host having ffmpeg installed; fall back to PATH lookup.
+let ffmpegBinary: string = 'ffmpeg';
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const staticPath = require('ffmpeg-static');
+  if (typeof staticPath === 'string' && staticPath) ffmpegBinary = staticPath;
+} catch {
+  // ffmpeg-static not installed; fall back to PATH
+}
+
 export interface WhisperConfig {
   apiKey: string;
   baseUrl: string;
@@ -117,7 +128,7 @@ function downloadToFile(url: string, dest: string, cookies?: BiliCookies, redire
 function ffmpegToMp3(input: string, output: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const args = ['-y', '-i', input, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k', output];
-    const p = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const p = spawn(ffmpegBinary, args, { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     p.stderr.on('data', (c) => { stderr += c.toString(); });
     p.on('error', (e) => reject(new Error(`ffmpeg spawn: ${e.message}`)));
