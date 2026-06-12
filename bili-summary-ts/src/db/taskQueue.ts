@@ -28,7 +28,48 @@ interface Task {
 const tasks = new Map<string, Task>();
 const userTasks = new Map<number, string[]>(); // userId -> taskIds
 
-function getOrCreateTaskId(userId: number, userEmail: string): string {
+function loadPersistedTask(db: Database.Database, id: string): Task | null {
+  const row = db.prepare("SELECT * FROM summary_tasks WHERE id = ?").get(id) as any;
+  if (!row) return null;
+  return {
+    id: row.id,
+    userId: row.user_id,
+    userEmail: row.user_email,
+    status: row.status,
+    progress: row.progress,
+    result: row.result_json ? JSON.parse(row.result_json) : undefined,
+    error: row.error || undefined,
+    createdAt: row.created_at,
+    res: null,
+  };
+}
+
+function updateProgress(db: Database.Database, task: Task, progress: string) {
+  task.progress = progress;
+  // Narrow write: only progress and updated_at
+  db.prepare("UPDATE summary_tasks SET progress = ?, updated_at = ? WHERE id = ?").run(progress, Date.now(), task.id);
+  sendSSE(task, "status", { status: task.status, progress: task.progress });
+}
+
+function failTask(db: Database.Database, task: Task, error: string) {
+  task.error = error;
+  task.status = "error";
+  task.progress = "";
+  db.prepare("UPDATE summary_tasks SET status = 'error', progress = '', error = ?, updated_at = ? WHERE id = ?").run(error, Date.now(), task.id);
+  sendSSE(task, "error", { error: task.error });
+}
+
+function completeTask(db: Database.Database, task: Task, result: any) {
+  task.status = "done";
+  task.result = result;
+  task.progress = "完成";
+  db.prepare(
+    "UPDATE summary_tasks SET status = 'done', progress = '完成', result_json = ?, updated_at = ? WHERE id = ?"
+  ).run(JSON.stringify(result), Date.now(), task.id);
+  sendSSE(task, "complete", result);
+}
+
+function getOrCreateTaskId(db: Database.Database, userId: number, userEmail: string): string {
   const id = crypto.randomUUID();
   const task: Task = {
     id,
@@ -42,16 +83,21 @@ function getOrCreateTaskId(userId: number, userEmail: string): string {
   tasks.set(id, task);
   if (!userTasks.has(userId)) userTasks.set(userId, []);
   const list = userTasks.get(userId)!;
-  if (list.length > 10) {
+  if (list.length >= 10) {
     const old = list.shift()!;
     tasks.delete(old);
+    db.prepare("DELETE FROM summary_tasks WHERE id = ?").run(old);
   }
   list.push(id);
+  db.prepare(
+    "INSERT INTO summary_tasks (id, user_id, user_email, status, progress, created_at, updated_at) VALUES (?, ?, ?, 'pending', '排队中…', ?, ?)"
+  ).run(id, userId, userEmail, task.createdAt, Date.now());
   return id;
 }
 
 function sendSSE(task: Task, event: string, data: any) {
   if (!task.res) return;
+  if (task.res.writableEnded) { task.res = null; return; }
   try {
     task.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   } catch {
@@ -64,7 +110,17 @@ export function createTaskRouter(db: Database.Database): Router {
 
   // SSE endpoint
   router.get("/api/tasks/:id/events", (req: Request, res: Response) => {
-    const task = tasks.get(req.params.id);
+    let task = tasks.get(req.params.id);
+    if (!task) {
+      const persisted = loadPersistedTask(db, req.params.id);
+      if (persisted) {
+        // Only cache non-terminal tasks in memory to avoid stale res references
+        if (persisted.status === "pending" || persisted.status === "running") {
+          tasks.set(persisted.id, persisted);
+        }
+        task = persisted;
+      }
+    }
     if (!task) {
       res.status(404).json({ success: false, error: "任务不存在" });
       return;
@@ -122,7 +178,7 @@ export function createTaskRouter(db: Database.Database): Router {
       return;
     }
 
-    const taskId = getOrCreateTaskId(userId, userEmail);
+    const taskId = getOrCreateTaskId(db, userId, userEmail);
     const task = tasks.get(taskId)!;
 
     res.json({ success: true, task_id: taskId });
@@ -144,7 +200,7 @@ async function runTask(
 ) {
   try {
     task.status = "running";
-    sendSSE(task, "status", { status: "running", progress: "获取视频信息…" });
+    updateProgress(db, task, "获取视频信息…");
 
     const config = getDecryptedConfig(db, task.userId);
     const apiKey = String(body.api_key || config.api_key || "").trim();
@@ -154,16 +210,14 @@ async function runTask(
     const mode = (String(body.mode || "brief").trim() || "brief") as SummaryMode;
 
     if (!apiKey) {
-      task.error = "请先在设置中填写 API Key";
-      task.status = "error";
-      sendSSE(task, "error", { error: task.error });
+      failTask(db, task, "请先在设置中填写 API Key");
       return;
     }
 
     const videoId = await extractVideoId(url);
     const cookies = sessdata ? parseSessdata(sessdata) : undefined;
     
-    sendSSE(task, "status", { status: "running", progress: "获取视频元数据…" });
+    updateProgress(db, task, "获取视频元数据…");
     const info = await fetchVideoInfo(videoId, cookies);
     const bvid = info.bvid;
     const cid = info.cid;
@@ -197,19 +251,15 @@ async function runTask(
     }
 
     if (!whisperApiKey) {
-      task.error = "请先在设置中填写 Whisper API Key";
-      task.status = "error";
-      sendSSE(task, "error", { error: task.error });
+      failTask(db, task, "请先在设置中填写 Whisper API Key");
       return;
     }
     if (!correctCid) {
-      task.error = "无法获取视频音频信息，请稍后重试";
-      task.status = "error";
-      sendSSE(task, "error", { error: task.error });
+      failTask(db, task, "无法获取视频音频信息，请稍后重试");
       return;
     }
 
-    sendSSE(task, "status", { status: "running", progress: "语音转写中…" });
+    updateProgress(db, task, "语音转写中…");
     try {
       const whisperResult = await transcribeBilibiliAudio(bvid, correctCid, cookies, { apiKey: whisperApiKey, baseUrl: whisperBaseUrl, model: whisperModel });
       if (whisperResult.segments?.length) {
@@ -219,16 +269,12 @@ async function runTask(
       }
     } catch (e: any) {
       console.error("[whisper]", e);
-      task.error = `语音转写失败：${e?.message || String(e)}，请稍后重试`;
-      task.status = "error";
-      sendSSE(task, "error", { error: task.error });
+      failTask(db, task, `语音转写失败：${e?.message || String(e)}，请稍后重试`);
       return;
     }
 
     if (!subtitles?.length) {
-      task.error = "未能获取转写内容，请稍后重试";
-      task.status = "error";
-      sendSSE(task, "error", { error: task.error });
+      failTask(db, task, "未能获取转写内容，请稍后重试");
       return;
     }
 
@@ -245,25 +291,20 @@ async function runTask(
         transcript.slice(0, head) +
         `\n\n[字幕过长，中间部分已省略 / Subtitle truncated, middle omitted]\n\n` +
         transcript.slice(-tail);
-      sendSSE(task, "status", {
-        status: "running",
-        progress: `字幕过长（${originalTranscriptLength} 字），已自动截取前后共 ${MAX_SUBTITLE_CHARS} 字进行总结…`,
-      });
+      updateProgress(db, task, `字幕过长（${originalTranscriptLength} 字），已自动截取前后共 ${MAX_SUBTITLE_CHARS} 字进行总结…`);
     }
 
     if (!transcript) {
-      task.error = "未能获取转写内容，请稍后重试";
-      task.status = "error";
-      sendSSE(task, "error", { error: task.error });
+      failTask(db, task, "未能获取转写内容，请稍后重试");
       return;
     }
 
-    sendSSE(task, "status", { status: "running", progress: "AI 总结中…" });
+    updateProgress(db, task, "AI 总结中…");
     const llmConfig = { apiKey, baseUrl, model };
     let summary = await summarizeText(transcript, llmConfig, mode);
     if (transcriptTruncated) summary += `\n\n> 字幕过长（${originalTranscriptLength} 字），本总结基于截取后的 ${MAX_SUBTITLE_CHARS} 字内容生成。`;
 
-    sendSSE(task, "status", { status: "running", progress: "生成标签…" });
+    updateProgress(db, task, "生成标签…");
     const suggestedTags = await suggestTags(info.title, info.author, summary, llmConfig);
 
     const subtitleSegments = subtitles
@@ -287,14 +328,10 @@ async function runTask(
       suggested_tags: suggestedTags,
     };
 
-    task.status = "done";
-    task.result = result;
-    sendSSE(task, "complete", result);
+    completeTask(db, task, result);
   } catch (err: any) {
     console.error("[task]", err);
-    task.status = "error";
-    task.error = err.message || String(err);
-    sendSSE(task, "error", { error: task.error });
+    failTask(db, task, err.message || String(err));
   } finally {
     // If SSE still connected, close
     setTimeout(() => {

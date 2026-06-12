@@ -61,6 +61,18 @@ export interface DbDailyUsage {
   summarize_count: number;
 }
 
+export interface DbSummaryTask {
+  id: string;
+  user_id: number;
+  user_email: string;
+  status: string;
+  progress: string;
+  result_json: string;
+  error: string;
+  created_at: number;
+  updated_at: number;
+}
+
 export function createDb(dataDir: string): Database.Database {
   fs.mkdirSync(dataDir, { recursive: true });
   const dbPath = path.join(dataDir, "bilistudy.sqlite");
@@ -127,7 +139,24 @@ export function createDb(dataDir: string): Database.Database {
       summarize_count INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (user_id, date)
     );
+
+    CREATE TABLE IF NOT EXISTS summary_tasks (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_email TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      progress TEXT NOT NULL DEFAULT '',
+      result_json TEXT NOT NULL DEFAULT '',
+      error TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `);
+
+  // Migration: add summary_tasks indexes
+  try {
+    db.exec("CREATE INDEX IF NOT EXISTS idx_summary_tasks_user ON summary_tasks(user_id, updated_at)");
+  } catch { /* ignore */ }
 
   // Lightweight migration for existing databases that pre-date the
   // Web-Clipper-style Obsidian export columns. SQLite has no IF NOT EXISTS

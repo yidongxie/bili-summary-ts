@@ -1,4 +1,4 @@
-/** BiliStudy V2 ¨C main server entry point */
+/** BiliStudy V2 ï¿½C main server entry point */
 
 import path from "path";
 import express, { Request, Response, NextFunction } from "express";
@@ -7,7 +7,6 @@ import { createDb } from "./db/schema";
 import { createAuthRouter } from "./db/auth";
 import { createTaskRouter } from "./db/taskQueue";
 import { createApiRouter } from "./routes/api";
-import { createLarkExportRouter } from "./routes/lark-export";
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = parseInt(process.env.PORT || "8080", 10);
@@ -68,7 +67,6 @@ app.use(createAuthRouter(db));
 // API routes
 app.use(createApiRouter(db));
 app.use(createTaskRouter(db));
-app.use(createLarkExportRouter(db));
 
 // Static files (frontend)
 const publicDir = path.resolve(__dirname, "..", "public");

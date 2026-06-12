@@ -106,7 +106,7 @@ async function getAudioStreamUrl(bvid: string, cid: number, cookies?: BiliCookie
   if (res.data.durl && res.data.durl.length) {
     return res.data.durl[0].url; // MP4 fallback (no separate audio track)
   }
-  throw new Error('?????????');
+  throw new Error('未获取到可用的 B 站音频流');
 }
 
 /** Download stream to a local file (handles redirect, requires Bilibili Referer). */
@@ -225,7 +225,7 @@ export async function transcribeBilibiliAudio(
   cookies: BiliCookies | undefined,
   whisper: WhisperConfig,
 ): Promise<AudioTranscribeResult> {
-  if (!whisper.apiKey) throw new Error('??? Whisper API Key');
+  if (!whisper.apiKey) throw new Error('缺少 Whisper API Key');
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bilistudy-'));
   const rawFile = path.join(tmpDir, 'audio.bin');
   const mp3File = path.join(tmpDir, 'audio.mp3');

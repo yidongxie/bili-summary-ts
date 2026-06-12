@@ -235,6 +235,36 @@ export function createApiRouter(db: Database.Database): Router {
     res.json({ success: true, config: pub });
   });
 
+  router.post("/api/suggest-tags", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+
+    const title = String(req.body.title ?? "").trim().slice(0, 200);
+    const author = String(req.body.author ?? "").trim().slice(0, 100);
+    const summary = String(req.body.summary ?? "").trim().slice(0, 8000);
+    if (!title && !summary) {
+      res.status(400).json({ success: false, error: "缺少标题或总结内容" });
+      return;
+    }
+
+    const config = getDecryptedConfig(db, userId);
+    if (!config.api_key) {
+      res.status(400).json({ success: false, error: "请先在设置中填写 API Key" });
+      return;
+    }
+
+    try {
+      const tags = await suggestTags(title, author, summary, {
+        apiKey: config.api_key,
+        baseUrl: config.deepseek_base_url,
+        model: config.deepseek_model,
+      });
+      res.json({ success: true, tags });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || String(err) });
+    }
+  });
+
   // ── Library ─────────────────────────────────────────────────────────
   router.get("/api/library", (req: Request, res: Response) => {
     const userId = (req as any).user?.id;

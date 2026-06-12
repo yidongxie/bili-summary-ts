@@ -110,6 +110,7 @@
   .settings-card-head .panel-icon.whisper { background: #0ea5e9; box-shadow: 0 8px 20px rgba(14,165,233,.22); }
   .settings-card-head .panel-icon.bilibili { background: #fb7299; box-shadow: 0 8px 20px rgba(251,114,153,.26); }
   .settings-card-head .panel-icon.obsidian { background: #7c3aed; box-shadow: 0 8px 20px rgba(124,58,237,.22); }
+  .settings-card-head .panel-icon.general { background: #475467; box-shadow: 0 8px 20px rgba(71,84,103,.18); }
   .settings-card-title { margin: 0; font-size: 15px; font-weight: 800; color: #111827; }
   .settings-card-sub { margin: 2px 0 0; font-size: 12px; color: var(--muted); line-height: 1.55; }
   .settings-footer { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
@@ -364,6 +365,17 @@
 
         <div class="panel">
           <div class="settings-card-head">
+            <div class="panel-icon general">G</div>
+            <div>
+              <h2 class="settings-card-title">通用偏好</h2>
+              <p class="settings-card-sub">控制新总结默认使用的保存分类。</p>
+            </div>
+          </div>
+          <div class="field"><label>默认保存分类</label><input id="defaultCategoryInput" placeholder="待整理"></div>
+        </div>
+
+        <div class="panel">
+          <div class="settings-card-head">
             <div class="panel-icon obsidian">O</div>
             <div>
               <h2 class="settings-card-title">Obsidian Vault</h2>
@@ -429,6 +441,7 @@ let appConfig = {};
 let currentResult = null;
 let selectedTagSet = new Set();
 let currentUser = null;
+let lastLibraryItems = [];
 
 window.addEventListener('DOMContentLoaded', async () => {
   await checkAuth();
@@ -492,6 +505,7 @@ async function loadConfig() {
   document.getElementById('whisperBaseUrlInput').value = appConfig.whisper_base_url || 'https://api.siliconflow.cn/v1';
   document.getElementById('whisperModelInput').value = appConfig.whisper_model || 'FunAudioLLM/SenseVoiceSmall';
   document.getElementById('categoryInput').value = appConfig.default_category || '待整理';
+  document.getElementById('defaultCategoryInput').value = appConfig.default_category || '待整理';
   // Key status indicators
   setKeyStatus('apiKeyStatus', appConfig.api_key_set);
   setKeyStatus('sessdataStatus', appConfig.bili_sessdata_set);
@@ -511,6 +525,7 @@ async function saveConfig() {
     obsidian_vault_name: document.getElementById('obsidianVaultNameInput').value.trim(),
     obsidian_mode: document.getElementById('obsidianModeInput').value || 'local',
     obsidian_folder: document.getElementById('obsidianFolderInput').value.trim() || 'BiliStudy',
+    default_category: document.getElementById('defaultCategoryInput').value.trim() || '待整理',
     whisper_base_url: document.getElementById('whisperBaseUrlInput').value.trim() || 'https://api.siliconflow.cn/v1',
     whisper_model: document.getElementById('whisperModelInput').value.trim() || 'FunAudioLLM/SenseVoiceSmall',
   };
@@ -521,6 +536,7 @@ async function saveConfig() {
   try {
     const data = await api('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
     appConfig = data.config;
+    document.getElementById('categoryInput').value = appConfig.default_category || '待整理';
     showStatus('settingsStatus', '设置已保存', 'ok');
   } catch (err) {
     showStatus('settingsStatus', err.message, 'error');
@@ -697,7 +713,7 @@ async function regenerateTags() {
   const original = btn.textContent;
   btn.textContent = '生成中...';
   try {
-    const resp = await fetch('/api/suggest-tags', {
+    const data = await api('/api/suggest-tags', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -706,8 +722,6 @@ async function regenerateTags() {
         summary: currentResult.summary || '',
       }),
     });
-    const data = await resp.json();
-    if (!resp.ok || !data.success) throw new Error(data.error || resp.statusText);
     currentResult.suggested_tags = data.tags || [];
     renderTagSuggestions(currentResult.suggested_tags);
   } catch (err) {
@@ -786,6 +800,7 @@ function renderFilters(categories, tags) {
   tagFilter.value = selectedTag;
 }
 function renderLibrary(items) {
+  lastLibraryItems = items;
   const box = document.getElementById('libraryCards');
   if (!items.length) {
     box.innerHTML = '<div class="empty">还没有收藏。先总结一个视频，然后保存到收藏库。</div>';
@@ -828,10 +843,13 @@ async function openItem(id) {
 
 async function deleteItem(id) {
   if (!confirm('确定删除这条收藏吗？')) return;
-  await fetch('/api/library/' + id, {method:'DELETE'});
+  await api('/api/library/' + id, {method:'DELETE'});
   document.getElementById('libraryDetail').classList.remove('active');
   await loadLibrary();
-  markSaved();
+  if (currentResult?.video?.bvid) {
+    const stillSaved = lastLibraryItems.some(i => i.bvid === currentResult.video.bvid);
+    if (!stillSaved) markUnSaved();
+  }
 }
 
 async function fetchAndDownload(url) {

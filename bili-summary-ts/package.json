@@ -1,6 +1,6 @@
 ﻿{
   "name": "bili-study",
-  "version": "2.0.0",
+  "version": "4.0.0",
   "description": "B站视频摘要与学习库 - Node.js + TypeScript 版",
   "main": "dist/index.js",
   "scripts": {

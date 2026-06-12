@@ -1,6 +1,5 @@
-﻿/** Bilibili API – video info, WBI signing, subtitle fetching */
+﻿/** Bilibili API – video info, page list, paragraph grouping */
 
-import crypto from 'crypto';
 import http from 'http';
 import https from 'https';
 import { URL } from 'url';
@@ -36,13 +35,6 @@ const BILI_HEADERS: Record<string, string> = {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   Referer: 'https://www.bilibili.com',
 };
-
-const WBI_TABLE = [
-  46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
-  27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 37, 12, 44, 56, 7,
-  60, 1, 24, 54, 51, 6, 4, 41, 34, 21, 17, 11, 16, 20, 26, 22,
-  48, 13, 25, 52, 55, 61, 38, 36, 30, 39, 57, 59, 40,
-];
 
 // ── HTTP helper (zero-dependency) ──────────────────────────────────
 
@@ -185,7 +177,7 @@ export async function fetchVideoInfo(videoId: string, cookies?: BiliCookies): Pr
   };
 }
 
-// ?? Page list (get correct CID) ??????????????????????????????????????????????
+// ── Page list (get correct CID) ─────────────────────────────────────
 
 interface PageListResponse {
   code: number;
@@ -204,98 +196,6 @@ export async function fetchPageList(bvid: string, cookies?: BiliCookies): Promis
     }
   } catch { /* fallback */ }
   return [];
-}
-
-// ── WBI signing ─────────────────────────────────────────────────────
-
-interface WbiKeysResponse {
-  data: { wbi_img: { img_url: string; sub_url: string } };
-}
-
-async function getWbiKeys(cookies?: BiliCookies): Promise<[string, string]> {
-  const res = await requestJson<WbiKeysResponse>(
-    'https://api.bilibili.com/x/web-interface/nav',
-    cookieHeader(cookies),
-  );
-  const imgKey = res.data.wbi_img.img_url.split('/').pop()!.split('.')[0];
-  const subKey = res.data.wbi_img.sub_url.split('/').pop()!.split('.')[0];
-  return [imgKey, subKey];
-}
-
-function signWbi(params: Record<string, string>, imgKey: string, subKey: string): Record<string, string> {
-  const combined = imgKey + subKey;
-  const mixKey = Array.from({ length: 32 }, (_, i) => combined[Math.min(WBI_TABLE[i], combined.length - 1)]).join('');
-  const p: Record<string, string> = { ...params, wts: String(Math.floor(Date.now() / 1000)) };
-  const query = Object.entries(p)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join('&');
-  p.w_rid = crypto.createHash('md5').update(query + mixKey).digest('hex');
-  return p;
-}
-
-// ── Subtitle fetching ──────────────────────────────────────────────
-
-interface SubtitleMeta {
-  lang: string;
-  subtitle_url: string;
-}
-
-interface PlayerV2Response {
-  code: number;
-  data?: { subtitle?: { subtitles?: SubtitleMeta[] } };
-}
-
-interface SubtitleBody {
-  body?: { from: number; to: number; content: string }[];
-}
-
-async function downloadSubtitle(subtitles: SubtitleMeta[], cookies?: BiliCookies): Promise<SubtitleSegment[] | null> {
-  let target = subtitles.find((s) => /zh|chi/i.test(s.lang));
-  if (!target) target = subtitles[0];
-  let subUrl: string = target.subtitle_url;
-  if (!subUrl) return null;
-  if (subUrl.startsWith('//')) subUrl = 'https:' + subUrl;
-  else if (subUrl.startsWith('/')) subUrl = 'https://www.bilibili.com' + subUrl;
-
-  const data = await requestJson<SubtitleBody>(subUrl, cookieHeader(cookies));
-  return data.body ?? null;
-}
-
-export async function fetchSubtitles(bvid: string, cid: number, cookies?: BiliCookies): Promise<SubtitleSegment[] | null> {
-  const h = cookieHeader(cookies);
-  // Try player/v2 first
-  try {
-    const res = await requestJson<PlayerV2Response>(
-      `https://api.bilibili.com/x/player/v2?bvid=${bvid}&cid=${cid}`,
-      h,
-    );
-    if (res.code === 0) {
-      const subs = res.data?.subtitle?.subtitles;
-      if (subs?.length) return await downloadSubtitle(subs, cookies);
-    }
-  } catch { /* fallback */ }
-  // WBI-signed fallback
-  try {
-    const [imgKey, subKey] = await getWbiKeys(cookies);
-    const params = signWbi({ bvid: bvid, cid: String(cid) }, imgKey, subKey);
-    const qs = Object.entries(params)
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-      .join('&');
-    const res = await requestJson<PlayerV2Response>(
-      `https://api.bilibili.com/x/player/wbi/v2?${qs}`,
-      h,
-    );
-    if (res.code === 0) {
-      const subs = res.data?.subtitle?.subtitles;
-      if (subs?.length) return await downloadSubtitle(subs, cookies);
-    }
-  } catch { /* no subtitles */ }
-  return null;
-}
-
-export function subtitlesToText(items: SubtitleSegment[]): string {
-  return items.map((s) => s.content.trim()).filter(Boolean).join('\n');
 }
 
 export interface Paragraph {
