@@ -11,6 +11,8 @@ export interface PublicConfig {
   whisper_model: string;
   obsidian_vault_path: string;
   obsidian_folder: string;
+  obsidian_mode: string;
+  obsidian_vault_name: string;
   api_key_set: boolean;
   whisper_api_key_set: boolean;
   bili_sessdata_set: boolean;
@@ -26,6 +28,8 @@ export interface FullConfig {
   deepseek_model: string;
   obsidian_vault_path: string;
   obsidian_folder: string;
+  obsidian_mode: string;
+  obsidian_vault_name: string;
   default_category: string;
 }
 
@@ -40,6 +44,8 @@ export function getPublicConfig(db: Database.Database, userId: number): PublicCo
       whisper_model: "FunAudioLLM/SenseVoiceSmall",
       obsidian_vault_path: "",
       obsidian_folder: "BiliStudy",
+      obsidian_mode: "local",
+      obsidian_vault_name: "",
       api_key_set: false,
       whisper_api_key_set: false,
       bili_sessdata_set: false,
@@ -53,6 +59,8 @@ export function getPublicConfig(db: Database.Database, userId: number): PublicCo
     whisper_model: row.whisper_model || "FunAudioLLM/SenseVoiceSmall",
     obsidian_vault_path: row.obsidian_vault_path || "",
     obsidian_folder: row.obsidian_folder || "BiliStudy",
+    obsidian_mode: row.obsidian_mode || "local",
+    obsidian_vault_name: row.obsidian_vault_name || "",
     api_key_set: !!row.api_key_enc,
     whisper_api_key_set: !!row.whisper_api_key_enc,
     bili_sessdata_set: !!row.bili_sessdata_enc,
@@ -72,6 +80,8 @@ export function getDecryptedConfig(db: Database.Database, userId: number): FullC
       deepseek_model: "deepseek-chat",
       obsidian_vault_path: "",
       obsidian_folder: "BiliStudy",
+      obsidian_mode: "local",
+      obsidian_vault_name: "",
       default_category: "待整理",
     };
   }
@@ -85,6 +95,8 @@ export function getDecryptedConfig(db: Database.Database, userId: number): FullC
     deepseek_model: row.deepseek_model || "deepseek-chat",
     obsidian_vault_path: row.obsidian_vault_path || "",
     obsidian_folder: row.obsidian_folder || "BiliStudy",
+    obsidian_mode: row.obsidian_mode || "local",
+    obsidian_vault_name: row.obsidian_vault_name || "",
     default_category: row.default_category || "待整理",
   };
 }
@@ -109,6 +121,8 @@ export function saveConfig(
   if ("deepseek_model" in patch) { updates.push("deepseek_model = @deepseek_model"); params.deepseek_model = patch.deepseek_model; }
   if ("obsidian_vault_path" in patch) { updates.push("obsidian_vault_path = @obsidian_vault_path"); params.obsidian_vault_path = patch.obsidian_vault_path; }
   if ("obsidian_folder" in patch) { updates.push("obsidian_folder = @obsidian_folder"); params.obsidian_folder = patch.obsidian_folder; }
+  if ("obsidian_mode" in patch) { updates.push("obsidian_mode = @obsidian_mode"); params.obsidian_mode = patch.obsidian_mode; }
+  if ("obsidian_vault_name" in patch) { updates.push("obsidian_vault_name = @obsidian_vault_name"); params.obsidian_vault_name = patch.obsidian_vault_name; }
   if ("default_category" in patch) { updates.push("default_category = @default_category"); params.default_category = patch.default_category; }
 
   if (updates.length === 0) return;

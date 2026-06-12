@@ -367,13 +367,26 @@
             <div class="panel-icon obsidian">O</div>
             <div>
               <h2 class="settings-card-title">Obsidian Vault</h2>
-              <p class="settings-card-sub">导出总结时同步写入到本地 vault 目录。</p>
+              <p class="settings-card-sub">两种模式：让服务器直接写入本地 vault，或让浏览器把笔记交给 Obsidian 客户端。</p>
             </div>
           </div>
           <div class="field">
+            <label>导出方式</label>
+            <select id="obsidianModeInput" onchange="updateObsidianModeUi()">
+              <option value="local">本地写入（服务器与 Obsidian 同机）</option>
+              <option value="uri">浏览器拉起客户端（Web Clipper 风格）</option>
+            </select>
+            <span class="small">远程部署时选第二种；它通过 <code>obsidian://new</code> 让你本机的 Obsidian 接收笔记。</span>
+          </div>
+          <div class="field" data-obsidian-mode="local">
             <label>Vault 路径</label>
             <input id="obsidianVaultInput" placeholder="例如 D:\Notes\MyVault">
-            <span class="small">留空则不写入 Obsidian。</span>
+            <span class="small">服务器需要能直接访问这个目录。</span>
+          </div>
+          <div class="field" data-obsidian-mode="uri">
+            <label>Vault 名称</label>
+            <input id="obsidianVaultNameInput" placeholder="例如 MyVault">
+            <span class="small">就是 Obsidian 侧栏顶部显示的 vault 名；留空则由 Obsidian 默认 vault 接收。</span>
           </div>
           <div class="field"><label>Vault 中的子文件夹</label><input id="obsidianFolderInput" placeholder="BiliStudy"></div>
         </div>
@@ -471,7 +484,10 @@ async function loadConfig() {
   document.getElementById('deepseekBaseUrlInput').value = appConfig.deepseek_base_url || 'https://api.deepseek.com/v1';
   document.getElementById('sessdataInput').value = '';
   document.getElementById('obsidianVaultInput').value = appConfig.obsidian_vault_path || '';
+  document.getElementById('obsidianVaultNameInput').value = appConfig.obsidian_vault_name || '';
   document.getElementById('obsidianFolderInput').value = appConfig.obsidian_folder || 'BiliStudy';
+  document.getElementById('obsidianModeInput').value = appConfig.obsidian_mode || 'local';
+  updateObsidianModeUi();
   document.getElementById('whisperApiKeyInput').value = '';
   document.getElementById('whisperBaseUrlInput').value = appConfig.whisper_base_url || 'https://api.siliconflow.cn/v1';
   document.getElementById('whisperModelInput').value = appConfig.whisper_model || 'FunAudioLLM/SenseVoiceSmall';
@@ -492,6 +508,8 @@ async function saveConfig() {
     deepseek_base_url: document.getElementById('deepseekBaseUrlInput').value.trim(),
     bili_sessdata: document.getElementById('sessdataInput').value.trim(),
     obsidian_vault_path: document.getElementById('obsidianVaultInput').value.trim(),
+    obsidian_vault_name: document.getElementById('obsidianVaultNameInput').value.trim(),
+    obsidian_mode: document.getElementById('obsidianModeInput').value || 'local',
     obsidian_folder: document.getElementById('obsidianFolderInput').value.trim() || 'BiliStudy',
     whisper_base_url: document.getElementById('whisperBaseUrlInput').value.trim() || 'https://api.siliconflow.cn/v1',
     whisper_model: document.getElementById('whisperModelInput').value.trim() || 'FunAudioLLM/SenseVoiceSmall',
@@ -853,6 +871,8 @@ function downloadMarkdown(id) {
 }
 
 async function sendToObsidian(id, overwrite, includeTranscript) {
+  var mode = appConfig.obsidian_mode || 'local';
+  if (mode === 'uri') return sendToObsidianViaUri(id);
   if (!appConfig.obsidian_vault_path) {
     showStatus('status', '请先在"设置"里填写 Obsidian Vault 路径', 'error');
     showPage('settingsPage');
@@ -879,6 +899,52 @@ async function sendToObsidian(id, overwrite, includeTranscript) {
   } catch (err) {
     showStatus('status', '导入 Obsidian 失败：' + err.message, 'error');
   }
+}
+
+// Browser-side launch: fetch markdown, then hand it to Obsidian via the
+// obsidian://new URI scheme (the same trick Obsidian Web Clipper uses).
+async function sendToObsidianViaUri(id) {
+  try {
+    const data = await api('/api/export/' + id + '/obsidian-payload');
+    if (!data.success) throw new Error(data.error || '加载笔记失败');
+    const md = data.markdown || '';
+    const vault = (appConfig.obsidian_vault_name || data.vault_name || '').trim();
+    const filePath = data.relative_path || data.name;
+    const params = [];
+    if (vault) params.push('vault=' + encodeURIComponent(vault));
+    // obsidian://new uses `name=` for the note path (folder/name, no .md).
+    // Older docs also accept `file=`; we send both for compatibility.
+    params.push('name=' + encodeURIComponent(filePath));
+    params.push('file=' + encodeURIComponent(filePath));
+    params.push('content=' + encodeURIComponent(md));
+    const uri = 'obsidian://new?' + params.join('&');
+    // URI length safety: most browsers / OS shells cap around 8k–32k.
+    // Fall back to clipboard + a shorter URI when too long.
+    if (uri.length > 7500) {
+      try { await navigator.clipboard.writeText(md); } catch (_) { /* ignore */ }
+      const fallback = 'obsidian://new?' +
+        (vault ? 'vault=' + encodeURIComponent(vault) + '&' : '') +
+        'name=' + encodeURIComponent(filePath) + '&clipboard=true';
+      const el = document.getElementById('status');
+      el.className = 'status show ok';
+      el.innerHTML = '笔记较长，已复制到剪贴板。<a href="' + fallback + '" style="font-weight:700">在 Obsidian 中粘贴</a>（需要 Advanced URI 插件）或手动 Ctrl+V。';
+      setTimeout(function() { window.location.href = fallback; }, 200);
+      return;
+    }
+    const el = document.getElementById('status');
+    el.className = 'status show ok';
+    el.innerHTML = '正在唤起 Obsidian…若浏览器询问，请点击"允许"。';
+    window.location.href = uri;
+  } catch (err) {
+    showStatus('status', '唤起 Obsidian 失败：' + err.message, 'error');
+  }
+}
+
+function updateObsidianModeUi() {
+  var mode = (document.getElementById('obsidianModeInput') || {}).value || 'local';
+  document.querySelectorAll('[data-obsidian-mode]').forEach(function(el) {
+    el.style.display = (el.getAttribute('data-obsidian-mode') === mode) ? '' : 'none';
+  });
 }
 
 async function copySummary() {

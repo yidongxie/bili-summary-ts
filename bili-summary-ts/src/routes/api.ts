@@ -211,6 +211,8 @@ export function createApiRouter(db: Database.Database): Router {
           whisper_model: "FunAudioLLM/SenseVoiceSmall",
           obsidian_vault_path: "",
           obsidian_folder: "BiliStudy",
+          obsidian_mode: "local",
+          obsidian_vault_name: "",
           api_key_set: false,
           whisper_api_key_set: false,
           bili_sessdata_set: false,
@@ -341,6 +343,28 @@ export function createApiRouter(db: Database.Database): Router {
     res.setHeader("Content-Type", "text/markdown; charset=utf-8");
     res.setHeader("Content-Disposition", contentDisposition(filename));
     res.send(md);
+  });
+
+  // ── Obsidian payload (browser-side URI launch / Web Clipper style) ─
+  router.get("/api/export/:id/obsidian-payload", (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    if (!userId) { res.status(401).json({ success: false, error: "请先登录" }); return; }
+    const item = findLibraryItem(db, userId, req.params.id);
+    if (!item) { res.status(404).json({ success: false, error: "未找到收藏" }); return; }
+    const md = itemToMarkdown(item);
+    const config = getDecryptedConfig(db, userId);
+    const folder = String(config.obsidian_folder ?? "BiliStudy").trim();
+    const name = slugify(item.title);
+    const relativePath = (folder ? folder.replace(/[\\/]+$/, "") + "/" : "") + name;
+    res.json({
+      success: true,
+      title: item.title,
+      name,
+      folder,
+      relative_path: relativePath,
+      vault_name: config.obsidian_vault_name || "",
+      markdown: md,
+    });
   });
 
   // ── Export to Obsidian vault ───────────────────────────────────────
