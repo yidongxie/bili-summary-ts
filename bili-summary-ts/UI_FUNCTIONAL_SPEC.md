@@ -39,7 +39,6 @@ BiliStudy 是一个面向 B 站视频学习的网页工具。用户粘贴 B 站�
 3. **设置**
    - 配置 DeepSeek / OpenAI 兼容模型。
    - 配置 Whisper 转写 API。
-   - 配置 B 站 SESSDATA。
    - 配置 Obsidian 导出方式。
 
 ### 登录入口
@@ -160,7 +159,7 @@ BiliStudy 是一个面向 B 站视频学习的网页工具。用户粘贴 B 站�
 
 3. 前端提交总结任务：
    - 请求 `POST /api/tasks/summarize`。
-   - 请求内容包含：视频 URL、总结模式、模型配置、B 站 SESSDATA、Whisper 配置。
+   - 请求内容包含：视频 URL、总结模式、模型配置、Whisper 配置。
 
 4. 服务端返回 `task_id` 后：
    - 前端通过 SSE 连接 `/api/tasks/:task_id/events` 监听任务进度。
@@ -507,32 +506,7 @@ Markdown 内容：
 - 收藏卡片按钮。
 - 收藏详情按钮。
 
-Obsidian 有两种导出方式，由设置页控制。
-
-#### 本地写入模式：`local`
-
-适用场景：服务器和 Obsidian vault 在同一台机器或服务器能访问 vault 路径。
-
-前置条件：
-
-- 设置中必须填写 Obsidian Vault 路径。
-
-如果未填写：
-
-- 显示“请先在设置里填写 Obsidian Vault 路径”。
-- 自动切换到设置页。
-
-导出流程：
-
-1. 请求 `POST /api/export/:id/obsidian`。
-2. 后端将 Markdown 写入 vault 的指定子文件夹。
-3. 如果同名文件已存在，后端返回 409。
-4. 前端询问“Vault 中已存在同名笔记，是否覆盖？”
-5. 用户确认后带 `overwrite: true` 重试。
-6. 成功后显示写入路径，并提供“在 Obsidian 中打开”链接。
-7. 如果有 Obsidian URI，前端会延迟 300ms 自动跳转打开。
-
-#### 浏览器 URI 模式：`uri`
+Obsidian 导出只使用浏览器 URI 模式：服务器生成 Markdown，浏览器通过 `obsidian://new` 拉起用户本机 Obsidian 客户端。
 
 适用场景：远程部署，服务器无法直接写入用户本机 vault。
 
@@ -546,15 +520,13 @@ URI 参数：
 
 - `vault`：可选，来自设置中的 Vault 名称。
 - `name`：目标笔记路径，不带 `.md`。
-- `file`：兼容参数。
 - `content`：Markdown 内容。
 
 长内容兜底：
 
 - 如果 URI 长度超过约 7500 字符，前端会尝试把 Markdown 写入剪贴板。
-- 然后构造较短的 `obsidian://new?...&clipboard=true` URI。
-- 页面提示用户在 Obsidian 中粘贴。
-- 该模式提示可能需要 Advanced URI 插件。
+- 然后构造只包含 `vault` 和 `name` 的较短 `obsidian://new` URI。
+- 页面提示用户在 Obsidian 中粘贴，或手动新建笔记后 Ctrl+V。
 
 ## 7. “设置”页面功能
 
@@ -592,58 +564,19 @@ URI 参数：
 
 状态逻辑与 DeepSeek API Key 相同。
 
-### 7.3 B 站登录设置
+### 7.3 Obsidian 设置
 
 字段：
 
-- SESSDATA
-
-用途：
-
-- 用于访问需要登录权限的视频信息或音频资源。
-- 相当于用户的 B 站登录凭证。
-
-提示：
-
-- 只保存在用户自己的服务端数据库中，不回显明文。
-
-状态：
-
-- 已配置 / 未配置。
-
-保存逻辑：
-
-- 输入框为空时不覆盖原有 SESSDATA。
-- 有输入时更新加密值。
-
-### 7.4 Obsidian 设置
-
-字段：
-
-1. **导出方式**
-   - 本地写入：`local`
-   - 浏览器拉起客户端：`uri`
-
-2. **Vault 路径**
-   - 仅本地写入模式显示。
-   - 示例：`D:\Notes\MyVault`
-
-3. **Vault 名称**
-   - 仅 URI 模式显示。
+1. **Vault 名称**
    - 是 Obsidian 侧栏顶部显示的 vault 名称。
    - 可留空，留空时由 Obsidian 默认 vault 接收。
 
-4. **Vault 中的子文件夹**
+2. **Vault 中的子文件夹**
    - 默认 `BiliStudy`。
    - 用于指定导出笔记放在 vault 内哪个文件夹。
 
-交互：
-
-- 切换导出方式时，动态显示对应字段。
-- 本地模式显示 Vault 路径。
-- URI 模式显示 Vault 名称。
-
-### 7.5 保存设置
+### 7.4 保存设置
 
 点击“保存设置”后：
 
@@ -774,14 +707,9 @@ UI 设计时应避免做成普通 loading 后等待 HTTP 返回，而应保留�
 - 保存中，可选
 - 保存成功
 - 保存失败
-- Obsidian local / uri 模式切换
 
 ### Obsidian 导出状态
 
-- 未配置 vault 路径
-- 本地写入成功
-- 同名文件冲突确认覆盖
-- 本地写入失败
 - URI 唤起中
 - URI 过长，复制到剪贴板兜底
 - URI 唤起失败
@@ -807,11 +735,11 @@ UI 设计时应避免做成普通 loading 后等待 HTTP 返回，而应保留�
    - 导出动作是核心功能，不应藏太深。
 
 5. **设置页要强调敏感凭证状态而不是明文**
-   - API Key、SESSDATA、Whisper Key 不回显。
+   - API Key、Whisper Key 不回显。
    - 用“已配置 / 未配置”状态提示用户。
 
-6. **Obsidian 两种导出模式需要解释清楚**
-   - 本地写入适合同机部署。
+6. **Obsidian 导出需要解释清楚**
+   - 远程部署只通过浏览器拉起本机 Obsidian。
    - URI 模式适合远程部署。
 
 ## 13. 主要接口参考
@@ -845,8 +773,7 @@ UI 设计时应避免做成普通 loading 后等待 HTTP 返回，而应保留�
 
 - `GET /api/export/:id.pdf`：导出可打印 HTML / PDF。
 - `GET /api/export/:id.md`：下载 Markdown。
-- `POST /api/export/:id/obsidian`：本地写入 Obsidian。
-- `GET /api/export/:id/obsidian-payload`：获取 URI 模式所需 Markdown。
+- `GET /api/export/:id/obsidian-payload`：获取 Obsidian URI 导出所需 Markdown。
 
 ### 标签
 

@@ -3,7 +3,7 @@
 import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
 import crypto from "crypto";
-import { extractVideoId, fetchVideoInfo, segmentsToParagraphs, parseSessdata, fetchPageList } from "../bilibili/api";
+import { extractVideoId, fetchVideoInfo, segmentsToParagraphs, fetchPageList } from "../bilibili/api";
 import { transcribeBilibiliAudio } from "../whisper/transcribe";
 import { summarizeText, suggestTags, SummaryMode } from "../llm/summarize";
 import { getDecryptedConfig } from "./configStore";
@@ -204,7 +204,6 @@ async function runTask(
 
     const config = getDecryptedConfig(db, task.userId);
     const apiKey = String(body.api_key || config.api_key || "").trim();
-    const sessdata = String(body.bili_sessdata || config.bili_sessdata || "").trim();
     const model = String(body.model || config.deepseek_model || "deepseek-chat").trim();
     const baseUrl = String(body.base_url || config.deepseek_base_url || "https://api.deepseek.com/v1").trim();
     const mode = (String(body.mode || "brief").trim() || "brief") as SummaryMode;
@@ -215,14 +214,13 @@ async function runTask(
     }
 
     const videoId = await extractVideoId(url);
-    const cookies = sessdata ? parseSessdata(sessdata) : undefined;
-    
+
     updateProgress(db, task, "获取视频元数据…");
-    const info = await fetchVideoInfo(videoId, cookies);
+    const info = await fetchVideoInfo(videoId);
     const bvid = info.bvid;
     const cid = info.cid;
 
-    const pages = await fetchPageList(bvid, cookies);
+    const pages = await fetchPageList(bvid);
     const correctCid = pages.length && pages[0].cid ? pages[0].cid : cid;
     if (correctCid !== cid) console.log("[cid] pagelist cid=%d differs from view cid=%d, using pagelist", correctCid, cid);
 
@@ -261,7 +259,7 @@ async function runTask(
 
     updateProgress(db, task, "语音转写中…");
     try {
-      const whisperResult = await transcribeBilibiliAudio(bvid, correctCid, cookies, { apiKey: whisperApiKey, baseUrl: whisperBaseUrl, model: whisperModel });
+      const whisperResult = await transcribeBilibiliAudio(bvid, correctCid, { apiKey: whisperApiKey, baseUrl: whisperBaseUrl, model: whisperModel });
       if (whisperResult.segments?.length) {
         subtitles = whisperResult.segments;
       } else if (whisperResult.text) {

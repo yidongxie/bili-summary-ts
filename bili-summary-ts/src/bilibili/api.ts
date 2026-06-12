@@ -23,11 +23,6 @@ export interface SubtitleSegment {
   content: string;
 }
 
-export interface BiliCookies {
-  SESSDATA?: string;
-  [key: string]: string | undefined;
-}
-
 // ── Constants ───────────────────────────────────────────────────────
 
 const BILI_HEADERS: Record<string, string> = {
@@ -89,34 +84,6 @@ function postJson<T>(url: string, body: unknown, headers?: Record<string, string
   });
 }
 
-// ── Cookie helpers ──────────────────────────────────────────────────
-
-export function parseSessdata(raw: string): BiliCookies {
-  const cookies: BiliCookies = {};
-  for (const part of raw.split(';')) {
-    const trimmed = part.trim();
-    const idx = trimmed.indexOf('=');
-    if (idx > 0) {
-      cookies[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1).trim();
-    }
-  }
-  if (!cookies.SESSDATA && raw.trim()) {
-    cookies.SESSDATA = raw.trim();
-  }
-  return cookies;
-}
-
-function cookieHeader(cookies?: BiliCookies): Record<string, string> {
-  const h = { ...BILI_HEADERS };
-  if (cookies && Object.keys(cookies).length) {
-    h.Cookie = Object.entries(cookies)
-      .filter(([, v]) => v)
-      .map(([k, v]) => `${k}=${v}`)
-      .join('; ');
-  }
-  return h;
-}
-
 // ── URL parsing ─────────────────────────────────────────────────────
 
 export async function extractVideoId(url: string): Promise<string> {
@@ -159,10 +126,10 @@ interface BiliViewResponse {
   };
 }
 
-export async function fetchVideoInfo(videoId: string, cookies?: BiliCookies): Promise<VideoInfo> {
+export async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
   const params = videoId.startsWith('BV') ? `bvid=${videoId}` : `aid=${videoId.slice(2)}`;
   const url = `https://api.bilibili.com/x/web-interface/view?${params}`;
-  const res = await requestJson<BiliViewResponse>(url, cookieHeader(cookies));
+  const res = await requestJson<BiliViewResponse>(url, BILI_HEADERS);
   if (res.code !== 0) throw new Error(`Bilibili API 错误: ${res.message}`);
   const d = res.data;
   return {
@@ -185,11 +152,11 @@ interface PageListResponse {
   data: { cid: number; page: number; part: string; duration: number }[];
 }
 
-export async function fetchPageList(bvid: string, cookies?: BiliCookies): Promise<{ cid: number; page: number }[]> {
+export async function fetchPageList(bvid: string): Promise<{ cid: number; page: number }[]> {
   try {
     const res = await requestJson<PageListResponse>(
       `https://api.bilibili.com/x/player/pagelist?bvid=${bvid}`,
-      cookieHeader(cookies),
+      BILI_HEADERS,
     );
     if (res.code === 0 && Array.isArray(res.data) && res.data.length) {
       return res.data.map((p) => ({ cid: p.cid, page: p.page }));

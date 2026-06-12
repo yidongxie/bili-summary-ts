@@ -127,9 +127,10 @@
   .result-summary-panel .summary { max-height: 42vh; overflow-y: auto; padding-right: 6px; }
   .result-transcript-panel { display: flex; flex-direction: column; max-height: 56vh; }
   .timeline { overflow-y: auto; flex: 1; font-size: 14px; line-height: 1.7; padding-right: 4px; }
-  .timeline-entry { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px solid #eef0f4; }
+  .timeline-entry { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid #eef0f4; }
   .timeline-entry:last-child { border-bottom: 0; }
-  .timeline-time { color: var(--amber); font-family: "Cascadia Code", "Fira Code", monospace; font-size: 12px; padding-top: 2px; text-align: right; user-select: none; }
+  .timeline-time { color: var(--amber); font-family: "Cascadia Code", "Fira Code", monospace; font-size: 12px; padding-top: 2px; text-align: right; user-select: none; white-space: nowrap; }
+  .timeline-text { white-space: pre-wrap; }
   .timeline-text { color: #263244; }
   .result-empty { color: var(--muted); text-align: center; padding: 40px 16px; }
   .detail-card { margin-top: 16px; }
@@ -311,7 +312,7 @@
       <div class="page-head">
         <div>
           <h1>设置</h1>
-          <p>配置 API Key、B站登录和 Obsidian 集成。</p>
+          <p>配置 API Key、Whisper 和 Obsidian 集成。</p>
         </div>
       </div>
       <div class="settings-grid" id="settingsGrid">
@@ -349,22 +350,6 @@
 
         <div class="panel">
           <div class="settings-card-head">
-            <div class="panel-icon bilibili">B</div>
-            <div>
-              <h2 class="settings-card-title">B 站登录</h2>
-              <p class="settings-card-sub">SESSDATA 用于拉取需要登录的视频字幕，相当于登录凭证。</p>
-            </div>
-          </div>
-          <div class="field">
-            <label>SESSDATA</label>
-            <input id="sessdataInput" placeholder="从浏览器 Cookie 复制 SESSDATA">
-          <div class="key-status" id="sessdataStatus"></div>
-            <span class="small">只保存在你自己的电脑，不会上传。</span>
-          </div>
-        </div>
-
-        <div class="panel">
-          <div class="settings-card-head">
             <div class="panel-icon general">G</div>
             <div>
               <h2 class="settings-card-title">通用偏好</h2>
@@ -379,23 +364,10 @@
             <div class="panel-icon obsidian">O</div>
             <div>
               <h2 class="settings-card-title">Obsidian Vault</h2>
-              <p class="settings-card-sub">两种模式：让服务器直接写入本地 vault，或让浏览器把笔记交给 Obsidian 客户端。</p>
+              <p class="settings-card-sub">通过浏览器拉起本机 Obsidian 客户端接收笔记。</p>
             </div>
           </div>
           <div class="field">
-            <label>导出方式</label>
-            <select id="obsidianModeInput" onchange="updateObsidianModeUi()">
-              <option value="local">本地写入（服务器与 Obsidian 同机）</option>
-              <option value="uri">浏览器拉起客户端（Web Clipper 风格）</option>
-            </select>
-            <span class="small">远程部署时选第二种；它通过 <code>obsidian://new</code> 让你本机的 Obsidian 接收笔记。</span>
-          </div>
-          <div class="field" data-obsidian-mode="local">
-            <label>Vault 路径</label>
-            <input id="obsidianVaultInput" placeholder="例如 D:\Notes\MyVault">
-            <span class="small">服务器需要能直接访问这个目录。</span>
-          </div>
-          <div class="field" data-obsidian-mode="uri">
             <label>Vault 名称</label>
             <input id="obsidianVaultNameInput" placeholder="例如 MyVault">
             <span class="small">就是 Obsidian 侧栏顶部显示的 vault 名；留空则由 Obsidian 默认 vault 接收。</span>
@@ -495,12 +467,8 @@ async function loadConfig() {
   document.getElementById('apiKeyInput').value = '';
   document.getElementById('deepseekModelInput').value = appConfig.deepseek_model || 'deepseek-chat';
   document.getElementById('deepseekBaseUrlInput').value = appConfig.deepseek_base_url || 'https://api.deepseek.com/v1';
-  document.getElementById('sessdataInput').value = '';
-  document.getElementById('obsidianVaultInput').value = appConfig.obsidian_vault_path || '';
   document.getElementById('obsidianVaultNameInput').value = appConfig.obsidian_vault_name || '';
   document.getElementById('obsidianFolderInput').value = appConfig.obsidian_folder || 'BiliStudy';
-  document.getElementById('obsidianModeInput').value = appConfig.obsidian_mode || 'local';
-  updateObsidianModeUi();
   document.getElementById('whisperApiKeyInput').value = '';
   document.getElementById('whisperBaseUrlInput').value = appConfig.whisper_base_url || 'https://api.siliconflow.cn/v1';
   document.getElementById('whisperModelInput').value = appConfig.whisper_model || 'FunAudioLLM/SenseVoiceSmall';
@@ -508,7 +476,6 @@ async function loadConfig() {
   document.getElementById('defaultCategoryInput').value = appConfig.default_category || '待整理';
   // Key status indicators
   setKeyStatus('apiKeyStatus', appConfig.api_key_set);
-  setKeyStatus('sessdataStatus', appConfig.bili_sessdata_set);
   setKeyStatus('whisperApiKeyStatus', appConfig.whisper_api_key_set);
 }
 
@@ -520,10 +487,7 @@ async function saveConfig() {
   const payload = {
     deepseek_model: document.getElementById('deepseekModelInput').value.trim(),
     deepseek_base_url: document.getElementById('deepseekBaseUrlInput').value.trim(),
-    bili_sessdata: document.getElementById('sessdataInput').value.trim(),
-    obsidian_vault_path: document.getElementById('obsidianVaultInput').value.trim(),
     obsidian_vault_name: document.getElementById('obsidianVaultNameInput').value.trim(),
-    obsidian_mode: document.getElementById('obsidianModeInput').value || 'local',
     obsidian_folder: document.getElementById('obsidianFolderInput').value.trim() || 'BiliStudy',
     default_category: document.getElementById('defaultCategoryInput').value.trim() || '待整理',
     whisper_base_url: document.getElementById('whisperBaseUrlInput').value.trim() || 'https://api.siliconflow.cn/v1',
@@ -562,7 +526,6 @@ async function startSummarize() {
       api_key: appConfig.api_key || '',
       model: appConfig.deepseek_model || 'deepseek-chat',
       base_url: appConfig.deepseek_base_url || 'https://api.deepseek.com/v1',
-      bili_sessdata: appConfig.bili_sessdata || '',
       whisper_api_key: appConfig.whisper_api_key || '',
       whisper_base_url: appConfig.whisper_base_url || '',
       whisper_model: appConfig.whisper_model || '',
@@ -638,19 +601,32 @@ function renderResult(data) {
   renderTagSuggestions(data.suggested_tags || []);
 }
 
+function formatTimelineTime(seconds) {
+  seconds = Math.max(0, Math.floor(Number(seconds || 0)));
+  var h = Math.floor(seconds / 3600);
+  var m = Math.floor((seconds % 3600) / 60);
+  var s = seconds % 60;
+  return h ? h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') : String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
 function renderTimeline(segments) {
   var el = document.getElementById('transcriptTimeline');
   if (!segments || segments.length === 0) {
-    el.innerHTML = '<div class="result-empty">未获取到字幕文本。</div>';
+    el.innerHTML = '<div class="result-empty">未获取到视频文本。</div>';
     return;
   }
-  var active = segments.filter(function(s) { return s.content && s.content.trim(); });
-  if (!active.length) { el.innerHTML = '<div class="result-empty">无可用字幕文本。</div>'; return; }
+  var active = segments
+    .filter(function(s) { return s.content && s.content.trim(); })
+    .sort(function(a, b) { return Number(a.from || 0) - Number(b.from || 0); });
+  if (!active.length) { el.innerHTML = '<div class="result-empty">无可用视频文本。</div>'; return; }
   var paragraphs = [];
   var cur = { from: active[0].from, to: active[0].to, texts: [active[0].content.trim()] };
   for (var i = 1; i < active.length; i++) {
     var s = active[i];
-    if (s.from - active[i-1].to >= 3 || s.from - active[i-1].from >= 9) {
+    var prev = active[i - 1];
+    var gap = Number(s.from || 0) - Number(prev.to || prev.from || 0);
+    var blockLength = Number(s.from || 0) - Number(cur.from || 0);
+    if (gap >= 4 || blockLength >= 90 || cur.texts.length >= 12) {
       paragraphs.push(cur);
       cur = { from: s.from, to: s.to, texts: [s.content.trim()] };
     } else {
@@ -660,10 +636,8 @@ function renderTimeline(segments) {
   }
   paragraphs.push(cur);
   el.innerHTML = paragraphs.map(function(p) {
-    var m = Math.floor((p.from || 0) / 60);
-    var sec = Math.floor((p.from || 0) % 60);
-    var time = String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
-    var text = p.texts.join('\u3002');
+    var time = formatTimelineTime(p.from) + ' - ' + formatTimelineTime(p.to || p.from);
+    var text = p.texts.join('\n');
     return '<div class="timeline-entry"><span class="timeline-time">' + time + '</span><span class="timeline-text">' + escapeHtml(text) + '</span></div>';
   }).join('');
 }
@@ -888,39 +862,10 @@ function downloadMarkdown(id) {
   fetchAndDownload('/api/export/' + id + '.md');
 }
 
-async function sendToObsidian(id, overwrite, includeTranscript) {
-  var mode = appConfig.obsidian_mode || 'local';
-  if (mode === 'uri') return sendToObsidianViaUri(id);
-  if (!appConfig.obsidian_vault_path) {
-    showStatus('status', '请先在"设置"里填写 Obsidian Vault 路径', 'error');
-    showPage('settingsPage');
-    return;
-  }
-  if (includeTranscript === undefined) includeTranscript = false;
-  if (overwrite === undefined) overwrite = false;
-  try {
-    const resp = await fetch('/api/export/' + id + '/obsidian', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ overwrite: !!overwrite, include_transcript: !!includeTranscript }),
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (resp.status === 409 && data && data.error === 'already_exists') {
-      if (confirm('Vault 中已存在同名笔记，是否覆盖？')) return sendToObsidian(id, true, includeTranscript);
-      return;
-    }
-    if (!resp.ok || !data.success) throw new Error(data.error || resp.statusText);
-    const el = document.getElementById('status');
-    el.className = 'status show ok';
-    el.innerHTML = '已写入 <code>' + escapeHtml(data.relative) + '</code>' + (data.obsidian_uri ? ' &mdash; <a href="' + data.obsidian_uri + '" style="font-weight:700">在 Obsidian 中打开</a>' : '');
-    if (data.obsidian_uri) setTimeout(function() { window.location.href = data.obsidian_uri; }, 300);
-  } catch (err) {
-    showStatus('status', '导入 Obsidian 失败：' + err.message, 'error');
-  }
+async function sendToObsidian(id) {
+  return sendToObsidianViaUri(id);
 }
 
-// Browser-side launch: fetch markdown, then hand it to Obsidian via the
-// obsidian://new URI scheme (the same trick Obsidian Web Clipper uses).
 async function sendToObsidianViaUri(id) {
   try {
     const data = await api('/api/export/' + id + '/obsidian-payload');
@@ -930,10 +875,7 @@ async function sendToObsidianViaUri(id) {
     const filePath = data.relative_path || data.name;
     const params = [];
     if (vault) params.push('vault=' + encodeURIComponent(vault));
-    // obsidian://new uses `name=` for the note path (folder/name, no .md).
-    // Older docs also accept `file=`; we send both for compatibility.
     params.push('name=' + encodeURIComponent(filePath));
-    params.push('file=' + encodeURIComponent(filePath));
     params.push('content=' + encodeURIComponent(md));
     const uri = 'obsidian://new?' + params.join('&');
     // URI length safety: most browsers / OS shells cap around 8k–32k.
@@ -942,10 +884,10 @@ async function sendToObsidianViaUri(id) {
       try { await navigator.clipboard.writeText(md); } catch (_) { /* ignore */ }
       const fallback = 'obsidian://new?' +
         (vault ? 'vault=' + encodeURIComponent(vault) + '&' : '') +
-        'name=' + encodeURIComponent(filePath) + '&clipboard=true';
+        'name=' + encodeURIComponent(filePath);
       const el = document.getElementById('status');
       el.className = 'status show ok';
-      el.innerHTML = '笔记较长，已复制到剪贴板。<a href="' + fallback + '" style="font-weight:700">在 Obsidian 中粘贴</a>（需要 Advanced URI 插件）或手动 Ctrl+V。';
+      el.innerHTML = '笔记较长，已复制到剪贴板。<a href="' + fallback + '" style="font-weight:700">打开 Obsidian 后粘贴</a>，或手动新建笔记后 Ctrl+V。';
       setTimeout(function() { window.location.href = fallback; }, 200);
       return;
     }
@@ -956,13 +898,6 @@ async function sendToObsidianViaUri(id) {
   } catch (err) {
     showStatus('status', '唤起 Obsidian 失败：' + err.message, 'error');
   }
-}
-
-function updateObsidianModeUi() {
-  var mode = (document.getElementById('obsidianModeInput') || {}).value || 'local';
-  document.querySelectorAll('[data-obsidian-mode]').forEach(function(el) {
-    el.style.display = (el.getAttribute('data-obsidian-mode') === mode) ? '' : 'none';
-  });
 }
 
 async function copySummary() {

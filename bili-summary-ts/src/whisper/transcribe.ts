@@ -7,8 +7,6 @@ import https from 'https';
 import http from 'http';
 import { URL } from 'url';
 import { spawn } from 'child_process';
-import { BiliCookies } from '../bilibili/api';
-
 // Resolve a working ffmpeg binary path. Order of preference:
 //   1. FFMPEG_PATH env var (set by the deploy script to a static binary)
 //   2. @ffmpeg-installer/ffmpeg npm bundle (no postinstall network needed)
@@ -51,14 +49,6 @@ const BILI_HEADERS_FOR_MEDIA: Record<string, string> = {
   Referer: 'https://www.bilibili.com',
 };
 
-function cookieHeader(cookies?: BiliCookies): string {
-  if (!cookies) return '';
-  return Object.entries(cookies)
-    .filter(([, v]) => v)
-    .map(([k, v]) => `${k}=${v}`)
-    .join('; ');
-}
-
 function requestJson<T>(url: string, headers: Record<string, string>, timeout = 15000): Promise<T> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -91,8 +81,8 @@ interface PlayUrlResponse {
 }
 
 /** Get a direct audio (or fallback combined) stream URL from Bilibili. */
-async function getAudioStreamUrl(bvid: string, cid: number, cookies?: BiliCookies): Promise<string> {
-  const headers = { ...BILI_HEADERS_FOR_MEDIA, Cookie: cookieHeader(cookies) };
+async function getAudioStreamUrl(bvid: string, cid: number): Promise<string> {
+  const headers = { ...BILI_HEADERS_FOR_MEDIA };
   // fnval=16 = request DASH; 4048 enables most formats
   const url = `https://api.bilibili.com/x/player/playurl?bvid=${bvid}&cid=${cid}&qn=64&fnval=4048&fnver=0&fourk=1`;
   const res = await requestJson<PlayUrlResponse>(url, headers);
@@ -110,16 +100,16 @@ async function getAudioStreamUrl(bvid: string, cid: number, cookies?: BiliCookie
 }
 
 /** Download stream to a local file (handles redirect, requires Bilibili Referer). */
-function downloadToFile(url: string, dest: string, cookies?: BiliCookies, redirects = 5): Promise<void> {
+function downloadToFile(url: string, dest: string, redirects = 5): Promise<void> {
   return new Promise((resolve, reject) => {
-    const headers = { ...BILI_HEADERS_FOR_MEDIA, Cookie: cookieHeader(cookies) };
+    const headers = { ...BILI_HEADERS_FOR_MEDIA };
     const parsed = new URL(url);
     const mod = parsed.protocol === 'https:' ? https : http;
     const req = mod.get(url, { headers, timeout: 60000 }, (res) => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
         res.resume();
         const next = new URL(res.headers.location, url).toString();
-        downloadToFile(next, dest, cookies, redirects - 1).then(resolve, reject);
+        downloadToFile(next, dest, redirects - 1).then(resolve, reject);
         return;
       }
       if (res.statusCode !== 200) {
@@ -222,7 +212,6 @@ export interface AudioTranscribeResult {
 export async function transcribeBilibiliAudio(
   bvid: string,
   cid: number,
-  cookies: BiliCookies | undefined,
   whisper: WhisperConfig,
 ): Promise<AudioTranscribeResult> {
   if (!whisper.apiKey) throw new Error('缺少 Whisper API Key');
@@ -230,8 +219,8 @@ export async function transcribeBilibiliAudio(
   const rawFile = path.join(tmpDir, 'audio.bin');
   const mp3File = path.join(tmpDir, 'audio.mp3');
   try {
-    const streamUrl = await getAudioStreamUrl(bvid, cid, cookies);
-    await downloadToFile(streamUrl, rawFile, cookies);
+    const streamUrl = await getAudioStreamUrl(bvid, cid);
+    await downloadToFile(streamUrl, rawFile);
     await ffmpegToMp3(rawFile, mp3File);
     const result = await postMultipartTranscribe(mp3File, whisper);
     return { text: result.text, segments: result.segments || [] };

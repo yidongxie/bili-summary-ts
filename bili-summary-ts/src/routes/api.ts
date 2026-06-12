@@ -209,13 +209,10 @@ export function createApiRouter(db: Database.Database): Router {
           deepseek_model: "deepseek-chat",
           whisper_base_url: "https://api.siliconflow.cn/v1",
           whisper_model: "FunAudioLLM/SenseVoiceSmall",
-          obsidian_vault_path: "",
           obsidian_folder: "BiliStudy",
-          obsidian_mode: "local",
           obsidian_vault_name: "",
           api_key_set: false,
           whisper_api_key_set: false,
-          bili_sessdata_set: false,
         },
       });
       return;
@@ -395,70 +392,6 @@ export function createApiRouter(db: Database.Database): Router {
       vault_name: config.obsidian_vault_name || "",
       markdown: md,
     });
-  });
-
-  // ── Export to Obsidian vault ───────────────────────────────────────
-  router.post("/api/export/:id/obsidian", (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
-    if (!userId) { res.status(401).json({ success: false, error: "请先登录" }); return; }
-
-    try {
-      const item = findLibraryItem(db, userId, req.params.id);
-      if (!item) { res.status(404).json({ success: false, error: "未找到收藏" }); return; }
-
-      const config = getDecryptedConfig(db, userId);
-      const rawPath = String(req.body?.vault_path ?? config.obsidian_vault_path ?? "").trim();
-      const rawFolder = String(req.body?.folder ?? config.obsidian_folder ?? "").trim();
-      const overwrite = Boolean(req.body?.overwrite);
-
-      if (!rawPath) {
-        res.status(400).json({ success: false, error: "请先在设置里填写 Obsidian Vault 路径" });
-        return;
-      }
-
-      // Write Markdown to vault
-      const fs = require("fs");
-      const path = require("path");
-
-      const relativeFolder = String(rawFolder || "")
-        .split(/[\\/]+/)
-        .map((part: string) => slugify(part))
-        .filter((part: string) => part && part !== "." && part !== "..")
-        .join(path.sep);
-      const targetDir = path.resolve(rawPath, relativeFolder);
-      const targetFile = path.resolve(targetDir, slugify(item.title) + ".md");
-
-      // Security check
-      let vaultRoot = rawPath;
-      let current = path.resolve(rawPath);
-      for (let i = 0; i < 16; i++) {
-        if (fs.existsSync(path.join(current, ".obsidian"))) { vaultRoot = current; break; }
-        const parent = path.dirname(current);
-        if (!parent || parent === current) break;
-        current = parent;
-      }
-      if (targetFile !== vaultRoot && !targetFile.startsWith(vaultRoot + path.sep)) {
-        res.status(400).json({ success: false, error: "Obsidian 导出路径不安全" });
-        return;
-      }
-
-      if (!overwrite && fs.existsSync(targetFile)) {
-        res.status(409).json({ success: false, error: "already_exists", file: targetFile });
-        return;
-      }
-
-      fs.mkdirSync(path.dirname(targetFile), { recursive: true });
-      fs.writeFileSync(targetFile, itemToMarkdown(item), "utf-8");
-
-      const vaultName = path.basename(vaultRoot);
-      const fileInVault = path.relative(vaultRoot, targetFile).replace(/\.md$/i, "");
-      const obsidianUri = `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(fileInVault)}`;
-
-      res.json({ success: true, file: targetFile, vault: vaultName, relative: fileInVault, obsidian_uri: obsidianUri });
-    } catch (err: any) {
-      console.error("[export/obsidian]", err);
-      res.status(500).json({ success: false, error: err.message || String(err) });
-    }
   });
 
   return router;

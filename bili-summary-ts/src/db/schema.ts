@@ -42,15 +42,12 @@ export interface DbLibraryItem {
      user_id: number;
      api_key_enc: string;
      password_hash: string;
-     bili_sessdata_enc: string;
    whisper_api_key_enc: string;
   whisper_base_url: string;
   whisper_model: string;
   deepseek_base_url: string;
   deepseek_model: string;
-  obsidian_vault_path: string;
   obsidian_folder: string;
-  obsidian_mode: string;
   obsidian_vault_name: string;
   default_category: string;
 }
@@ -120,15 +117,12 @@ export function createDb(dataDir: string): Database.Database {
      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
      api_key_enc TEXT NOT NULL DEFAULT '',
      password_hash TEXT NOT NULL DEFAULT '',
-     bili_sessdata_enc TEXT NOT NULL DEFAULT '',
       whisper_api_key_enc TEXT NOT NULL DEFAULT '',
       whisper_base_url TEXT NOT NULL DEFAULT 'https://api.siliconflow.cn/v1',
       whisper_model TEXT NOT NULL DEFAULT 'FunAudioLLM/SenseVoiceSmall',
       deepseek_base_url TEXT NOT NULL DEFAULT 'https://api.deepseek.com/v1',
       deepseek_model TEXT NOT NULL DEFAULT 'deepseek-chat',
-      obsidian_vault_path TEXT NOT NULL DEFAULT '',
       obsidian_folder TEXT NOT NULL DEFAULT 'BiliStudy',
-      obsidian_mode TEXT NOT NULL DEFAULT 'local',
       obsidian_vault_name TEXT NOT NULL DEFAULT '',
       default_category TEXT NOT NULL DEFAULT '待整理'
     );
@@ -158,16 +152,10 @@ export function createDb(dataDir: string): Database.Database {
     db.exec("CREATE INDEX IF NOT EXISTS idx_summary_tasks_user ON summary_tasks(user_id, updated_at)");
   } catch { /* ignore */ }
 
-  // Lightweight migration for existing databases that pre-date the
-  // Web-Clipper-style Obsidian export columns. SQLite has no IF NOT EXISTS
-  // for ADD COLUMN, so we inspect the table first.
   const cols = db
     .prepare("PRAGMA table_info(user_configs)")
     .all() as Array<{ name: string }>;
   const have = new Set(cols.map((c) => c.name));
-  if (!have.has("obsidian_mode")) {
-    db.exec("ALTER TABLE user_configs ADD COLUMN obsidian_mode TEXT NOT NULL DEFAULT 'local'");
-  }
   if (!have.has("obsidian_vault_name")) {
     db.exec("ALTER TABLE user_configs ADD COLUMN obsidian_vault_name TEXT NOT NULL DEFAULT ''");
   }
