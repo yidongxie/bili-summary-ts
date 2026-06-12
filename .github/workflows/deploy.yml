@@ -104,7 +104,7 @@ jobs:
             tar -xzf /tmp/bili-summary-deploy/bili-summary-release.tgz -C "$PROJ_DIR"
 
             echo "=== STEP: npm install ==="
-            npm install --no-audit --no-fund
+            npm install --registry=https://registry.npmmirror.com --no-audit --no-fund
             echo "=== STEP: tsc ==="
             npx tsc
             echo "=== STEP: migrate ==="
