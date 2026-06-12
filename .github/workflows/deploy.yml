@@ -8,6 +8,31 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pack application
+        run: |
+          set -e
+          cd bili-summary-ts
+          tar \
+            --exclude='./node_modules' \
+            --exclude='./dist' \
+            --exclude='./data' \
+            --exclude='./logs' \
+            -czf ../bili-summary-release.tgz .
+
+      - name: Upload release bundle
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.ALIYUN_HOST }}
+          username: ${{ secrets.ALIYUN_USER }}
+          key: ${{ secrets.ALIYUN_SSH_KEY }}
+          port: 22
+          source: bili-summary-release.tgz
+          target: /tmp/bili-summary-deploy
+          overwrite: true
+
       - name: SSH and deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -19,7 +44,6 @@ jobs:
           script: |
             set -e
             echo "=== STEP: probe ffmpeg ==="
-            git config --global http.version HTTP/1.1
             # One-shot installer: if ffmpeg is not on the host yet, install it.
             if ! command -v ffmpeg >/dev/null 2>&1 && [ ! -x "/opt/bili-summary/bin/ffmpeg" ]; then
               echo "=== STEP: install ffmpeg (one-shot) ==="
@@ -70,16 +94,14 @@ jobs:
             fi
 
             echo "=== STEP: update code ==="
-            # Update code
-            if [ -d "$PROJ_DIR" ]; then
-              cd "$PROJ_DIR"
-              git fetch origin
-              git reset --hard origin/v2
-              git clean -fd
-            else
-              git clone -b v2 https://github.com/yidongxie/bili-summary-ts.git "$REPO_DIR"
-              cd "$PROJ_DIR"
-            fi
+            mkdir -p "$PROJ_DIR"
+            cd "$PROJ_DIR"
+            find . -mindepth 1 \
+              ! -path './data' ! -path './data/*' \
+              ! -path './node_modules' ! -path './node_modules/*' \
+              ! -path './dist' ! -path './dist/*' \
+              -exec rm -rf {} +
+            tar -xzf /tmp/bili-summary-deploy/bili-summary-release.tgz -C "$PROJ_DIR"
 
             echo "=== STEP: npm install ==="
             npm install --no-audit --no-fund
