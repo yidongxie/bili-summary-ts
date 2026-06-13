@@ -20,28 +20,55 @@
     --shadow: 0 18px 45px rgba(31, 41, 55, .08);
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--ink); }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--ink); position: relative; }
+  body::before {
+    content: "";
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(circle at 12% 18%, rgba(251,114,153,.45) 0%, transparent 38%),
+      radial-gradient(circle at 8% 78%, rgba(217,70,239,.32) 0%, transparent 42%),
+      radial-gradient(circle at 22% 50%, rgba(129,140,248,.30) 0%, transparent 45%),
+      var(--bg);
+  }
   button, input, textarea, select { font: inherit; }
   button { border: 0; cursor: pointer; }
   a { color: var(--blue); text-decoration: none; }
   a:hover { text-decoration: underline; }
   .app { min-height: 100vh; display: grid; grid-template-columns: 260px minmax(0, 1fr); }
-  .sidebar { position: sticky; top: 0; height: 100vh; background: #101828; color: #edf2f7; padding: 22px 16px; display: flex; flex-direction: column; gap: 20px; border-right: 1px solid rgba(255,255,255,.08); }
-  .brand { display: flex; align-items: center; gap: 12px; padding: 4px 6px 18px; border-bottom: 1px solid rgba(255,255,255,.09); }
-  .brand-mark { width: 38px; height: 38px; display: grid; place-items: center; background: #fb7299; border-radius: 8px; color: #fff; font-weight: 800; box-shadow: 0 10px 24px rgba(251,114,153,.26); }
-  .brand-title { font-size: 17px; font-weight: 800; }
-  .brand-sub { font-size: 12px; color: #aab4c4; margin-top: 3px; }
-  .nav { display: grid; gap: 7px; }
-  .nav button { width: 100%; text-align: left; padding: 11px 12px; border-radius: 8px; color: #cbd5e1; background: transparent; display: flex; align-items: center; gap: 10px; font-weight: 700; }
-  .nav button::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: #64748b; }
-  .nav button:hover { background: rgba(255,255,255,.07); color: #fff; }
-  .nav button.active { background: #fff; color: #111827; box-shadow: 0 12px 28px rgba(0,0,0,.18); }
+  .sidebar {
+    position: sticky; top: 0; height: 100vh; padding: 22px 16px;
+    display: flex; flex-direction: column; gap: 20px;
+    color: #4a1d3a;
+    background:
+      linear-gradient(155deg, rgba(255,255,255,.55) 0%, rgba(255,255,255,.18) 60%, rgba(255,255,255,.35) 100%),
+      radial-gradient(120% 80% at 0% 0%, rgba(251,182,206,.55) 0%, transparent 55%),
+      radial-gradient(140% 100% at 100% 100%, rgba(196,181,253,.55) 0%, transparent 55%);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border-right: 1px solid rgba(255,255,255,.55);
+    box-shadow: inset 1px 0 0 rgba(255,255,255,.45), 0 12px 36px rgba(214,51,108,.10);
+  }
+  .sidebar::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255,255,255,.42) 0%, transparent 28%);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; padding: 4px 6px 18px; border-bottom: 1px solid rgba(255,255,255,.55); position: relative; }
+  .brand-mark { width: 38px; height: 38px; display: grid; place-items: center; background: rgba(255,255,255,.78); border-radius: 10px; color: #d6336c; font-weight: 800; backdrop-filter: blur(8px); box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 8px 18px rgba(214,51,108,.18); }
+  .brand-title { font-size: 17px; font-weight: 800; color: #4a1d3a; }
+  .brand-sub { font-size: 12px; color: rgba(74,29,58,.70); margin-top: 3px; }
+  .nav { display: grid; gap: 7px; position: relative; }
+  .nav button { width: 100%; text-align: left; padding: 11px 12px; border-radius: 10px; color: rgba(74,29,58,.78); background: transparent; display: flex; align-items: center; gap: 10px; font-weight: 700; transition: background .18s, color .18s; }
+  .nav button::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: rgba(214,51,108,.45); }
+  .nav button:hover { background: rgba(255,255,255,.45); color: #4a1d3a; }
+  .nav button.active { background: rgba(255,255,255,.72); color: #d6336c; box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 10px 22px rgba(214,51,108,.18); backdrop-filter: blur(6px); }
   .nav button.active::before { background: #fb7299; }
-  
-  .login-area { margin-top: auto; padding: 12px; background: rgba(255,255,255,.08); border-radius: 8px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
-  .login-area .user-name { font-weight: 700; color: #e5e7eb; }
-  .login-area .logout-btn { font-size: 12px; color: #9ca3af; background: transparent; padding: 4px 0; text-align: left; }
-  .login-area .login-btn { width: 100%; padding: 9px; background: #24292f; color: #fff; border-radius: 8px; font-weight: 700; font-size: 13px; text-align: center; }
+
+  .login-area { margin-top: auto; padding: 12px; background: rgba(255,255,255,.42); border: 1px solid rgba(255,255,255,.6); border-radius: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; backdrop-filter: blur(10px); box-shadow: inset 0 1px 0 rgba(255,255,255,.7); position: relative; }
+  .login-area .user-name { font-weight: 700; color: #4a1d3a; }
+  .login-area .logout-btn { font-size: 12px; color: rgba(74,29,58,.65); background: transparent; padding: 4px 0; text-align: left; }
+  .login-area .logout-btn:hover { color: #4a1d3a; }
+  .login-area .login-btn { width: 100%; padding: 9px; background: rgba(255,255,255,.78); color: #d6336c; border-radius: 8px; font-weight: 800; font-size: 13px; text-align: center; box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 6px 14px rgba(214,51,108,.16); }
+  .login-area .login-btn:hover { background: #fff; }
   .main { padding: 28px; max-width: 1280px; width: 100%; }
   .page { display: none; }
   .page.active { display: block; }
@@ -177,6 +204,71 @@
 .key-status { font-size: 12px; margin-top: 2px; min-height: 18px; }
 .key-status.configured { color: #059669; }
 .key-status.not-configured { color: #9ca3af; }
+
+/* ===== BibiGPT-style hero ===== */
+.hero-stage { padding: 28px 16px 16px; max-width: 760px; margin: 0 auto; }
+.hero-title { text-align: center; font-size: 26px; font-weight: 800; line-height: 1.4; color: #111827; margin: 6px 0 22px; }
+.hero-title .brand-pink { background: linear-gradient(120deg, #fb7299 0%, #d946ef 60%, #818cf8 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero-cta-row { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-bottom: 26px; }
+.hero-pill { display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px; border: 1px solid #e2e8f0; border-radius: 999px; background: #fff; color: #334155; font-weight: 700; font-size: 13px; box-shadow: 0 4px 10px rgba(15,23,42,.04); }
+.hero-pill:hover { border-color: #fb7299; color: #fb7299; transform: translateY(-1px); transition: .15s; }
+.hero-pill .badge-new { font-size: 10px; font-weight: 800; background: #fb7299; color: #fff; padding: 2px 6px; border-radius: 4px; letter-spacing: .5px; }
+
+.composer { background: #fff; border: 1.5px solid #f5d0db; border-radius: 14px; padding: 12px 14px 12px; box-shadow: 0 14px 38px rgba(251,114,153,.10); transition: border-color .15s, box-shadow .15s; }
+.composer:focus-within { border-color: #fb7299; box-shadow: 0 14px 38px rgba(251,114,153,.18); }
+
+.source-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+.source-tab { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; background: transparent; color: #64748b; font-weight: 700; font-size: 13px; border: 1px solid transparent; }
+.source-tab:hover { color: #18202f; background: #f1f5f9; }
+.source-tab.active { color: #18202f; background: #f1f5f9; border-color: #e2e8f0; }
+.source-tab svg { width: 15px; height: 15px; }
+
+.composer-input { width: 100%; min-height: 56px; max-height: 160px; border: 0; outline: 0; padding: 8px 4px; font-size: 14px; line-height: 1.6; resize: none; background: transparent; color: var(--ink); font-family: inherit; }
+.composer-input::placeholder { color: #94a3b8; }
+
+.composer-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #f1f5f9; }
+.composer-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px; background: transparent; color: #475467; font-weight: 700; font-size: 12px; border: 1px solid transparent; }
+.chip:hover { background: #f1f5f9; color: #18202f; }
+.chip.active { background: #eef6ff; color: #1d4ed8; border-color: #c8ddff; }
+.chip svg { width: 14px; height: 14px; }
+.composer-actions { display: flex; align-items: center; gap: 6px; }
+.icon-btn { width: 34px; height: 34px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: transparent; color: #64748b; border: 1px solid transparent; }
+.icon-btn:hover { background: #f1f5f9; color: #18202f; }
+.icon-btn.send { background: #fb7299; color: #fff; box-shadow: 0 6px 14px rgba(251,114,153,.30); }
+.icon-btn.send:hover { background: #f6608a; color: #fff; }
+.icon-btn.send:disabled { opacity: .5; box-shadow: none; cursor: not-allowed; }
+.icon-btn svg { width: 16px; height: 16px; }
+
+.hero-quick { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; padding: 0 4px; font-size: 12px; color: var(--muted); }
+.hero-quick-label { color: #94a3b8; font-weight: 700; }
+.quick-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: #fff; border: 1px solid #e2e8f0; color: #334155; font-size: 12px; font-weight: 600; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-pill:hover { border-color: #fb7299; color: #fb7299; }
+.quick-pill .pill-mark { width: 16px; height: 16px; border-radius: 4px; background: #fb7299; color: #fff; font-size: 10px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+
+.hero-main-cta { margin: 28px auto 0; display: flex; justify-content: center; }
+.hero-main-cta .btn-jumbo { display: inline-flex; align-items: center; gap: 10px; padding: 14px 44px; background: #18202f; color: #fff; border-radius: 999px; font-weight: 800; font-size: 15px; box-shadow: 0 14px 32px rgba(24,32,47,.28); }
+.hero-main-cta .btn-jumbo:hover { background: #0f172a; transform: translateY(-1px); transition: .15s; }
+.hero-main-cta .btn-jumbo:disabled { background: #94a3b8; cursor: not-allowed; box-shadow: none; }
+
+.hero-foot { display: flex; justify-content: center; gap: 22px; margin-top: 16px; font-size: 13px; color: var(--muted); }
+.hero-foot a, .hero-foot button { background: transparent; color: var(--muted); font-weight: 700; padding: 4px; }
+.hero-foot a:hover, .hero-foot button:hover { color: #fb7299; }
+
+.settings-drawer { display: none; margin-top: 12px; padding: 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; }
+.settings-drawer.open { display: block; }
+.settings-drawer .grid.two { gap: 12px; }
+.composer-hint { display: none; margin-top: 10px; padding: 10px 12px; background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; border-radius: 8px; font-size: 12px; }
+.composer-hint.show { display: block; }
+
+@media (max-width: 560px) {
+  .hero-title { font-size: 20px; }
+  .hero-stage { padding: 16px 8px 8px; }
+  .hero-cta-row { gap: 8px; }
+  .hero-pill { padding: 8px 14px; font-size: 12px; }
+  .quick-pill { max-width: 200px; }
+  .hero-main-cta .btn-jumbo { padding: 12px 32px; font-size: 14px; }
+}
 </style>
 </head>
 <body>
@@ -206,35 +298,109 @@
 
   <main class="main">
     <section id="summaryPage" class="page active">
-      <div class="page-head">
-        <div>
-          <h1>总结视频</h1>
-          <p>粘贴 B站链接，生成可以收藏和复习的学习笔记。</p>
+      <div class="hero-stage">
+        <h1 class="hero-title"><span class="brand-pink">BiliStudy</span> 让你的音视频看得快、搜得到、用得好</h1>
+        <div class="hero-cta-row">
+          <button type="button" class="hero-pill" onclick="document.getElementById('urlInput').focus()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.39 4.84L20 8l-3.79 3.7L17.27 18 12 15.27 6.73 18l1.06-6.3L4 8l5.61-1.16L12 2z"/></svg>
+            支持 AI 总结
+            <span class="badge-new">NEW</span>
+          </button>
+          <button type="button" class="hero-pill" onclick="showPage('libraryPage'); loadLibrary();">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+            收藏库 →
+          </button>
         </div>
-      </div>
-      <div class="panel hero-panel">
-        <div class="input-row">
-          <div class="field">
-            <label>B站视频链接</label>
-            <input id="urlInput" placeholder="https://www.bilibili.com/video/BV..." autofocus>
+
+        <div class="composer">
+          <div class="source-tabs">
+            <button type="button" class="source-tab active" data-source="link" onclick="selectSource('link')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.71 1.71"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              链接
+            </button>
+            <button type="button" class="source-tab" data-source="explore" onclick="selectSource('explore')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+              探索
+            </button>
+            <button type="button" class="source-tab" data-source="upload" onclick="selectSource('upload')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              上传
+            </button>
+            <button type="button" class="source-tab" data-source="cloud" onclick="selectSource('cloud')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+              网盘
+            </button>
           </div>
-          <button class="btn" id="clearUrlBtn" onclick="clearUrl()">清空</button>
-          <button class="btn primary" id="summarizeBtn" onclick="startSummarize()">开始总结</button>
+          <textarea id="urlInput" class="composer-input" rows="2" placeholder="请输入音视频链接，支持批量输入（Shift+Enter换行，Enter提交）" autofocus></textarea>
+          <div class="composer-bar">
+            <div class="composer-chips">
+              <button type="button" id="settingsChip" class="chip" onclick="toggleSettingsDrawer()" title="总结设置">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="18" r="2"/></svg>
+                总结设置
+              </button>
+              <span class="chip" id="modeChip" title="当前总结模式">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20l9-9-4-4-9 9z"/><path d="M16 8l4 4"/></svg>
+                <span id="modeChipLabel">简洁总结</span>
+              </span>
+            </div>
+            <div class="composer-actions">
+              <button type="button" class="icon-btn" id="quickPasteBtn" onclick="quickPaste()" title="粘贴">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 4H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>
+              </button>
+              <button type="button" class="icon-btn send" id="summarizeBtn" onclick="startSummarize()" title="开始总结">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </div>
+          </div>
+          <div id="settingsDrawer" class="settings-drawer">
+            <div class="grid two">
+              <div class="field">
+                <label>总结模式</label>
+                <select id="modeInput" onchange="syncModeChip()">
+                  <option value="brief">简洁总结</option>
+                  <option value="detailed">详细笔记</option>
+                  <option value="timeline">时间线</option>
+                  <option value="knowledge">知识卡片</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>保存分类</label>
+                <input id="categoryInput" value="待整理">
+              </div>
+            </div>
+          </div>
+          <div id="composerHint" class="composer-hint"></div>
         </div>
-        <div class="grid two" style="margin-top:12px;">
-          <div class="field">
-            <label>总结模式</label>
-            <select id="modeInput">
-              <option value="brief">简洁总结</option>
-              <option value="detailed">详细笔记</option>
-              <option value="timeline">时间线</option>
-              <option value="knowledge">知识卡片</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>保存分类</label>
-            <input id="categoryInput" value="待整理">
-          </div>
+
+        <div class="hero-quick">
+          <span class="hero-quick-label">快速体验：</span>
+          <button type="button" class="quick-pill" onclick="fillExample('https://www.bilibili.com/video/BV1GJ411x7h7')">
+            <span class="pill-mark">B</span> 【公开课】斯坦福 2005 毕业典礼演讲
+          </button>
+          <button type="button" class="quick-pill" onclick="fillExample('https://www.bilibili.com/video/BV1Pr4y1z7Yi')">
+            <span class="pill-mark">B</span> 【渐构】万字科普 GPT-4 工作流
+          </button>
+          <button type="button" class="icon-btn" onclick="shuffleExample()" title="换一组">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+          </button>
+        </div>
+
+        <div class="hero-main-cta">
+          <button type="button" class="btn-jumbo" id="summarizeJumbo" onclick="startSummarize()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.39 4.84L20 8l-3.79 3.7L17.27 18 12 15.27 6.73 18l1.06-6.3L4 8l5.61-1.16L12 2z"/></svg>
+            一键总结
+          </button>
+        </div>
+
+        <div class="hero-foot">
+          <button type="button" onclick="shuffleExample()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+            刷刷热门
+          </button>
+          <button type="button" onclick="batchHint()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            批量总结
+          </button>
         </div>
         <div id="status" class="status"></div>
       </div>
@@ -512,7 +678,9 @@ async function startSummarize() {
   if (!url) return showStatus('status', '请输入视频链接', 'error');
   if (!currentUser) return showStatus('status', '请先登录', 'error');
   const btn = document.getElementById('summarizeBtn');
+  const jumbo = document.getElementById('summarizeJumbo');
   btn.disabled = true;
+  if (jumbo) jumbo.disabled = true;
   showStatus('status', '正在提交任务...', 'info');
   document.getElementById('progressOverlay').classList.add('active');
   document.getElementById('resultContent').style.display = 'none';
@@ -543,6 +711,7 @@ async function startSummarize() {
     }
   } finally {
     btn.disabled = false;
+    if (jumbo) jumbo.disabled = false;
   }
 }
 function waitForTask(taskId) {
@@ -916,6 +1085,97 @@ function clearUrl() {
   document.getElementById('urlInput').value = '';
   document.getElementById('urlInput').focus();
 }
+
+// ===== BibiGPT-style hero helpers =====
+const SOURCE_HINTS = {
+  link: '',
+  explore: '“探索”频道还在筹备中，先用「链接」粘贴 B 站视频地址吧。',
+  upload: '本地音视频上传即将上线，目前仅支持「链接」模式。',
+  cloud: '网盘导入即将上线，目前仅支持「链接」模式。',
+};
+
+function selectSource(name) {
+  document.querySelectorAll('.source-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.source === name);
+  });
+  const hint = document.getElementById('composerHint');
+  const msg = SOURCE_HINTS[name] || '';
+  if (msg) { hint.textContent = msg; hint.classList.add('show'); }
+  else { hint.textContent = ''; hint.classList.remove('show'); }
+  if (name === 'link') document.getElementById('urlInput').focus();
+}
+
+function toggleSettingsDrawer() {
+  const drawer = document.getElementById('settingsDrawer');
+  const chip = document.getElementById('settingsChip');
+  drawer.classList.toggle('open');
+  chip.classList.toggle('active', drawer.classList.contains('open'));
+}
+
+function syncModeChip() {
+  const sel = document.getElementById('modeInput');
+  const label = sel.options[sel.selectedIndex]?.text || '简洁总结';
+  const target = document.getElementById('modeChipLabel');
+  if (target) target.textContent = label;
+}
+
+async function quickPaste() {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text) { showStatus('status', '剪贴板为空', 'info'); return; }
+    document.getElementById('urlInput').value = text.trim();
+    document.getElementById('urlInput').focus();
+  } catch (err) {
+    showStatus('status', '无法读取剪贴板，请手动粘贴 (Ctrl+V)', 'error');
+  }
+}
+
+function fillExample(url) {
+  const input = document.getElementById('urlInput');
+  input.value = url;
+  input.focus();
+  input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+const EXAMPLE_BANK = [
+  ['https://www.bilibili.com/video/BV1GJ411x7h7', '【公开课】斯坦福 2005 毕业典礼演讲'],
+  ['https://www.bilibili.com/video/BV1Pr4y1z7Yi', '【渐构】万字科普 GPT-4 工作流'],
+  ['https://www.bilibili.com/video/BV1uv411q7Mv', '【3Blue1Brown】神经网络是怎么工作的'],
+  ['https://www.bilibili.com/video/BV1Ke411e7B5', '【李永乐】量子纠缠到底是什么'],
+  ['https://www.bilibili.com/video/BV15s4y1k7Mu', '【硬核拆解】M1 芯片为什么这么强'],
+];
+let _exampleIdx = 0;
+function shuffleExample() {
+  _exampleIdx = (_exampleIdx + 2) % EXAMPLE_BANK.length;
+  const a = EXAMPLE_BANK[_exampleIdx];
+  const b = EXAMPLE_BANK[(_exampleIdx + 1) % EXAMPLE_BANK.length];
+  const pills = document.querySelectorAll('.hero-quick .quick-pill');
+  if (pills[0]) {
+    pills[0].onclick = () => fillExample(a[0]);
+    pills[0].lastChild.textContent = ' ' + a[1];
+  }
+  if (pills[1]) {
+    pills[1].onclick = () => fillExample(b[0]);
+    pills[1].lastChild.textContent = ' ' + b[1];
+  }
+}
+
+function batchHint() {
+  showStatus('status', '一行一个链接，直接 Enter 提交即可批量入库（暂未排队，会按顺序处理）。', 'info');
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  syncModeChip();
+  const input = document.getElementById('urlInput');
+  if (input) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        startSummarize();
+      }
+    });
+  }
+});
 
 function showStatus(id, msg, type) {
   const el = document.getElementById(id);
