@@ -104,9 +104,20 @@ jobs:
             tar -xzf /tmp/bili-summary-deploy/bili-summary-release.tgz -C "$PROJ_DIR"
 
             echo "=== STEP: npm install ==="
-            npm install --registry=https://registry.npmmirror.com --no-audit --no-fund
+            # Prefer npm ci (strict, lockfile-driven) when package-lock.json
+            # is shipped in the release bundle. Fall back to npm install for
+            # legacy releases that don't include the lockfile yet.
+            if [ -f package-lock.json ]; then
+              npm ci --registry=https://registry.npmmirror.com --no-audit --no-fund
+            else
+              npm install --registry=https://registry.npmmirror.com --no-audit --no-fund
+            fi
             echo "=== STEP: tsc ==="
             npx tsc
+            echo "=== STEP: build web (vite) ==="
+            # Builds web/ -> public/dist/. The Express server serves public/dist/
+            # as the primary static dir (see src/index.ts).
+            npm run build:web
             echo "=== STEP: migrate ==="
             node /opt/bili-summary/bili-summary-ts/deploy-migrate.js
 
@@ -122,3 +133,10 @@ jobs:
             sleep 2
             curl -s http://127.0.0.1:8080/health && echo " - OK" || echo "Health check FAILED"
             ss -tlnp | grep 8080 || echo "Port 8080 not listening"
+            # Confirm Vite build landed and is being served
+            if [ -f "$PROJ_DIR/public/dist/index.html" ]; then
+              echo "Web bundle present: $(ls -la $PROJ_DIR/public/dist/assets/ | head -3)"
+            else
+              echo "ERROR: public/dist/index.html missing — vite build did not run"
+              exit 1
+            fi
