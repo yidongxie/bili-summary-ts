@@ -69,13 +69,22 @@ app.use(createApiRouter(db));
 app.use(createTaskRouter(db));
 
 // Static files (frontend)
-const publicDir = path.resolve(__dirname, "..", "public");
-app.use(express.static(publicDir));
+//
+// The frontend is built by Vite into public/dist/ (see vite.config.ts).
+// We serve that directory at the root. The legacy public/index.legacy.html
+// is intentionally kept around but NOT served by default — it lives at the
+// project root only for emergency rollback.
+const distDir = path.resolve(__dirname, "..", "public", "dist");
+const legacyDir = path.resolve(__dirname, "..", "public");
+app.use(express.static(distDir));
+// Fall back to public/ for any plain assets that may live alongside the
+// built bundle (e.g. legacy uploads or favicons added later).
+app.use(express.static(legacyDir));
 
-// SPA fallback
+// SPA fallback — serve the Vite-built index.html for any non-API GET.
 app.use((_req: any, res: any, next: any) => {
   if (_req.method === "GET" && !_req.path.startsWith("/api/")) {
-    res.sendFile(path.join(publicDir, "index.html"), (err: any) => {
+    res.sendFile(path.join(distDir, "index.html"), (err: any) => {
       if (err) next();
     });
   } else {

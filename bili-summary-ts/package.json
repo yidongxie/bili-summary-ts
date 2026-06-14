@@ -1,12 +1,15 @@
-﻿{
+{
   "name": "bili-study",
   "version": "4.0.0",
   "description": "B站视频摘要与学习库 - Node.js + TypeScript 版",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "build:web": "vite build",
+    "build:all": "npm run build && npm run build:web",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
+    "dev:web": "vite",
     "launcher": "node dist/launcher.js"
   },
   "dependencies": {
@@ -24,7 +27,17 @@
     "@types/express-session": "^1.18.0",
     "@types/passport": "^1.0.16",
     "@types/passport-github2": "^1.2.9",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "lucide-react": "^0.468.0",
+    "postcss": "^8.4.49",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.17",
     "typescript": "^5.6.0",
-    "ts-node": "^10.9.0"
+    "ts-node": "^10.9.0",
+    "vite": "^6.0.7"
   }
 }

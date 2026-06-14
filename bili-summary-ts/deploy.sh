@@ -34,12 +34,22 @@ else
 fi
 
 # 4. 安装依赖
+# 使用 npm ci 严格按照 package-lock.json 安装，保证服务器和本地构建产物一致。
+# 如果仓库里没有 lockfile（首次升级时），fall back 到 npm install。
 echo ">>> 安装 npm 依赖..."
-npm install
+if [ -f package-lock.json ]; then
+  npm ci
+else
+  npm install
+fi
 
-# 5. 编译
-echo ">>> 编译 TypeScript..."
+# 5. 编译后端 TypeScript
+echo ">>> 编译 TypeScript (后端)..."
 npx tsc
+
+# 5b. 构建前端 (Vite -> public/dist/)
+echo ">>> 构建前端 (vite build)..."
+npm run build:web
 
 # 6. 生成 ENCRYPTION_KEY
 ENV_FILE="$REPO_DIR/.env"

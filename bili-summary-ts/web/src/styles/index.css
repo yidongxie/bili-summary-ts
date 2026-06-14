@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme tokens — mirrored from temp/src/styles/theme.css. We keep them as
+   plain CSS variables so any inline `style={{ color: "var(--primary)" }}`
+   from the design source still resolves. */
+:root {
+  --background: #ddf0fb;
+  --foreground: #0d2d45;
+  --card: rgba(255, 255, 255, 0.55);
+  --card-foreground: #0d2d45;
+  --primary: #0ea5e9;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(14, 165, 233, 0.12);
+  --secondary-foreground: #0369a1;
+  --muted: rgba(255, 255, 255, 0.45);
+  --muted-foreground: #5b8fae;
+  --accent: #38bdf8;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --border: rgba(14, 165, 233, 0.18);
+  --input: rgba(255, 255, 255, 0.6);
+  --ring: rgba(14, 165, 233, 0.45);
+  --radius: 0.875rem;
+  --sidebar: rgba(255, 255, 255, 0.35);
+  --sidebar-foreground: #0d2d45;
+  --sidebar-primary: #0ea5e9;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(14, 165, 233, 0.15);
+  --sidebar-accent-foreground: #0369a1;
+  --sidebar-border: rgba(14, 165, 233, 0.15);
+}
+
+html,
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Hide scrollbars (matches temp/) */
+* {
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #7db8d4;
+}
+
+/* Markdown rendering for AI summary output. Mirrors the look used in the
+   legacy public/index.html (.summary block) so existing `summary` markdown
+   from the API renders consistently. */
+.summary {
+  line-height: 1.78;
+  font-size: 14px;
+  color: #263244;
+}
+.summary h1,
+.summary h2 {
+  font-size: 18px;
+  margin: 20px 0 8px;
+  color: #0d2d45;
+  font-weight: 700;
+}
+.summary h3 {
+  font-size: 15px;
+  margin: 15px 0 7px;
+  color: #18202f;
+  font-weight: 700;
+}
+.summary ul {
+  padding-left: 22px;
+  list-style: disc;
+}
+.summary p {
+  margin: 8px 0;
+}
+.summary code {
+  background: rgba(14, 165, 233, 0.08);
+  padding: 2px 5px;
+  border-radius: 5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+}
+.summary strong {
+  color: #0d2d45;
+  font-weight: 700;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.bs-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(14, 165, 233, 0.18);
+  border-top-color: #0ea5e9;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}

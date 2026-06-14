@@ -1,0 +1,22 @@
+# Repo-root .gitignore — defends against `git add -A` accidents.
+#
+# This file lives at the git toplevel (one level above bili-summary-ts/).
+# Project-specific ignores still live in bili-summary-ts/.gitignore.
+
+# Secrets — never commit
+.ssh_*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# One-off patch / debug artefacts that have shown up in this tree before
+_*.py
+_*.b64
+_*.txt
+_writer.py
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
