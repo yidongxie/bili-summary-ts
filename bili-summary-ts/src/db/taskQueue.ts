@@ -3,8 +3,10 @@
 import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
 import crypto from "crypto";
-import { extractVideoId, fetchVideoInfo, segmentsToParagraphs, fetchPageList } from "../bilibili/api";
-import { transcribeBilibiliAudio } from "../whisper/transcribe";
+import { extractVideoId as extractBilibiliVideoId, fetchVideoInfo as fetchBilibiliVideoInfo, segmentsToParagraphs, fetchPageList, isBilibiliUrl } from "../bilibili/api";
+import { isXiaoyuzhouUrl, extractEpisodeId, fetchEpisodeInfo } from "../xiaoyuzhou/api";
+import { isYtDlpAvailable, extractVideoInfo as extractWithYtDlp, isUrlSupported, getPlatformName, validateUrl } from "../common/YtDlpExtractor";
+import { transcribeBilibiliAudio, transcribeAudioUrl } from "../whisper/transcribe";
 import { summarizeText, suggestTags, SummaryMode } from "../llm/summarize";
 import { getDecryptedConfig } from "./configStore";
 
@@ -192,6 +194,313 @@ export function createTaskRouter(db: Database.Database): Router {
   return router;
 }
 
+/** Get whisper config with admin fallback */
+function getWhisperConfig(db: Database.Database, userId: number, userEmail: string, body: any, config: any) {
+  let whisperApiKey = String(body.whisper_api_key || config.whisper_api_key || "").trim();
+  let whisperBaseUrl = String(body.whisper_base_url || config.whisper_base_url || "https://api.siliconflow.cn/v1").trim();
+  let whisperModel = String(body.whisper_model || config.whisper_model || "FunAudioLLM/SenseVoiceSmall").trim();
+
+  if (!whisperApiKey && userEmail !== ADMIN_EMAIL) {
+    const adminRow = db
+      .prepare("SELECT id FROM users WHERE email = ?")
+      .get(ADMIN_EMAIL) as { id?: number } | undefined;
+    if (adminRow?.id) {
+      const adminConfig = getDecryptedConfig(db, adminRow.id);
+      if (adminConfig.whisper_api_key) {
+        whisperApiKey = adminConfig.whisper_api_key;
+        if (!body.whisper_base_url && !config.whisper_base_url) whisperBaseUrl = adminConfig.whisper_base_url || whisperBaseUrl;
+        if (!body.whisper_model && !config.whisper_model) whisperModel = adminConfig.whisper_model || whisperModel;
+      }
+    }
+  }
+
+  return { apiKey: whisperApiKey, baseUrl: whisperBaseUrl, model: whisperModel };
+}
+
+/** Process Bilibili video */
+async function processBilibili(
+  db: Database.Database,
+  task: Task,
+  url: string,
+  whisperConfig: { apiKey: string; baseUrl: string; model: string },
+  llmConfig: { apiKey: string; baseUrl: string; model: string },
+  mode: SummaryMode
+) {
+  const videoId = await extractBilibiliVideoId(url);
+
+  updateProgress(db, task, "获取视频元数据…");
+  const info = await fetchBilibiliVideoInfo(videoId);
+  const bvid = info.bvid;
+  const cid = info.cid;
+
+  const pages = await fetchPageList(bvid);
+  const correctCid = pages.length && pages[0].cid ? pages[0].cid : cid;
+  if (correctCid !== cid) console.log("[cid] pagelist cid=%d differs from view cid=%d, using pagelist", correctCid, cid);
+
+  if (!whisperConfig.apiKey) {
+    throw new Error("请先在设置中填写 Whisper API Key");
+  }
+  if (!correctCid) {
+    throw new Error("无法获取视频音频信息，请稍后重试");
+  }
+
+  updateProgress(db, task, "语音转写中…");
+  const whisperResult = await transcribeBilibiliAudio(bvid, correctCid, whisperConfig);
+  let subtitles = whisperResult.segments?.length
+    ? whisperResult.segments
+    : whisperResult.text ? [{ from: 0, to: info.duration, content: whisperResult.text }] : [];
+
+  if (!subtitles.length) {
+    throw new Error("未能获取转写内容，请稍后重试");
+  }
+
+  let transcript = segmentsToParagraphs(subtitles).map((p: any) => p.content).join("\n\n");
+  let transcriptTruncated = false;
+  let originalTranscriptLength = transcript.length;
+
+  if (transcript.length > MAX_SUBTITLE_CHARS) {
+    transcriptTruncated = true;
+    const head = Math.floor(MAX_SUBTITLE_CHARS * 0.7);
+    const tail = MAX_SUBTITLE_CHARS - head;
+    transcript =
+      transcript.slice(0, head) +
+      `\n\n[字幕过长，中间部分已省略 / Subtitle truncated, middle omitted]\n\n` +
+      transcript.slice(-tail);
+    updateProgress(db, task, `字幕过长（${originalTranscriptLength} 字），已自动截取前后共 ${MAX_SUBTITLE_CHARS} 字进行总结…`);
+  }
+
+  if (!transcript) {
+    throw new Error("未能获取转写内容，请稍后重试");
+  }
+
+  updateProgress(db, task, "AI 总结中…");
+  let summary = await summarizeText(transcript, llmConfig, mode);
+  if (transcriptTruncated) summary += `\n\n> 字幕过长（${originalTranscriptLength} 字），本总结基于截取后的 ${MAX_SUBTITLE_CHARS} 字内容生成。`;
+
+  updateProgress(db, task, "生成标签…");
+  const suggestedTags = await suggestTags(info.title, info.author, summary, llmConfig);
+
+  const subtitleSegments = subtitles
+    .filter((s: any) => s.content?.trim())
+    .map((s: any) => ({ from: s.from, to: s.to, content: s.content.trim() }));
+
+  return {
+    type: "bilibili" as const,
+    video: { title: info.title, author: info.author, duration: info.duration, bvid, link: `https://www.bilibili.com/video/${bvid}`, pic: info.pic },
+    subtitle_count: subtitles.length,
+    transcript_source: "whisper" as const,
+    subtitle_segments: subtitleSegments,
+    transcript,
+    summary,
+    mode,
+    suggested_tags: suggestedTags,
+  };
+}
+
+/** Process Xiaoyuzhou podcast */
+async function processXiaoyuzhou(
+  db: Database.Database,
+  task: Task,
+  url: string,
+  whisperConfig: { apiKey: string; baseUrl: string; model: string },
+  llmConfig: { apiKey: string; baseUrl: string; model: string },
+  mode: SummaryMode
+) {
+  const episodeId = await extractEpisodeId(url);
+
+  updateProgress(db, task, "获取播客元数据…");
+  const episode = await fetchEpisodeInfo(episodeId, url);
+
+  if (!whisperConfig.apiKey) {
+    throw new Error("请先在设置中填写 Whisper API Key");
+  }
+  if (!episode.audioUrl) {
+    throw new Error("无法获取播客音频链接");
+  }
+
+  updateProgress(db, task, "语音转写中…");
+  const whisperResult = await transcribeAudioUrl(episode.audioUrl, whisperConfig);
+  let subtitles = whisperResult.segments?.length
+    ? whisperResult.segments
+    : whisperResult.text ? [{ from: 0, to: episode.duration || 0, content: whisperResult.text }] : [];
+
+  if (!subtitles.length) {
+    throw new Error("未能获取转写内容，请稍后重试");
+  }
+
+  let transcript = segmentsToParagraphs(subtitles).map((p: any) => p.content).join("\n\n");
+  let transcriptTruncated = false;
+  let originalTranscriptLength = transcript.length;
+
+  if (transcript.length > MAX_SUBTITLE_CHARS) {
+    transcriptTruncated = true;
+    const head = Math.floor(MAX_SUBTITLE_CHARS * 0.7);
+    const tail = MAX_SUBTITLE_CHARS - head;
+    transcript =
+      transcript.slice(0, head) +
+      `\n\n[内容过长，中间部分已省略 / Content truncated, middle omitted]\n\n` +
+      transcript.slice(-tail);
+    updateProgress(db, task, `内容过长（${originalTranscriptLength} 字），已自动截取前后共 ${MAX_SUBTITLE_CHARS} 字进行总结…`);
+  }
+
+  if (!transcript) {
+    throw new Error("未能获取转写内容，请稍后重试");
+  }
+
+  updateProgress(db, task, "AI 总结中…");
+  let summary = await summarizeText(transcript, llmConfig, mode);
+  if (transcriptTruncated) summary += `\n\n> 内容过长（${originalTranscriptLength} 字），本总结基于截取后的 ${MAX_SUBTITLE_CHARS} 字内容生成。`;
+
+  updateProgress(db, task, "生成标签…");
+  const suggestedTags = await suggestTags(episode.title, episode.author, summary, llmConfig);
+
+  const subtitleSegments = subtitles
+    .filter((s: any) => s.content?.trim())
+    .map((s: any) => ({ from: s.from, to: s.to, content: s.content.trim() }));
+
+  return {
+    type: "xiaoyuzhou" as const,
+    podcast: { title: episode.title, author: episode.author, podcastName: episode.podcastName, duration: episode.duration, id: episodeId, link: episode.episodeUrl, cover: episode.coverUrl, audioUrl: episode.audioUrl },
+    subtitle_count: subtitles.length,
+    transcript_source: "whisper" as const,
+    subtitle_segments: subtitleSegments,
+    transcript,
+    summary,
+    mode,
+    suggested_tags: suggestedTags,
+  };
+}
+
+/**
+ * 使用 yt-dlp 处理通用视频（支持抖音、小红书、YouTube 等 1000+ 网站）
+ */
+async function processWithYtDlp(
+  db: Database.Database,
+  task: Task,
+  url: string,
+  whisperConfig: { apiKey: string; baseUrl: string; model: string },
+  llmConfig: { apiKey: string; baseUrl: string; model: string },
+  mode: SummaryMode
+) {
+  if (!whisperConfig.apiKey) {
+    throw new Error("请先在设置中填写 Whisper API Key");
+  }
+
+  // 验证 URL 格式并清理
+  const validation = validateUrl(url);
+  if (!validation.valid) {
+    throw new Error(validation.message || "链接格式不正确");
+  }
+
+  // 使用清理后的 URL
+  const cleanedUrl = validation.cleanedUrl || url;
+
+  updateProgress(db, task, "正在获取视频信息…");
+  let videoInfo;
+  try {
+    videoInfo = await extractWithYtDlp(cleanedUrl);
+  } catch (error: any) {
+    // 给出更友好的错误提示
+    let message = error.message || "视频提取失败";
+    if (/unsupported.*url/i.test(message) || /generic.*information/i.test(message)) {
+      message = "无法识别此链接，请使用手机端分享的链接（不要使用网页版链接）";
+    } else if (/network|connect|timed?out/i.test(message)) {
+      message = "网络连接超时，请检查网络或稍后重试";
+    }
+    throw new Error(message);
+  }
+
+  if (!videoInfo.audioUrl) {
+    throw new Error(`无法获取 ${getPlatformName(videoInfo.platform)} 视频音频链接，请尝试其他平台或稍后重试`);
+  }
+
+  updateProgress(db, task, "语音转写中…");
+  const whisperResult = await transcribeAudioUrl(videoInfo.audioUrl, whisperConfig);
+  let subtitles = whisperResult.segments?.length
+    ? whisperResult.segments
+    : whisperResult.text ? [{ from: 0, to: videoInfo.duration || 0, content: whisperResult.text }] : [];
+
+  if (!subtitles.length) {
+    throw new Error("未能获取转写内容，请稍后重试");
+  }
+
+  let transcript = segmentsToParagraphs(subtitles).map((p: any) => p.content).join("\n\n");
+  let transcriptTruncated = false;
+  let originalTranscriptLength = transcript.length;
+
+  if (transcript.length > MAX_SUBTITLE_CHARS) {
+    transcriptTruncated = true;
+    const head = Math.floor(MAX_SUBTITLE_CHARS * 0.7);
+    const tail = MAX_SUBTITLE_CHARS - head;
+    transcript =
+      transcript.slice(0, head) +
+      `\n\n[内容过长，中间部分已省略 / Content truncated, middle omitted]\n\n` +
+      transcript.slice(-tail);
+    updateProgress(db, task, `内容过长（${originalTranscriptLength} 字），已自动截取前后共 ${MAX_SUBTITLE_CHARS} 字进行总结…`);
+  }
+
+  if (!transcript) {
+    throw new Error("未能获取转写内容，请稍后重试");
+  }
+
+  updateProgress(db, task, "AI 总结中…");
+  let summary = await summarizeText(transcript, llmConfig, mode);
+  if (transcriptTruncated) summary += `\n\n> 内容过长（${originalTranscriptLength} 字），本总结基于截取后的 ${MAX_SUBTITLE_CHARS} 字内容生成。`;
+
+  updateProgress(db, task, "生成标签…");
+  const suggestedTags = await suggestTags(videoInfo.title, videoInfo.author, summary, llmConfig);
+
+  const subtitleSegments = subtitles
+    .filter((s: any) => s.content?.trim())
+    .map((s: any) => ({ from: s.from, to: s.to, content: s.content.trim() }));
+
+  // 返回类型根据平台判断
+  const type = videoInfo.platform as any;
+  const isAudio = /xiaoyuzhou|podcast|fm/i.test(videoInfo.platform);
+
+  if (isAudio) {
+    return {
+      type: "xiaoyuzhou" as const,
+      podcast: {
+        title: videoInfo.title,
+        author: videoInfo.author,
+        podcastName: getPlatformName(videoInfo.platform),
+        duration: videoInfo.duration || 0,
+        id: url,
+        link: videoInfo.webpageUrl,
+        cover: videoInfo.coverUrl,
+        audioUrl: videoInfo.audioUrl,
+      },
+      subtitle_count: subtitles.length,
+      transcript_source: "whisper" as const,
+      subtitle_segments: subtitleSegments,
+      transcript,
+      summary,
+      mode,
+      suggested_tags: suggestedTags,
+    };
+  }
+
+  return {
+    type,
+    video: {
+      title: videoInfo.title,
+      author: videoInfo.author,
+      duration: videoInfo.duration || 0,
+      bvid: videoInfo.audioUrl,
+      link: videoInfo.webpageUrl,
+      pic: videoInfo.coverUrl,
+    },
+    subtitle_count: subtitles.length,
+    transcript_source: "whisper" as const,
+    subtitle_segments: subtitleSegments,
+    transcript,
+    summary,
+    mode,
+    suggested_tags: suggestedTags,
+  };
+}
+
 async function runTask(
   db: Database.Database,
   task: Task,
@@ -200,7 +509,7 @@ async function runTask(
 ) {
   try {
     task.status = "running";
-    updateProgress(db, task, "获取视频信息…");
+    updateProgress(db, task, "获取信息…");
 
     const config = getDecryptedConfig(db, task.userId);
     const apiKey = String(body.api_key || config.api_key || "").trim();
@@ -213,118 +522,39 @@ async function runTask(
       return;
     }
 
-    const videoId = await extractVideoId(url);
-
-    updateProgress(db, task, "获取视频元数据…");
-    const info = await fetchVideoInfo(videoId);
-    const bvid = info.bvid;
-    const cid = info.cid;
-
-    const pages = await fetchPageList(bvid);
-    const correctCid = pages.length && pages[0].cid ? pages[0].cid : cid;
-    if (correctCid !== cid) console.log("[cid] pagelist cid=%d differs from view cid=%d, using pagelist", correctCid, cid);
-
-    // Force Whisper transcription. Drop the bilibili-subtitle fallback entirely.
-    let subtitles: Array<{ from: number; to: number; content: string }> | null = null;
-    let transcriptSource: "whisper" = "whisper";
-
-    // Whisper config: prefer the caller's, fall back to the user's stored config,
-    // and finally fall back to the admin's stored config for normal users.
-    let whisperApiKey = String(body.whisper_api_key || config.whisper_api_key || "").trim();
-    let whisperBaseUrl = String(body.whisper_base_url || config.whisper_base_url || "https://api.siliconflow.cn/v1").trim();
-    let whisperModel = String(body.whisper_model || config.whisper_model || "FunAudioLLM/SenseVoiceSmall").trim();
-
-    if (!whisperApiKey && task.userEmail !== ADMIN_EMAIL) {
-      const adminRow = db
-        .prepare("SELECT id FROM users WHERE email = ?")
-        .get(ADMIN_EMAIL) as { id?: number } | undefined;
-      if (adminRow?.id) {
-        const adminConfig = getDecryptedConfig(db, adminRow.id);
-        if (adminConfig.whisper_api_key) {
-          whisperApiKey = adminConfig.whisper_api_key;
-          if (!body.whisper_base_url && !config.whisper_base_url) whisperBaseUrl = adminConfig.whisper_base_url || whisperBaseUrl;
-          if (!body.whisper_model && !config.whisper_model) whisperModel = adminConfig.whisper_model || whisperModel;
-        }
-      }
-    }
-
-    if (!whisperApiKey) {
-      failTask(db, task, "请先在设置中填写 Whisper API Key");
-      return;
-    }
-    if (!correctCid) {
-      failTask(db, task, "无法获取视频音频信息，请稍后重试");
-      return;
-    }
-
-    updateProgress(db, task, "语音转写中…");
-    try {
-      const whisperResult = await transcribeBilibiliAudio(bvid, correctCid, { apiKey: whisperApiKey, baseUrl: whisperBaseUrl, model: whisperModel });
-      if (whisperResult.segments?.length) {
-        subtitles = whisperResult.segments;
-      } else if (whisperResult.text) {
-        subtitles = [{ from: 0, to: info.duration, content: whisperResult.text }];
-      }
-    } catch (e: any) {
-      console.error("[whisper]", e);
-      failTask(db, task, `语音转写失败：${e?.message || String(e)}，请稍后重试`);
-      return;
-    }
-
-    if (!subtitles?.length) {
-      failTask(db, task, "未能获取转写内容，请稍后重试");
-      return;
-    }
-
-    let transcript = subtitles ? segmentsToParagraphs(subtitles).map((p: any) => p.content).join("\n\n") : "";
-    let transcriptTruncated = false;
-    let originalTranscriptLength = transcript.length;
-
-    if (transcript.length > MAX_SUBTITLE_CHARS) {
-      transcriptTruncated = true;
-      // Take a head + tail slice so we keep both the intro and the conclusion.
-      const head = Math.floor(MAX_SUBTITLE_CHARS * 0.7);
-      const tail = MAX_SUBTITLE_CHARS - head;
-      transcript =
-        transcript.slice(0, head) +
-        `\n\n[字幕过长，中间部分已省略 / Subtitle truncated, middle omitted]\n\n` +
-        transcript.slice(-tail);
-      updateProgress(db, task, `字幕过长（${originalTranscriptLength} 字），已自动截取前后共 ${MAX_SUBTITLE_CHARS} 字进行总结…`);
-    }
-
-    if (!transcript) {
-      failTask(db, task, "未能获取转写内容，请稍后重试");
-      return;
-    }
-
-    updateProgress(db, task, "AI 总结中…");
     const llmConfig = { apiKey, baseUrl, model };
-    let summary = await summarizeText(transcript, llmConfig, mode);
-    if (transcriptTruncated) summary += `\n\n> 字幕过长（${originalTranscriptLength} 字），本总结基于截取后的 ${MAX_SUBTITLE_CHARS} 字内容生成。`;
+    const whisperConfig = getWhisperConfig(db, task.userId, task.userEmail, body, config);
 
-    updateProgress(db, task, "生成标签…");
-    const suggestedTags = await suggestTags(info.title, info.author, summary, llmConfig);
+    // 第一步：清理 URL（从分享文本中提取纯 URL）
+    const validation = validateUrl(url);
+    const cleanedUrl = validation.cleanedUrl || url;
 
-    const subtitleSegments = subtitles
-      ? subtitles.filter((s: any) => s.content?.trim()).map((s: any) => ({ from: s.from, to: s.to, content: s.content.trim() }))
-      : [];
+    // Determine platform and process accordingly
+    let result;
+    const hasYtDlp = await isYtDlpAvailable();
+
+    // 平台检测顺序：小宇宙 → B站（原生提取更稳定）→ 其他平台（yt-dlp）
+    if (isXiaoyuzhouUrl(cleanedUrl)) {
+      result = await processXiaoyuzhou(db, task, cleanedUrl, whisperConfig, llmConfig, mode);
+    } else if (isBilibiliUrl(cleanedUrl)) {
+      // B站优先使用原生提取器（更稳定）
+      result = await processBilibili(db, task, cleanedUrl, whisperConfig, llmConfig, mode);
+    } else if (hasYtDlp && isUrlSupported(cleanedUrl)) {
+      // 使用 yt-dlp 处理支持的通用视频平台（抖音、小红书、YouTube 等）
+      result = await processWithYtDlp(db, task, cleanedUrl, whisperConfig, llmConfig, mode);
+    } else if (hasYtDlp) {
+      // 有 yt-dlp 但不确定平台，让 yt-dlp 自己尝试解析
+      result = await processWithYtDlp(db, task, cleanedUrl, whisperConfig, llmConfig, mode);
+    } else {
+      // 没有 yt-dlp，默认尝试使用 Bilibili 原生提取器
+      result = await processBilibili(db, task, cleanedUrl, whisperConfig, llmConfig, mode);
+    }
 
     // Increment daily usage
     db.prepare(
       `INSERT INTO daily_usage (user_id, date, summarize_count) VALUES (?, ?, 1)
        ON CONFLICT(user_id, date) DO UPDATE SET summarize_count = summarize_count + 1`
     ).run(task.userId, new Date().toISOString().slice(0, 10));
-
-    const result = {
-      video: { title: info.title, author: info.author, duration: info.duration, bvid, link: `https://www.bilibili.com/video/${bvid}`, pic: info.pic },
-      subtitle_count: subtitles?.length ?? 0,
-      transcript_source: transcriptSource,
-      subtitle_segments: subtitleSegments,
-      transcript,
-      summary,
-      mode,
-      suggested_tags: suggestedTags,
-    };
 
     completeTask(db, task, result);
   } catch (err: any) {

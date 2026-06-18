@@ -446,7 +446,7 @@ export function FavoritesPage({
                   }}
                 >
                   <ExternalLink className="w-3 h-3" />
-                  打开原视频
+                  {openItem.bvid?.startsWith('http') ? '打开原链接' : '打开原视频'}
                 </a>
               )}
               <button
@@ -509,7 +509,7 @@ export function FavoritesPage({
             </div>
           )}
 
-          {openItem.bvid && (
+          {openItem.bvid && !openItem.bvid.startsWith('http') && (
             <div
               className="relative w-full rounded-xl overflow-hidden"
               style={{ paddingBottom: '56.25%', background: '#05070d' }}
@@ -519,6 +519,24 @@ export function FavoritesPage({
                 frameBorder={0}
                 allowFullScreen
                 className="absolute inset-0 w-full h-full"
+              />
+            </div>
+          )}
+          {/* Podcast cover and audio player (for Xiaoyuzhou podcasts) */}
+          {openItem.bvid && openItem.bvid.startsWith('http') && openItem.pic && (
+            <div className="flex flex-col items-center gap-4 p-6 rounded-xl" style={{ background: 'linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%)' }}>
+              <img
+                src={openItem.pic}
+                alt="播客封面"
+                className="w-40 h-40 object-cover rounded-xl shadow-lg"
+              />
+              <audio
+                controls
+                className="w-full max-w-md"
+                style={{ borderRadius: '8px' }}
+                src={`/api/proxy/audio?url=${encodeURIComponent(openItem.bvid)}`}
+                preload="metadata"
+                crossOrigin="anonymous"
               />
             </div>
           )}

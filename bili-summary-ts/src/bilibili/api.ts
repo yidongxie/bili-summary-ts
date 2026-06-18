@@ -25,6 +25,13 @@ export interface SubtitleSegment {
 
 // ── Constants ───────────────────────────────────────────────────────
 
+/**
+ * 检测是否为 B站链接
+ */
+export function isBilibiliUrl(url: string): boolean {
+  return /bilibili\.com|b23\.tv/i.test(url);
+}
+
 const BILI_HEADERS: Record<string, string> = {
   'User-Agent':
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

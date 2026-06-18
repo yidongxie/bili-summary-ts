@@ -110,7 +110,8 @@ export function createDb(dataDir: string): Database.Database {
       category TEXT NOT NULL DEFAULT '',
       tags TEXT NOT NULL DEFAULT '',
       notes TEXT NOT NULL DEFAULT '',
-      mode TEXT NOT NULL DEFAULT 'brief'
+      mode TEXT NOT NULL DEFAULT 'brief',
+      pic TEXT NOT NULL DEFAULT ''
     );
 
    CREATE TABLE IF NOT EXISTS user_configs (
@@ -158,6 +159,15 @@ export function createDb(dataDir: string): Database.Database {
   const have = new Set(cols.map((c) => c.name));
   if (!have.has("obsidian_vault_name")) {
     db.exec("ALTER TABLE user_configs ADD COLUMN obsidian_vault_name TEXT NOT NULL DEFAULT ''");
+  }
+
+  // Migration: add pic column for cover image
+  const libCols = db
+    .prepare("PRAGMA table_info(library_items)")
+    .all() as Array<{ name: string }>;
+  const haveLib = new Set(libCols.map((c) => c.name));
+  if (!haveLib.has("pic")) {
+    db.exec("ALTER TABLE library_items ADD COLUMN pic TEXT NOT NULL DEFAULT ''");
   }
 
   return db;

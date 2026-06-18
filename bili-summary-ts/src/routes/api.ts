@@ -2,7 +2,11 @@
 
 import { Router, Request, Response } from "express";
 import crypto from "crypto";
+import https from "https";
+import http from "http";
+import { URL } from "url";
 import Database from "better-sqlite3";
+import { isYtDlpAvailable, getYtDlpVersion } from "../common/YtDlpExtractor";
 import {
   getPublicConfig,
   getDecryptedConfig,
@@ -232,6 +236,25 @@ export function createApiRouter(db: Database.Database): Router {
     res.json({ success: true, config: pub });
   });
 
+  // Check yt-dlp availability
+  router.get("/api/yt-dlp/status", async (req: Request, res: Response) => {
+    try {
+      const available = await isYtDlpAvailable();
+      const version = await getYtDlpVersion();
+      res.json({
+        success: true,
+        available,
+        version,
+        supports: ["抖音", "小红书", "B站", "YouTube", "小宇宙", "1000+ 其他网站"],
+      });
+    } catch (error: any) {
+      res.json({
+        success: false,
+        error: error.message,
+      });
+    }
+  });
+
   router.post("/api/suggest-tags", async (req: Request, res: Response) => {
     const userId = requireUser(req, res);
     if (!userId) return;
@@ -330,6 +353,7 @@ export function createApiRouter(db: Database.Database): Router {
       duration: video.duration,
       bvid: video.bvid,
       link: video.link,
+      pic: video.pic,
       summary,
       transcript: String(req.body.transcript ?? "").trim(),
       subtitle_count: Number(req.body.subtitle_count ?? 0) || 0,
@@ -392,6 +416,69 @@ export function createApiRouter(db: Database.Database): Router {
       vault_name: config.obsidian_vault_name || "",
       markdown: md,
     });
+  });
+
+  // ── Audio proxy for Xiaoyuzhou podcast (bypasses CORS / Referer restriction) ─
+  router.get("/api/proxy/audio", async (req: Request, res: Response) => {
+    const url = String(req.query.url || "").trim();
+    if (!url) {
+      res.status(400).json({ success: false, error: "缺少音频URL" });
+      return;
+    }
+
+    try {
+      const audioRes = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Referer": "https://www.xiaoyuzhoufm.com/",
+          "Range": req.headers.range || "bytes=0-",
+        },
+      });
+
+      if (!audioRes.ok) {
+        console.error("[Audio proxy] Failed to fetch audio:", audioRes.status, url);
+        res.status(audioRes.status).json({ success: false, error: "音频获取失败: " + audioRes.statusText });
+        return;
+      }
+
+      // Set response headers
+      res.status(audioRes.status === 206 ? 206 : 200);
+
+      const forwardHeaders = [
+        "content-type",
+        "content-length",
+        "content-range",
+        "accept-ranges",
+        "cache-control",
+        "etag",
+        "last-modified",
+      ];
+      forwardHeaders.forEach((h) => {
+        const val = audioRes.headers.get(h);
+        if (val) res.setHeader(h, val);
+      });
+
+      // CORS headers
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Range");
+
+      // Stream the audio
+      const reader = audioRes.body?.getReader();
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+      }
+      res.end();
+    } catch (err: any) {
+      console.error("[Audio proxy error]", err.message, url);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, error: "音频代理失败: " + err.message });
+      }
+    }
   });
 
   return router;

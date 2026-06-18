@@ -35,6 +35,17 @@ export type VideoMeta = {
   pic?: string;
 };
 
+export type PodcastMeta = {
+  title: string;
+  author: string;
+  podcastName: string;
+  duration: number;
+  id: string;
+  link: string;
+  cover?: string;
+  audioUrl?: string;
+};
+
 export type SubtitleSegment = {
   from: number;
   to: number;
@@ -42,7 +53,9 @@ export type SubtitleSegment = {
 };
 
 export type SummaryResult = {
-  video: VideoMeta;
+  type?: 'bilibili' | 'xiaoyuzhou' | 'douyin' | 'xiaohongshu' | 'wechat';
+  video?: VideoMeta;
+  podcast?: PodcastMeta;
   summary: string;
   transcript?: string;
   subtitle_count?: number;
@@ -68,6 +81,7 @@ export type LibraryItem = {
   tags?: string[];
   notes?: string;
   mode?: string;
+  pic?: string;
 };
 
 export type LibraryListResponse = {

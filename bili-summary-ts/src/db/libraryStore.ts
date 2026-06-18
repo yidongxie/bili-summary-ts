@@ -19,6 +19,7 @@ export interface LibraryItem {
   tags: string[];
   notes: string;
   mode: string;
+  pic: string;
 }
 
 export function loadLibrary(db: Database.Database, userId: number): LibraryItem[] {
@@ -56,7 +57,7 @@ export function saveLibraryItem(
       `UPDATE library_items SET
         updated_at = ?, title = ?, author = ?, duration = ?, bvid = ?, link = ?,
         summary = ?, transcript = ?, subtitle_count = ?, category = ?, tags = ?,
-        notes = ?, mode = ?
+        notes = ?, mode = ?, pic = ?
        WHERE id = ? AND user_id = ?`
     ).run(
       now,
@@ -72,6 +73,7 @@ export function saveLibraryItem(
       JSON.stringify(data.tags || JSON.parse(existing.tags || "[]")),
       data.notes || existing.notes || "",
       data.mode || existing.mode || "brief",
+      data.pic || existing.pic || "",
       id,
       userId
     );
@@ -79,8 +81,8 @@ export function saveLibraryItem(
     db.prepare(
       `INSERT INTO library_items
         (id, user_id, created_at, updated_at, title, author, duration, bvid, link,
-         summary, transcript, subtitle_count, category, tags, notes, mode)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         summary, transcript, subtitle_count, category, tags, notes, mode, pic)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       userId,
@@ -97,7 +99,8 @@ export function saveLibraryItem(
       data.category || "待整理",
       JSON.stringify(data.tags || []),
       data.notes || "",
-      data.mode || "brief"
+      data.mode || "brief",
+      data.pic || ""
     );
   }
 
@@ -126,6 +129,7 @@ function rowToItem(row: any): LibraryItem {
     tags: parseTags(row.tags),
     notes: row.notes,
     mode: row.mode,
+    pic: row.pic || "",
   };
 }
 

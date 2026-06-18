@@ -58,7 +58,8 @@ export default function App() {
   function navTo(key: NavKey) {
     if (key === 'home') setView({ kind: 'home' });
     else if (key === 'library') setView({ kind: 'library' });
-    else setView({ kind: 'settings' });
+    else if (key === 'settings') setView({ kind: 'settings' });
+    else if (key === 'summarizer') setView({ kind: 'summarizer' });
   }
 
   const navActive: NavKey =
@@ -66,7 +67,9 @@ export default function App() {
       ? 'library'
       : view.kind === 'settings'
         ? 'settings'
-        : 'home';
+        : view.kind === 'summarizer'
+          ? 'summarizer'
+          : 'home';
 
   function handleSubmitSummary(url: string, mode: SummaryMode) {
     if (!user) {

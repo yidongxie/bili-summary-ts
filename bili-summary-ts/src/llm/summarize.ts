@@ -74,10 +74,12 @@ function temperatureForMode(mode: SummaryMode): number {
 async function chatCompletion(config: LlmConfig, messages: { role: string; content: string }[], maxTokens: number, mode?: SummaryMode): Promise<string> {
   const temp = mode ? temperatureForMode(mode) : 0.1;
   const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+  // 清理 API Key，移除换行和无效字符
+  const cleanApiKey = (config.apiKey || '').replace(/[\r\n\s]+/g, '').trim();
   const res = await postJson<ChatCompletionResponse>(
     url,
     { model: config.model, messages, temperature: temp, max_tokens: maxTokens, seed: 42 },
-    { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
+    { Authorization: `Bearer ${cleanApiKey}`, 'Content-Type': 'application/json' },
   );
   return res.choices[0].message.content;
 }

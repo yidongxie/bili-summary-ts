@@ -122,9 +122,10 @@ export function ResultPage({
             setResult(data);
             setSelectedTags(new Set(data.suggested_tags || []));
             setPhase('success');
-            // Check if this video is already saved.
-            if (data.video?.bvid) {
-              checkLibraryByBvid(data.video.bvid)
+            // Check if this video/podcast is already saved.
+            const idToCheck = data.video?.bvid || data.podcast?.id;
+            if (idToCheck) {
+              checkLibraryByBvid(idToCheck)
                 .then((r) => setSaved(!!r.saved))
                 .catch(() => {});
             }
@@ -181,9 +182,10 @@ export function ResultPage({
     if (!result) return;
     setRegenerating(true);
     try {
+      const meta = result.video || result.podcast;
       const data = await suggestTags({
-        title: result.video?.title || '',
-        author: result.video?.author || '',
+        title: meta?.title || '',
+        author: meta?.author || '',
         summary: result.summary || '',
       });
       setResult({ ...result, suggested_tags: data.tags || [] });
@@ -219,8 +221,16 @@ export function ResultPage({
     if (!result) return;
     setSaving(true);
     try {
+      const meta = result.video || {
+        title: result.podcast?.title || '',
+        author: result.podcast?.author || '',
+        duration: result.podcast?.duration || 0,
+        bvid: result.podcast?.audioUrl || result.podcast?.id || '',
+        link: result.podcast?.link || '',
+        pic: result.podcast?.cover || '',
+      };
       const data = await saveLibrary({
-        video: result.video,
+        video: meta,
         summary: result.summary,
         transcript: result.transcript || '',
         subtitle_count: result.subtitle_count,
@@ -254,7 +264,7 @@ export function ResultPage({
               {progress}
             </div>
             <div className="text-xs mt-2" style={{ color: '#7db8d4' }}>
-              视频较长时可能需要数分钟，处理过程会逐步显示进度。
+              视频/播客较长时可能需要数分钟，处理过程会逐步显示进度。
             </div>
           </div>
           <button
@@ -318,7 +328,9 @@ export function ResultPage({
 
   if (!result) return null;
 
-  const v = result.video;
+  const v = result.video || result.podcast;
+  const isPodcast = result.type === 'xiaoyuzhou' || !!result.podcast;
+  const isShortVideo = result.type === 'douyin' || result.type === 'xiaohongshu' || result.type === 'wechat';
   const paragraphs = groupTranscript(result.subtitle_segments);
 
   return (
@@ -405,8 +417,14 @@ export function ResultPage({
             <div className="px-4 py-3 grid grid-cols-[60px_1fr] gap-x-3 gap-y-1 text-xs">
               <span style={{ color: '#7db8d4' }}>标题</span>
               <span style={{ color: '#0d2d45', fontWeight: 700 }}>{v.title}</span>
-              <span style={{ color: '#7db8d4' }}>UP主</span>
+              <span style={{ color: '#7db8d4' }}>{isPodcast ? '主播' : 'UP主'}</span>
               <span style={{ color: '#0d2d45' }}>{v.author}</span>
+              {isPodcast && (result.podcast?.podcastName) && (
+                <>
+                  <span style={{ color: '#7db8d4' }}>播客</span>
+                  <span style={{ color: '#0d2d45' }}>{result.podcast.podcastName}</span>
+                </>
+              )}
               <span style={{ color: '#7db8d4' }}>时长</span>
               <span style={{ color: '#0d2d45' }}>{formatDuration(v.duration)}</span>
               <span style={{ color: '#7db8d4' }}>链接</span>
@@ -419,7 +437,7 @@ export function ResultPage({
                 {v.link}
               </a>
             </div>
-            {v.bvid && (
+            {v.bvid && !isPodcast && !isShortVideo && (
               <div
                 className="relative w-full"
                 style={{ paddingBottom: '56.25%', background: '#05070d' }}
@@ -432,6 +450,44 @@ export function ResultPage({
                 />
               </div>
             )}
+            {isPodcast && result.podcast?.cover && (
+              <div className="flex flex-col items-center gap-4 p-4" style={{ background: 'linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%)' }}>
+                <img
+                  src={result.podcast.cover}
+                  alt="播客封面"
+                  className="w-40 h-40 object-cover rounded-xl shadow-lg"
+                />
+                {result.podcast.audioUrl && (
+                  <audio
+                    controls
+                    className="w-full max-w-md"
+                    style={{ borderRadius: '8px' }}
+                    src={`/api/proxy/audio?url=${encodeURIComponent(result.podcast.audioUrl)}`}
+                    preload="metadata"
+                    crossOrigin="anonymous"
+                  />
+                )}
+              </div>
+            )}
+            {isShortVideo && result.video?.pic && (
+              <div className="flex flex-col items-center gap-4 p-4" style={{ background: 'linear-gradient(180deg, #fff1f2 0%, #ffe4e6 100%)' }}>
+                <img
+                  src={result.video.pic}
+                  alt="视频封面"
+                  className="w-40 h-40 object-cover rounded-xl shadow-lg"
+                />
+                {result.video.bvid && (
+                  <audio
+                    controls
+                    className="w-full max-w-md"
+                    style={{ borderRadius: '8px' }}
+                    src={`/api/proxy/audio?url=${encodeURIComponent(result.video.bvid)}`}
+                    preload="metadata"
+                    crossOrigin="anonymous"
+                  />
+                )}
+              </div>
+            )}
           </div>
 
           <div className="rounded-2xl p-5 flex flex-col gap-3" style={panelStyle}>
@@ -440,7 +496,7 @@ export function ResultPage({
               style={{ borderColor: 'rgba(14,165,233,0.10)' }}
             >
               <span className="text-sm font-bold" style={{ color: '#0d2d45' }}>
-                视频文本
+                {isPodcast ? '音频文本' : '视频文本'}
               </span>
               <button
                 type="button"

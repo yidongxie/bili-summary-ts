@@ -18,6 +18,18 @@ const PLATFORMS = [
     ),
   },
   {
+    name: '小宇宙',
+    color: '#ff6b35',
+    bg: 'rgba(255,107,53,0.08)',
+    border: 'rgba(255,107,53,0.20)',
+    enabled: true,
+    icon: (
+      <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5c-.55 0-1-.45-1-1v-5c0-.55.45-1 1-1s1 .45 1 1v5c0 .55-.45 1-1 1zm4 0c-.55 0-1-.45-1-1v-5c0-.55.45-1 1-1s1 .45 1 1v5c0 .55-.45 1-1 1zm-8 0c-.55 0-1-.45-1-1v-5c0-.55.45-1 1-1s1 .45 1 1v5c0 .55-.45 1-1 1z" />
+      </svg>
+    ),
+  },
+  {
     name: '小红书',
     color: '#ff2442',
     bg: 'rgba(255,36,66,0.08)',
@@ -103,7 +115,7 @@ export function HomePage({
   function handleSubmit() {
     const trimmed = query.trim();
     if (!trimmed) {
-      setHint('请输入视频链接');
+      setHint('请输入视频或播客链接');
       return;
     }
     setHint(null);
@@ -133,7 +145,7 @@ export function HomePage({
           让你的音视频看得快、搜得到、用得好
         </h1>
         <p className="text-sm" style={{ color: '#5b8fae' }}>
-          粘贴 B 站视频链接，一键生成可复习、可导出的学习笔记
+          粘贴 B 站视频或小宇宙播客链接，一键生成可复习、可导出的学习笔记
         </p>
       </div>
 
@@ -206,7 +218,7 @@ export function HomePage({
                   handleSubmit();
                 }
               }}
-              placeholder="快速体验：B站:【渐构】万字科普GPT-4o，YouTube频道/视频链接..."
+              placeholder="快速体验：粘贴 B 站视频或小宇宙播客链接..."
               className="flex-1 bg-transparent outline-none text-sm"
               style={{ color: '#0d2d45', caretColor: '#0ea5e9' }}
             />

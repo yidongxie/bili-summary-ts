@@ -164,6 +164,8 @@ function postMultipartTranscribe(filePath: string, config: WhisperConfig): Promi
     ];
     const body = Buffer.concat(parts);
     const mod = url.protocol === 'https:' ? https : http;
+    // 清理 API Key，移除换行和无效字符
+    const cleanApiKey = (config.apiKey || '').replace(/[\r\n\s]+/g, '').trim();
     const req = mod.request(
       url,
       {
@@ -171,7 +173,7 @@ function postMultipartTranscribe(filePath: string, config: WhisperConfig): Promi
         headers: {
           'Content-Type': `multipart/form-data; boundary=${boundary}`,
           'Content-Length': body.length,
-          Authorization: `Bearer ${config.apiKey}`,
+          Authorization: `Bearer ${cleanApiKey}`,
         },
         timeout: 600000,
       },
@@ -208,6 +210,33 @@ export interface AudioTranscribeResult {
   segments: TranscribedSegment[];
 }
 
+/** Download a generic audio file from any URL (with custom headers support) */
+function downloadGenericAudio(url: string, dest: string, headers?: Record<string, string>, redirects = 5): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const mod = parsed.protocol === 'https:' ? https : http;
+    const req = mod.get(url, { headers: headers || {}, timeout: 120000 }, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
+        res.resume();
+        const next = new URL(res.headers.location, url).toString();
+        downloadGenericAudio(next, dest, headers, redirects - 1).then(resolve, reject);
+        return;
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        reject(new Error(`download HTTP ${res.statusCode}`));
+        return;
+      }
+      const out = fs.createWriteStream(dest);
+      res.pipe(out);
+      out.on('finish', () => out.close(() => resolve()));
+      out.on('error', reject);
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('download timeout')); });
+  });
+}
+
 /** End-to-end: pull bilibili audio, convert, send to whisper, return segments. */
 export async function transcribeBilibiliAudio(
   bvid: string,
@@ -221,6 +250,26 @@ export async function transcribeBilibiliAudio(
   try {
     const streamUrl = await getAudioStreamUrl(bvid, cid);
     await downloadToFile(streamUrl, rawFile);
+    await ffmpegToMp3(rawFile, mp3File);
+    const result = await postMultipartTranscribe(mp3File, whisper);
+    return { text: result.text, segments: result.segments || [] };
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+}
+
+/** End-to-end: download generic audio file, convert, send to whisper, return segments. */
+export async function transcribeAudioUrl(
+  audioUrl: string,
+  whisper: WhisperConfig,
+  headers?: Record<string, string>,
+): Promise<AudioTranscribeResult> {
+  if (!whisper.apiKey) throw new Error('缺少 Whisper API Key');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bilistudy-podcast-'));
+  const rawFile = path.join(tmpDir, 'audio.bin');
+  const mp3File = path.join(tmpDir, 'audio.mp3');
+  try {
+    await downloadGenericAudio(audioUrl, rawFile, headers);
     await ffmpegToMp3(rawFile, mp3File);
     const result = await postMultipartTranscribe(mp3File, whisper);
     return { text: result.text, segments: result.segments || [] };
