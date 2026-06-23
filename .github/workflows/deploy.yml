@@ -14,13 +14,24 @@ jobs:
       - name: Pack application
         run: |
           set -e
-          cd bili-summary-ts
           tar \
+            --exclude='./.git' \
+            --exclude='./.github' \
+            --exclude='./.claude' \
+            --exclude='./_backup_local' \
             --exclude='./node_modules' \
-            --exclude='./dist' \
             --exclude='./data' \
+            --exclude='./dist' \
+            --exclude='./public/dist' \
             --exclude='./logs' \
-            -czf ../bili-summary-release.tgz .
+            --exclude='./.env' \
+            --exclude='./.env.*' \
+            --exclude='./bili-summary-ts/node_modules' \
+            --exclude='./bili-summary-ts/data' \
+            --exclude='./bili-summary-ts/dist' \
+            --exclude='./bili-summary-ts/public/dist' \
+            --exclude='./bili-summary-ts/logs' \
+            -czf bili-summary-release.tgz .
 
       - name: Upload release bundle
         uses: appleboy/scp-action@v1.0.0
@@ -59,7 +70,6 @@ jobs:
               if ! command -v ffmpeg >/dev/null 2>&1; then
                 echo "Pkg manager failed; trying static binary from Aliyun mirror"
                 mkdir -p /opt/bili-summary/bin /tmp/ffstatic && cd /tmp/ffstatic
-                # Aliyun OSS-hosted static build (CN-friendly). Falls back to johnvansickle.
                 curl -fL --connect-timeout 20 -o ff.tar.xz \
                   "https://mirrors.aliyun.com/zabbix/agent2plugins/ffmpeg-release-amd64-static.tar.xz" \
                   || curl -fL --connect-timeout 20 -o ff.tar.xz \
@@ -81,6 +91,29 @@ jobs:
               echo "WARN: no ffmpeg found on host; whisper will fail until installed."
             fi
             [ -n "$FFMPEG_BIN" ] && ("$FFMPEG_BIN" -version | head -n1 || true)
+
+            echo "=== STEP: install yt-dlp (one-shot) ==="
+            if ! command -v yt-dlp >/dev/null 2>&1 && [ ! -x "/opt/bili-summary/bin/yt-dlp" ]; then
+              echo "Installing yt-dlp (for Douyin, Xiaohongshu, YouTube support)..."
+              mkdir -p /opt/bili-summary/bin
+              # Use GitHub mirror for faster download in China
+              curl -fL --connect-timeout 30 -o /opt/bili-summary/bin/yt-dlp \
+                "https://mirror.ghproxy.com/https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" \
+                || curl -fL --connect-timeout 30 -o /opt/bili-summary/bin/yt-dlp \
+                "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
+              chmod +x /opt/bili-summary/bin/yt-dlp
+              echo "yt-dlp installed successfully"
+            fi
+            if command -v yt-dlp >/dev/null 2>&1; then
+              YT_DLP_BIN="$(command -v yt-dlp)"
+            elif [ -x "/opt/bili-summary/bin/yt-dlp" ]; then
+              YT_DLP_BIN="/opt/bili-summary/bin/yt-dlp"
+            else
+              YT_DLP_BIN=""
+              echo "WARN: no yt-dlp found on host; Douyin/Xiaohongshu/YouTube may fail"
+            fi
+            [ -n "$YT_DLP_BIN" ] && ("$YT_DLP_BIN" --version || true)
+
             REPO_DIR="/opt/bili-summary"
             PROJ_DIR="$REPO_DIR/bili-summary-ts"
 
@@ -119,14 +152,13 @@ jobs:
             # as the primary static dir (see src/index.ts).
             npm run build:web
             echo "=== STEP: migrate ==="
-            node /opt/bili-summary/bili-summary-ts/deploy-migrate.js
-
+            node "$PROJ_DIR/deploy-migrate.js"
 
             echo "=== STEP: pm2 restart ==="
             # Start fresh (PM2 restart keeps old env, so delete + start)
             source "$REPO_DIR/.env"
             pm2 delete bilistudy 2>/dev/null || true
-            ENCRYPTION_KEY=$ENCRYPTION_KEY FFMPEG_PATH=$FFMPEG_BIN pm2 start dist/index.js --name bilistudy
+            PATH="/opt/bili-summary/bin:$PATH" ENCRYPTION_KEY=$ENCRYPTION_KEY FFMPEG_PATH=$FFMPEG_BIN pm2 start dist/index.js --name bilistudy
             pm2 save
 
             echo "=== Verify ==="
@@ -139,4 +171,10 @@ jobs:
             else
               echo "ERROR: public/dist/index.html missing — vite build did not run"
               exit 1
+            fi
+            # Verify yt-dlp available in PATH for the app
+            if PATH="/opt/bili-summary/bin:$PATH" command -v yt-dlp >/dev/null 2>&1; then
+              echo "yt-dlp available: $(PATH="/opt/bili-summary/bin:$PATH" yt-dlp --version)"
+            else
+              echo "WARN: yt-dlp not accessible from app PATH"
             fi

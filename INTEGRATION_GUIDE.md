@@ -75,7 +75,7 @@ yt-dlp --version
 
 ```bash
 # 克隆项目
-git clone <your-repo-url>
+git clone <your-repo-url> bili-summary-ts
 cd bili-summary-ts
 
 # 安装依赖

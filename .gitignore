@@ -1,7 +1,7 @@
 # Repo-root .gitignore — defends against `git add -A` accidents.
 #
-# This file lives at the git toplevel (one level above bili-summary-ts/).
-# Project-specific ignores still live in bili-summary-ts/.gitignore.
+# This file lives at the git toplevel. Project-specific build/runtime
+# ignores are also kept here because the app now lives at the repo root.
 
 # Secrets — never commit
 .ssh_*
@@ -9,12 +9,45 @@
 *.key
 id_rsa*
 id_ed25519*
+.env
+.env.*
+!.env.example
+
+# Repo-root local runtime / backup directories
+/.claude/
+/_backup_local/
+/data/
+/node_modules/
+
+# App build/runtime outputs
+/dist/
+/public/dist/
+/logs/
+*.log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Legacy nested runtime directories left behind after flattening
+/bili-summary-ts/.claude/
+/bili-summary-ts/data/
+/bili-summary-ts/node_modules/
+/bili-summary-ts/dist/
+/bili-summary-ts/public/dist/
+/bili-summary-ts/logs/
 
 # One-off patch / debug artefacts that have shown up in this tree before
 _*.py
 _*.b64
 _*.txt
 _writer.py
+*_hidden.vbs
+_run-*
+run.bat
+run.js
+start.bat
+start-daemon.bat
+stop.bat
 
 # OS noise
 .DS_Store
