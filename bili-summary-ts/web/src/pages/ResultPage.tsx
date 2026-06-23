@@ -17,6 +17,7 @@ import {
   type SummaryResult,
   type SubtitleSegment,
 } from '@/lib/api';
+import { copyText } from '@/lib/clipboard';
 import { formatDuration, formatTimelineTime, markdownToHtml, parseTagInput } from '@/lib/format';
 
 type Phase = 'submitting' | 'progress' | 'success' | 'error';
@@ -199,22 +200,14 @@ export function ResultPage({
 
   async function handleCopySummary() {
     if (!result) return;
-    try {
-      await navigator.clipboard.writeText(result.summary || '');
-      onShowToast('总结已复制', 'ok');
-    } catch {
-      onShowToast('复制失败', 'error');
-    }
+    const copied = await copyText(result.summary || '');
+    onShowToast(copied ? '总结已复制' : '复制失败，请手动选择文本复制', copied ? 'ok' : 'error');
   }
 
   async function handleCopyTranscript() {
     if (!result) return;
-    try {
-      await navigator.clipboard.writeText(result.transcript || '');
-      onShowToast('视频文本已复制', 'ok');
-    } catch {
-      onShowToast('复制失败', 'error');
-    }
+    const copied = await copyText(result.transcript || '');
+    onShowToast(copied ? '视频文本已复制' : '复制失败，请手动选择文本复制', copied ? 'ok' : 'error');
   }
 
   async function handleSave() {

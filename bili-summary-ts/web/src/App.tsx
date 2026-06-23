@@ -179,6 +179,17 @@ export default function App() {
               onRequireLogin={() => setLoginOpen(true)}
             />
           )}
+
+          <footer className="relative z-10 px-6 py-4 text-center text-xs" style={{ color: '#5b8fae' }}>
+            <a
+              href="https://beian.miit.gov.cn/"
+              target="_blank"
+              rel="noreferrer"
+              className="transition hover:text-sky-700"
+            >
+              粤ICP备2026080744号
+            </a>
+          </footer>
         </div>
       </div>
 
