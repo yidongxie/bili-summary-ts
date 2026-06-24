@@ -31,7 +31,8 @@ jobs:
             --exclude='./bili-summary-ts/dist' \
             --exclude='./bili-summary-ts/public/dist' \
             --exclude='./bili-summary-ts/logs' \
-            -czf bili-summary-release.tgz .
+            -czf /tmp/bili-summary-release.tgz .
+          mv /tmp/bili-summary-release.tgz bili-summary-release.tgz
 
       - name: Upload release bundle
         uses: appleboy/scp-action@v1.0.0
