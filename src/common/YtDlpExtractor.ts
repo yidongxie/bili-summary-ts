@@ -80,7 +80,7 @@ export async function getYtDlpVersion(): Promise<string | null> {
 /**
  * 提取视频信息
  */
-export async function extractVideoInfo(url: string): Promise<VideoInfo> {
+export async function extractVideoInfo(url: string, cookies?: string): Promise<VideoInfo> {
   const ytDlpPath = findYtDlpPath();
   if (!ytDlpPath) {
     throw new Error("yt-dlp 未安装，请先安装 yt-dlp");
@@ -96,14 +96,34 @@ export async function extractVideoInfo(url: string): Promise<VideoInfo> {
       "--print-json",
       "--format", "bestaudio/best",
     ];
-    if (process.env.YT_DLP_COOKIES_FILE) {
-      args.push("--cookies", process.env.YT_DLP_COOKIES_FILE);
-    } else if (process.env.YT_DLP_BROWSER_COOKIES) {
-      args.push("--cookies-from-browser", process.env.YT_DLP_BROWSER_COOKIES);
+    let cookieFile = "";
+    try {
+      if (cookies?.trim()) {
+        cookieFile = path.join(process.cwd(), "data", `yt-dlp-cookies-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`);
+        fs.mkdirSync(path.dirname(cookieFile), { recursive: true });
+        fs.writeFileSync(cookieFile, cookies.trim() + "\n", { mode: 0o600 });
+      }
+      if (cookieFile) {
+        args.push("--cookies", cookieFile);
+      } else if (process.env.YT_DLP_COOKIES_FILE) {
+        args.push("--cookies", process.env.YT_DLP_COOKIES_FILE);
+      } else if (process.env.YT_DLP_BROWSER_COOKIES) {
+        args.push("--cookies-from-browser", process.env.YT_DLP_BROWSER_COOKIES);
+      }
+    } catch (err: any) {
+      console.error("[yt-dlp] cookies setup failed:", err.message);
     }
     args.push(url);
 
-    const { stdout } = await execFileAsync(ytDlpPath, args, { timeout: 60000 });
+    let stdout = "";
+    try {
+      const result = await execFileAsync(ytDlpPath, args, { timeout: 60000 });
+      stdout = result.stdout;
+    } finally {
+      if (cookieFile) {
+        try { fs.unlinkSync(cookieFile); } catch { /* ignore */ }
+      }
+    }
     const data = JSON.parse(stdout.trim());
 
     // 提取音频 URL - 从 requested_formats 或直接获取 url

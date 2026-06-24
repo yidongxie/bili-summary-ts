@@ -14,6 +14,7 @@ export type CurrentUser = {
 export type AppConfig = {
   api_key_set?: boolean;
   whisper_api_key_set?: boolean;
+  yt_dlp_cookies_set?: boolean;
   deepseek_model?: string;
   deepseek_base_url?: string;
   whisper_base_url?: string;
@@ -24,6 +25,7 @@ export type AppConfig = {
   // legacy
   api_key?: string;
   whisper_api_key?: string;
+  yt_dlp_cookies?: string;
 };
 
 export type VideoMeta = {

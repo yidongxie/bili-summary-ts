@@ -458,7 +458,8 @@ async function processWithYtDlp(
   url: string,
   whisperConfig: { apiKey: string; baseUrl: string; model: string },
   llmConfig: { apiKey: string; baseUrl: string; model: string },
-  mode: SummaryMode
+  mode: SummaryMode,
+  ytDlpCookies = ""
 ) {
   if (!whisperConfig.apiKey) {
     throw new Error("请先在设置中填写 Whisper API Key");
@@ -476,7 +477,7 @@ async function processWithYtDlp(
   updateProgress(db, task, "正在获取视频信息…");
   let videoInfo;
   try {
-    videoInfo = await extractWithYtDlp(cleanedUrl);
+    videoInfo = await extractWithYtDlp(cleanedUrl, ytDlpCookies);
   } catch (error: any) {
     // 给出更友好的错误提示
     let message = error.message || "视频提取失败";
@@ -622,10 +623,10 @@ async function runTask(
       result = await processBilibili(db, task, cleanedUrl, whisperConfig, llmConfig, mode);
     } else if (hasYtDlp && isUrlSupported(cleanedUrl)) {
       // 使用 yt-dlp 处理支持的通用视频平台（抖音、小红书、YouTube 等）
-      result = await processWithYtDlp(db, task, cleanedUrl, whisperConfig, llmConfig, mode);
+      result = await processWithYtDlp(db, task, cleanedUrl, whisperConfig, llmConfig, mode, config.yt_dlp_cookies);
     } else if (hasYtDlp) {
       // 有 yt-dlp 但不确定平台，让 yt-dlp 自己尝试解析
-      result = await processWithYtDlp(db, task, cleanedUrl, whisperConfig, llmConfig, mode);
+      result = await processWithYtDlp(db, task, cleanedUrl, whisperConfig, llmConfig, mode, config.yt_dlp_cookies);
     } else {
       // 没有 yt-dlp，默认尝试使用 Bilibili 原生提取器
       result = await processBilibili(db, task, cleanedUrl, whisperConfig, llmConfig, mode);

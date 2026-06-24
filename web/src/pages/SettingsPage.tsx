@@ -94,11 +94,13 @@ export function SettingsPage({
   const [whisperApiUrl, setWhisperApiUrl] = useState('https://api.siliconflow.cn/v1');
   const [whisperModel, setWhisperModel] = useState('FunAudioLLM/SenseVoiceSmall');
   const [defaultCategory, setDefaultCategory] = useState('待整理');
+  const [ytDlpCookies, setYtDlpCookies] = useState('');
   const [obsidianVault, setObsidianVault] = useState('');
   const [obsidianSubfolder, setObsidianSubfolder] = useState('BiliStudy');
 
   const [apiKeySet, setApiKeySet] = useState(false);
   const [whisperKeySet, setWhisperKeySet] = useState(false);
+  const [ytDlpCookiesSet, setYtDlpCookiesSet] = useState(false);
 
   const [status, setStatus] = useState<{ msg: string; type: 'ok' | 'error' | 'info' } | null>(
     null,
@@ -122,6 +124,7 @@ export function SettingsPage({
       setObsidianSubfolder(cfg.obsidian_folder || 'BiliStudy');
       setApiKeySet(!!cfg.api_key_set);
       setWhisperKeySet(!!cfg.whisper_api_key_set);
+      setYtDlpCookiesSet(!!cfg.yt_dlp_cookies_set);
     });
     return () => {
       cancelled = true;
@@ -187,6 +190,7 @@ export function SettingsPage({
         whisper_base_url: whisperApiUrl.trim() || 'https://api.siliconflow.cn/v1',
         whisper_model: whisperModel.trim() || 'FunAudioLLM/SenseVoiceSmall',
         default_category: defaultCategory.trim() || '待整理',
+        yt_dlp_cookies: ytDlpCookies.trim(),
         obsidian_vault_name: obsidianVault.trim(),
         obsidian_folder: obsidianSubfolder.trim() || 'BiliStudy',
       };
@@ -199,8 +203,10 @@ export function SettingsPage({
       onConfigSaved(data.config);
       setApiKeySet(!!data.config.api_key_set);
       setWhisperKeySet(!!data.config.whisper_api_key_set);
+      setYtDlpCookiesSet(!!data.config.yt_dlp_cookies_set);
       setDeepseekKey('');
       setWhisperKey('');
+      setYtDlpCookies('');
       setStatus({ msg: '设置已保存', type: 'ok' });
     } catch (err: any) {
       setStatus({ msg: err.message || '保存失败', type: 'error' });
@@ -358,7 +364,7 @@ export function SettingsPage({
         <div className="rounded-2xl p-5 flex flex-col gap-4" style={cardStyle}>
           <div className="flex items-center gap-3">
             <LogoIcon letter="G" gradient="linear-gradient(135deg,#34d399,#06b6d4)" />
-            <SectionTitle title="通用偏好" desc="控制新总结被创建后使用的保存分类。" />
+            <SectionTitle title="通用偏好" desc="控制新总结被创建后使用的保存分类与平台 Cookies。" />
           </div>
 
           <div>
@@ -369,6 +375,22 @@ export function SettingsPage({
               value={defaultCategory}
               onChange={(e) => setDefaultCategory(e.target.value)}
             />
+          </div>
+
+          <div className="border-t pt-3" style={{ borderColor: 'rgba(14,165,233,0.10)' }}>
+            <label style={labelStyle}>yt-dlp Cookies（抖音/小红书等平台）</label>
+            <textarea
+              style={{ ...inputStyle, minHeight: 120, resize: 'vertical', fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}
+              placeholder={ytDlpCookiesSet ? '已保存，留空则清空；粘贴 Netscape cookies.txt 内容后保存' : '粘贴 Netscape cookies.txt 内容，例如从浏览器导出的 douyin.com cookies'}
+              value={ytDlpCookies}
+              onChange={(e) => setYtDlpCookies(e.target.value)}
+            />
+            <div className="mt-1.5 flex items-center justify-between gap-2">
+              <KeyStatus configured={ytDlpCookiesSet} />
+              <span className="text-xs" style={{ color: '#7db8d4' }}>
+                Cookies 会加密保存，仅服务器调用 yt-dlp 时临时使用。
+              </span>
+            </div>
           </div>
         </div>
 

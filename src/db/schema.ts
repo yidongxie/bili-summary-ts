@@ -119,6 +119,7 @@ export function createDb(dataDir: string): Database.Database {
      api_key_enc TEXT NOT NULL DEFAULT '',
      password_hash TEXT NOT NULL DEFAULT '',
       whisper_api_key_enc TEXT NOT NULL DEFAULT '',
+      yt_dlp_cookies_enc TEXT NOT NULL DEFAULT '',
       whisper_base_url TEXT NOT NULL DEFAULT 'https://api.siliconflow.cn/v1',
       whisper_model TEXT NOT NULL DEFAULT 'FunAudioLLM/SenseVoiceSmall',
       deepseek_base_url TEXT NOT NULL DEFAULT 'https://api.deepseek.com/v1',
@@ -165,6 +166,9 @@ export function createDb(dataDir: string): Database.Database {
   const have = new Set(cols.map((c) => c.name));
   if (!have.has("obsidian_vault_name")) {
     db.exec("ALTER TABLE user_configs ADD COLUMN obsidian_vault_name TEXT NOT NULL DEFAULT ''");
+  }
+  if (!have.has("yt_dlp_cookies_enc")) {
+    db.exec("ALTER TABLE user_configs ADD COLUMN yt_dlp_cookies_enc TEXT NOT NULL DEFAULT ''");
   }
 
   // Migration: add pic column for cover image

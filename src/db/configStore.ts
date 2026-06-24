@@ -13,11 +13,13 @@ export interface PublicConfig {
   obsidian_vault_name: string;
   api_key_set: boolean;
   whisper_api_key_set: boolean;
+  yt_dlp_cookies_set: boolean;
 }
 
 export interface FullConfig {
   api_key: string;
   whisper_api_key: string;
+  yt_dlp_cookies: string;
   whisper_base_url: string;
   whisper_model: string;
   deepseek_base_url: string;
@@ -40,6 +42,7 @@ export function getPublicConfig(db: Database.Database, userId: number): PublicCo
       obsidian_vault_name: "",
       api_key_set: false,
       whisper_api_key_set: false,
+      yt_dlp_cookies_set: false,
     };
   }
   return {
@@ -52,6 +55,7 @@ export function getPublicConfig(db: Database.Database, userId: number): PublicCo
     obsidian_vault_name: row.obsidian_vault_name || "",
     api_key_set: !!row.api_key_enc,
     whisper_api_key_set: !!row.whisper_api_key_enc,
+    yt_dlp_cookies_set: !!row.yt_dlp_cookies_enc,
   };
 }
 
@@ -61,6 +65,7 @@ export function getDecryptedConfig(db: Database.Database, userId: number): FullC
     return {
       api_key: "",
       whisper_api_key: "",
+      yt_dlp_cookies: "",
       whisper_base_url: "https://api.siliconflow.cn/v1",
       whisper_model: "FunAudioLLM/SenseVoiceSmall",
       deepseek_base_url: "https://api.deepseek.com/v1",
@@ -73,6 +78,7 @@ export function getDecryptedConfig(db: Database.Database, userId: number): FullC
   return {
     api_key: decrypt(row.api_key_enc),
     whisper_api_key: decrypt(row.whisper_api_key_enc),
+    yt_dlp_cookies: decrypt(row.yt_dlp_cookies_enc),
     whisper_base_url: row.whisper_base_url || "https://api.siliconflow.cn/v1",
     whisper_model: row.whisper_model || "FunAudioLLM/SenseVoiceSmall",
     deepseek_base_url: row.deepseek_base_url || "https://api.deepseek.com/v1",
@@ -96,6 +102,8 @@ export function saveConfig(
 
   if ("api_key" in patch && patch.api_key) { updates.push("api_key_enc = @api_key_enc"); params.api_key_enc = encrypt(patch.api_key); }
  if ("whisper_api_key" in patch && patch.whisper_api_key) { updates.push("whisper_api_key_enc = @whisper_api_key_enc"); params.whisper_api_key_enc = encrypt(patch.whisper_api_key); }
+  if ("yt_dlp_cookies" in patch && patch.yt_dlp_cookies) { updates.push("yt_dlp_cookies_enc = @yt_dlp_cookies_enc"); params.yt_dlp_cookies_enc = encrypt(patch.yt_dlp_cookies); }
+  if ("yt_dlp_cookies" in patch && !patch.yt_dlp_cookies) { updates.push("yt_dlp_cookies_enc = ''"); }
   if ("whisper_base_url" in patch) { updates.push("whisper_base_url = @whisper_base_url"); params.whisper_base_url = patch.whisper_base_url; }
   if ("whisper_model" in patch) { updates.push("whisper_model = @whisper_model"); params.whisper_model = patch.whisper_model; }
   if ("deepseek_base_url" in patch) { updates.push("deepseek_base_url = @deepseek_base_url"); params.deepseek_base_url = patch.deepseek_base_url; }
