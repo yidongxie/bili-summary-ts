@@ -27,6 +27,8 @@ export interface VideoInfo {
  */
 export function findYtDlpPath(): string | null {
   const possiblePaths = [
+    // Explicit deploy/runtime override
+    process.env.YT_DLP_PATH || "",
     // 项目 tools 目录
     path.join(process.cwd(), "tools", "yt-dlp.exe"),
     path.join(process.cwd(), "tools", "yt-dlp"),
@@ -39,6 +41,7 @@ export function findYtDlpPath(): string | null {
   ];
 
   for (const p of possiblePaths) {
+    if (!p) continue;
     if (p === "yt-dlp" || p === "yt-dlp.exe") {
       return p; // 全局命令
     }
@@ -89,10 +92,16 @@ export async function extractVideoInfo(url: string): Promise<VideoInfo> {
     const args = [
       "--no-playlist",
       "--skip-download",
+      "--no-update",
       "--print-json",
       "--format", "bestaudio/best",
-      url,
     ];
+    if (process.env.YT_DLP_COOKIES_FILE) {
+      args.push("--cookies", process.env.YT_DLP_COOKIES_FILE);
+    } else if (process.env.YT_DLP_BROWSER_COOKIES) {
+      args.push("--cookies-from-browser", process.env.YT_DLP_BROWSER_COOKIES);
+    }
+    args.push(url);
 
     const { stdout } = await execFileAsync(ytDlpPath, args, { timeout: 60000 });
     const data = JSON.parse(stdout.trim());
@@ -145,7 +154,11 @@ export async function extractVideoInfo(url: string): Promise<VideoInfo> {
     };
   } catch (error: any) {
     console.error("[yt-dlp] 提取失败:", error.message);
-    throw new Error(`视频提取失败: ${error.message || "请检查链接是否正确"}`);
+    const msg = error.message || "请检查链接是否正确";
+    if (/Fresh cookies|cookies.*needed|login required/i.test(msg)) {
+      throw new Error("视频提取失败: 该平台需要服务器配置有效 Cookies。请在服务器设置 YT_DLP_COOKIES_FILE 后重试。\n导出浏览器 cookies.txt 后放到服务器，例如 /opt/bili-summary/cookies/douyin.txt");
+    }
+    throw new Error(`视频提取失败: ${msg}`);
   }
 }
 

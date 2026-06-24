@@ -94,10 +94,14 @@ jobs:
             [ -n "$FFMPEG_BIN" ] && ("$FFMPEG_BIN" -version | head -n1 || true)
 
             echo "=== STEP: install yt-dlp (one-shot) ==="
-            YT_DLP_VERSION="2025.12.08"
-            if ! command -v yt-dlp >/dev/null 2>&1 && [ ! -x "/opt/bili-summary/bin/yt-dlp" ]; then
+            YT_DLP_VERSION="2026.03.17"
+            mkdir -p /opt/bili-summary/bin
+            CURRENT_YT_DLP=""
+            if [ -x "/opt/bili-summary/bin/yt-dlp" ]; then
+              CURRENT_YT_DLP="$(/opt/bili-summary/bin/yt-dlp --version 2>/dev/null || true)"
+            fi
+            if [ "$CURRENT_YT_DLP" != "$YT_DLP_VERSION" ]; then
               echo "Installing yt-dlp ${YT_DLP_VERSION} (for Douyin, Xiaohongshu, YouTube support)..."
-              mkdir -p /opt/bili-summary/bin
               # Use GitHub mirror for faster download in China
               curl -fL --connect-timeout 30 -o /opt/bili-summary/bin/yt-dlp \
                 "https://mirror.ghproxy.com/https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/yt-dlp" \
@@ -106,10 +110,10 @@ jobs:
               chmod +x /opt/bili-summary/bin/yt-dlp
               echo "yt-dlp installed successfully"
             fi
-            if command -v yt-dlp >/dev/null 2>&1; then
-              YT_DLP_BIN="$(command -v yt-dlp)"
-            elif [ -x "/opt/bili-summary/bin/yt-dlp" ]; then
+            if [ -x "/opt/bili-summary/bin/yt-dlp" ]; then
               YT_DLP_BIN="/opt/bili-summary/bin/yt-dlp"
+            elif command -v yt-dlp >/dev/null 2>&1; then
+              YT_DLP_BIN="$(command -v yt-dlp)"
             else
               YT_DLP_BIN=""
               echo "WARN: no yt-dlp found on host; Douyin/Xiaohongshu/YouTube may fail"
@@ -174,7 +178,7 @@ jobs:
             # Start fresh (PM2 restart keeps old env, so delete + start)
             source "$REPO_DIR/.env"
             pm2 delete bilistudy 2>/dev/null || true
-            PATH="/opt/bili-summary/bin:$PATH" ENCRYPTION_KEY=$ENCRYPTION_KEY SESSION_SECRET=$SESSION_SECRET NODE_ENV=${NODE_ENV:-production} BASE_URL=${BASE_URL:-https://xydong.site} ADMIN_EMAIL=${ADMIN_EMAIL:-} FFMPEG_PATH=$FFMPEG_BIN pm2 start dist/index.js --name bilistudy --max-memory-restart 1G
+            PATH="/opt/bili-summary/bin:$PATH" ENCRYPTION_KEY=$ENCRYPTION_KEY SESSION_SECRET=$SESSION_SECRET NODE_ENV=${NODE_ENV:-production} BASE_URL=${BASE_URL:-https://xydong.site} ADMIN_EMAIL=${ADMIN_EMAIL:-} FFMPEG_PATH=$FFMPEG_BIN YT_DLP_PATH=$YT_DLP_BIN YT_DLP_COOKIES_FILE=${YT_DLP_COOKIES_FILE:-} YT_DLP_BROWSER_COOKIES=${YT_DLP_BROWSER_COOKIES:-} pm2 start dist/index.js --name bilistudy --max-memory-restart 1G
             pm2 save
             pm2 status bilistudy
 

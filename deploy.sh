@@ -83,7 +83,7 @@ fi
 
 echo ">>> 启动服务..."
 pm2 delete bilistudy 2>/dev/null || true
-ENCRYPTION_KEY=$ENCRYPTION_KEY SESSION_SECRET=$SESSION_SECRET NODE_ENV=${NODE_ENV:-production} BASE_URL=${BASE_URL:-https://xydong.site} pm2 start dist/index.js --name bilistudy --max-memory-restart 1G
+ENCRYPTION_KEY=$ENCRYPTION_KEY SESSION_SECRET=$SESSION_SECRET NODE_ENV=${NODE_ENV:-production} BASE_URL=${BASE_URL:-https://xydong.site} FFMPEG_PATH=${FFMPEG_PATH:-} YT_DLP_PATH=${YT_DLP_PATH:-} YT_DLP_COOKIES_FILE=${YT_DLP_COOKIES_FILE:-} YT_DLP_BROWSER_COOKIES=${YT_DLP_BROWSER_COOKIES:-} pm2 start dist/index.js --name bilistudy --max-memory-restart 1G
 pm2 status bilistudy
 
 # 8. 保存 PM2 配置，开机自启
