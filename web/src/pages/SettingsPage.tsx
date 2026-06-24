@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Save, Check } from 'lucide-react';
+import { Save, Check, Eye, EyeOff, Zap, Loader2 } from 'lucide-react';
 import {
   getConfig,
   saveConfig,
+  testDeepSeekConfig,
+  testWhisperConfig,
   type AppConfig,
 } from '@/lib/api';
 
@@ -102,6 +104,10 @@ export function SettingsPage({
     null,
   );
   const [saving, setSaving] = useState(false);
+  const [showDeepseekKey, setShowDeepseekKey] = useState(false);
+  const [showWhisperKey, setShowWhisperKey] = useState(false);
+  const [testingDeepseek, setTestingDeepseek] = useState(false);
+  const [testingWhisper, setTestingWhisper] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,6 +127,50 @@ export function SettingsPage({
       cancelled = true;
     };
   }, []);
+
+  async function handleTestDeepseek() {
+    if (!isLoggedIn) {
+      setStatus({ msg: '请先登录', type: 'error' });
+      onRequireLogin();
+      return;
+    }
+    setTestingDeepseek(true);
+    setStatus(null);
+    try {
+      await testDeepSeekConfig({
+        api_key: deepseekKey.trim(),
+        base_url: deepseekApiUrl.trim(),
+        model: deepseekModel.trim(),
+      });
+      setStatus({ msg: 'DeepSeek 连接成功', type: 'ok' });
+    } catch (err: any) {
+      setStatus({ msg: 'DeepSeek 测试失败：' + (err.message || ''), type: 'error' });
+    } finally {
+      setTestingDeepseek(false);
+    }
+  }
+
+  async function handleTestWhisper() {
+    if (!isLoggedIn) {
+      setStatus({ msg: '请先登录', type: 'error' });
+      onRequireLogin();
+      return;
+    }
+    setTestingWhisper(true);
+    setStatus(null);
+    try {
+      await testWhisperConfig({
+        whisper_api_key: whisperKey.trim(),
+        whisper_base_url: whisperApiUrl.trim(),
+        whisper_model: whisperModel.trim(),
+      });
+      setStatus({ msg: 'Whisper 连接成功', type: 'ok' });
+    } catch (err: any) {
+      setStatus({ msg: 'Whisper 测试失败：' + (err.message || ''), type: 'error' });
+    } finally {
+      setTestingWhisper(false);
+    }
+  }
 
   async function handleSave() {
     if (!isLoggedIn) {
@@ -180,15 +230,35 @@ export function SettingsPage({
 
           <div>
             <label style={labelStyle}>API Key</label>
-            <input
-              style={inputStyle}
-              type="password"
-              placeholder={apiKeySet ? '已保存，留空则不修改' : 'sk-...'}
-              value={deepseekKey}
-              onChange={(e) => setDeepseekKey(e.target.value)}
-            />
-            <div className="mt-1.5">
+            <div className="relative">
+              <input
+                style={{ ...inputStyle, paddingRight: 40 }}
+                type={showDeepseekKey ? 'text' : 'password'}
+                placeholder={apiKeySet ? '已保存，留空则不修改' : 'sk-...'}
+                value={deepseekKey}
+                onChange={(e) => setDeepseekKey(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowDeepseekKey((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md"
+                style={{ color: '#7db8d4' }}
+              >
+                {showDeepseekKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2">
               <KeyStatus configured={apiKeySet} />
+              <button
+                type="button"
+                onClick={handleTestDeepseek}
+                disabled={testingDeepseek}
+                className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-semibold transition-all hover:scale-105 disabled:opacity-60"
+                style={{ background: 'rgba(14,165,233,0.10)', color: '#0369a1', border: '1px solid rgba(14,165,233,0.18)' }}
+              >
+                {testingDeepseek ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                {testingDeepseek ? '测试中…' : '测试连接'}
+              </button>
             </div>
           </div>
 
@@ -228,15 +298,35 @@ export function SettingsPage({
 
           <div>
             <label style={labelStyle}>API Key</label>
-            <input
-              style={inputStyle}
-              type="password"
-              placeholder={whisperKeySet ? '已保存，留空则不修改' : 'sk-...'}
-              value={whisperKey}
-              onChange={(e) => setWhisperKey(e.target.value)}
-            />
-            <div className="mt-1.5">
+            <div className="relative">
+              <input
+                style={{ ...inputStyle, paddingRight: 40 }}
+                type={showWhisperKey ? 'text' : 'password'}
+                placeholder={whisperKeySet ? '已保存，留空则不修改' : 'sk-...'}
+                value={whisperKey}
+                onChange={(e) => setWhisperKey(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowWhisperKey((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md"
+                style={{ color: '#7db8d4' }}
+              >
+                {showWhisperKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2">
               <KeyStatus configured={whisperKeySet} />
+              <button
+                type="button"
+                onClick={handleTestWhisper}
+                disabled={testingWhisper}
+                className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-semibold transition-all hover:scale-105 disabled:opacity-60"
+                style={{ background: 'rgba(14,165,233,0.10)', color: '#0369a1', border: '1px solid rgba(14,165,233,0.18)' }}
+              >
+                {testingWhisper ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                {testingWhisper ? '测试中…' : '测试连接'}
+              </button>
             </div>
           </div>
 

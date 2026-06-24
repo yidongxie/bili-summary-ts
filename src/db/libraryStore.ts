@@ -29,6 +29,72 @@ export function loadLibrary(db: Database.Database, userId: number): LibraryItem[
   return rows.map(rowToItem);
 }
 
+export interface LibraryQueryOptions {
+  q?: string;
+  category?: string;
+  tag?: string;
+  page?: number;
+  pageSize?: number;
+  sort?: string;
+}
+
+export interface LibraryQueryResult {
+  items: LibraryItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  categories: string[];
+  tags: string[];
+}
+
+export function queryLibrary(db: Database.Database, userId: number, options: LibraryQueryOptions = {}): LibraryQueryResult {
+  const page = Math.max(1, Number(options.page || 1));
+  const pageSize = Math.min(100, Math.max(1, Number(options.pageSize || 20)));
+  const q = String(options.q || "").trim().toLowerCase();
+  const category = String(options.category || "").trim();
+  const tag = String(options.tag || "").trim().toLowerCase();
+  const sort = String(options.sort || "updated_desc");
+
+  const rows = db
+    .prepare("SELECT * FROM library_items WHERE user_id = ? ORDER BY updated_at DESC")
+    .all(userId) as any[];
+
+  const allItems = rows.map(rowToItem);
+  const categories = [...new Set(allItems.map((i) => i.category).filter(Boolean))];
+  const tags = [...new Set(allItems.flatMap((i) => i.tags || []))];
+
+  let filtered = allItems;
+  if (q) {
+    filtered = filtered.filter(
+      (i) =>
+        i.title.toLowerCase().includes(q) ||
+        i.author.toLowerCase().includes(q) ||
+        i.summary.toLowerCase().includes(q) ||
+        (i.tags || []).some((t) => t.toLowerCase().includes(q))
+    );
+  }
+  if (category) filtered = filtered.filter((i) => i.category === category);
+  if (tag) filtered = filtered.filter((i) => (i.tags || []).some((t) => t.toLowerCase() === tag));
+
+  filtered = [...filtered].sort((a, b) => {
+    if (sort === "updated_asc") return String(a.updated_at || a.created_at).localeCompare(String(b.updated_at || b.created_at));
+    if (sort === "title_asc") return a.title.localeCompare(b.title, "zh-Hans-CN");
+    if (sort === "duration_desc") return (b.duration || 0) - (a.duration || 0);
+    return String(b.updated_at || b.created_at).localeCompare(String(a.updated_at || a.created_at));
+  });
+
+  const total = filtered.length;
+  const start = (page - 1) * pageSize;
+  return {
+    items: filtered.slice(start, start + pageSize),
+    total,
+    page,
+    pageSize,
+    categories,
+    tags,
+  };
+}
+
 export function findLibraryItem(db: Database.Database, userId: number, id: string): LibraryItem | null {
   const row = db
     .prepare("SELECT * FROM library_items WHERE id = ? AND user_id = ?")

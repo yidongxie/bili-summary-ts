@@ -3,6 +3,7 @@
 import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
 import crypto from "crypto";
+import { enforceRateLimit } from "../common/rateLimit";
 
 function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -16,12 +17,46 @@ function verifyPassword(password: string, stored: string): boolean {
   return hash === computed;
 }
 
+function createSession(
+  db: Database.Database,
+  req: Request,
+  res: Response,
+  userId: number,
+  onSuccess: () => void
+): void {
+  const oldSid = req.sessionID;
+  req.session.regenerate((err) => {
+    if (err) {
+      res.status(500).json({ success: false, error: "Session 初始化失败" });
+      return;
+    }
+
+    try {
+      const sid = req.sessionID;
+      if (!sid) {
+        res.status(500).json({ success: false, error: "Session 初始化失败" });
+        return;
+      }
+      if (oldSid && oldSid !== sid) {
+        db.prepare("DELETE FROM sessions WHERE sid = ?").run(oldSid);
+      }
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      db.prepare("INSERT OR REPLACE INTO sessions (sid, user_id, expires_at) VALUES (?, ?, ?)").run(sid, userId, expiresAt);
+      onSuccess();
+    } catch (err: any) {
+      console.error("[session]", err);
+      res.status(500).json({ success: false, error: err.message || "Session 初始化失败" });
+    }
+  });
+}
+
 export function createAuthRouter(db: Database.Database): Router {
   const router = Router();
 
   // ── Register ─────────────────────────────────────────────────────
   router.post("/api/auth/register", (req: Request, res: Response) => {
     try {
+      if (!enforceRateLimit(req, res, "register", 5, 60 * 60 * 1000)) return;
       const email = String(req.body.email || "").trim().toLowerCase();
       const password = String(req.body.password || "");
       const displayName = String(req.body.display_name || email.split("@")[0]).trim();
@@ -58,17 +93,10 @@ export function createAuthRouter(db: Database.Database): Router {
          userId
        );
 
-      // Create session
-      const sid = req.sessionID;
-      if (!sid) {
-        res.status(500).json({ success: false, error: "Session 初始化失败" });
-        return;
-      }
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      db.prepare("INSERT OR REPLACE INTO sessions (sid, user_id, expires_at) VALUES (?, ?, ?)").run(sid, userId, expiresAt);
-
-      const user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?").get(userId) as any;
-      res.json({ success: true, user: { id: user.id, email: user.email, display_name: user.display_name } });
+      createSession(db, req, res, userId, () => {
+        const user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?").get(userId) as any;
+        res.json({ success: true, user: { id: user.id, email: user.email, display_name: user.display_name } });
+      });
     } catch (err: any) {
       console.error("[register]", err);
       res.status(500).json({ success: false, error: err.message || "注册失败" });
@@ -80,6 +108,7 @@ export function createAuthRouter(db: Database.Database): Router {
     try {
       const email = String(req.body.email || "").trim().toLowerCase();
       const password = String(req.body.password || "");
+      if (!enforceRateLimit(req, res, "login", 10, 10 * 60 * 1000, email || "unknown")) return;
 
       if (!email || !password) {
         res.status(400).json({ success: false, error: "邮箱和密码不能为空" });
@@ -110,17 +139,11 @@ export function createAuthRouter(db: Database.Database): Router {
         return;
       }
 
-      const sid = req.sessionID;
-      if (!sid) {
-        res.status(500).json({ success: false, error: "Session 初始化失败" });
-        return;
-      }
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      db.prepare("INSERT OR REPLACE INTO sessions (sid, user_id, expires_at) VALUES (?, ?, ?)").run(sid, user.id, expiresAt);
-
-      res.json({
-        success: true,
-        user: { id: user.id, email: user.email, display_name: user.display_name },
+      createSession(db, req, res, user.id, () => {
+        res.json({
+          success: true,
+          user: { id: user.id, email: user.email, display_name: user.display_name },
+        });
       });
     } catch (err: any) {
       console.error("[login]", err);

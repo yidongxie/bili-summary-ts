@@ -3,6 +3,7 @@ import { Sparkles, X, Zap, Clock, ChevronRight } from 'lucide-react';
 import type { AppConfig, LibraryItem } from '@/lib/api';
 import { getLibrary } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
+import { Chip, GlassCard } from '@/components/ui';
 
 const PLATFORMS = [
   {
@@ -124,13 +125,13 @@ export function HomePage({
 
   return (
     <main
-      className="flex-1 flex flex-col items-center px-6 py-10 gap-7"
+      className="flex-1 flex flex-col items-center px-4 sm:px-6 py-8 sm:py-10 gap-7"
       style={{ justifyContent: 'safe center' }}
     >
       {/* Headline */}
       <div className="text-center space-y-2">
         <h1
-          className="text-4xl tracking-tight"
+          className="text-2xl sm:text-4xl tracking-tight"
           style={{ color: '#0d2d45', fontWeight: 700, letterSpacing: '-0.02em' }}
         >
           <span
@@ -142,7 +143,7 @@ export function HomePage({
           >
             BiliStudy
           </span>{' '}
-          让你的音视频看得快、搜得到、用得好
+          把视频变成可复习的学习笔记
         </h1>
         <p className="text-sm" style={{ color: '#5b8fae' }}>
           粘贴 B 站视频或小宇宙播客链接，一键生成可复习、可导出的学习笔记

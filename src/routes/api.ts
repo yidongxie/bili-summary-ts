@@ -13,13 +13,14 @@ import {
   saveConfig as saveUserConfig,
 } from "../db/configStore";
 import {
-  loadLibrary,
+  queryLibrary,
   findLibraryItem,
   findLibraryItemByBvid,
   saveLibraryItem,
   deleteLibraryItem,
 } from "../db/libraryStore";
 import { suggestTags } from "../llm/summarize";
+import { enforceRateLimit } from "../common/rateLimit";
 
 function nowIso(): string {
   return new Date().toISOString().slice(0, 19).replace("T", "T");
@@ -72,6 +73,19 @@ function formatDuration(seconds: number): string {
 function formatDate(value: string): string {
   if (!value) return "";
   return String(value).replace("T", " ").slice(0, 16);
+}
+
+function isAllowedAudioProxyUrl(rawUrl: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== "https:") return false;
+  const host = parsed.hostname.toLowerCase();
+  return host === "media.xyzcdn.net" || host.endsWith(".media.xyzcdn.net");
 }
 
 function yamlString(value: unknown): string {
@@ -236,6 +250,57 @@ export function createApiRouter(db: Database.Database): Router {
     res.json({ success: true, config: pub });
   });
 
+  router.post("/api/config/test-deepseek", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (!enforceRateLimit(req, res, "test-deepseek", 10, 10 * 60 * 1000, String(userId))) return;
+
+    const config = getDecryptedConfig(db, userId);
+    const apiKey = String(req.body.api_key || config.api_key || "").trim();
+    const baseUrl = String(req.body.base_url || config.deepseek_base_url || "https://api.deepseek.com/v1").replace(/\/+$/, "");
+    const model = String(req.body.model || config.deepseek_model || "deepseek-chat").trim();
+    if (!apiKey) { res.status(400).json({ success: false, error: "请先填写 DeepSeek API Key" }); return; }
+
+    try {
+      const r = await fetch(baseUrl + "/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model, messages: [{ role: "user", content: "ping" }], max_tokens: 8 }),
+      });
+      if (!r.ok) {
+        const text = await r.text().catch(() => r.statusText);
+        res.status(400).json({ success: false, error: `连接失败 (${r.status}): ${text.slice(0, 200)}` });
+        return;
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message || "连接失败" });
+    }
+  });
+
+  router.post("/api/config/test-whisper", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (!enforceRateLimit(req, res, "test-whisper", 10, 10 * 60 * 1000, String(userId))) return;
+
+    const config = getDecryptedConfig(db, userId);
+    const apiKey = String(req.body.whisper_api_key || config.whisper_api_key || "").trim();
+    const baseUrl = String(req.body.whisper_base_url || config.whisper_base_url || "https://api.siliconflow.cn/v1").replace(/\/+$/, "");
+    if (!apiKey) { res.status(400).json({ success: false, error: "请先填写 Whisper API Key" }); return; }
+
+    try {
+      const r = await fetch(baseUrl + "/models", { headers: { Authorization: `Bearer ${apiKey}` } });
+      if (!r.ok) {
+        const text = await r.text().catch(() => r.statusText);
+        res.status(400).json({ success: false, error: `连接失败 (${r.status}): ${text.slice(0, 200)}` });
+        return;
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message || "连接失败" });
+    }
+  });
+
   // Check yt-dlp availability
   router.get("/api/yt-dlp/status", async (req: Request, res: Response) => {
     try {
@@ -258,6 +323,8 @@ export function createApiRouter(db: Database.Database): Router {
   router.post("/api/suggest-tags", async (req: Request, res: Response) => {
     const userId = requireUser(req, res);
     if (!userId) return;
+
+    if (!enforceRateLimit(req, res, "suggest-tags", 30, 60 * 60 * 1000, String(userId))) return;
 
     const title = String(req.body.title ?? "").trim().slice(0, 200);
     const author = String(req.body.author ?? "").trim().slice(0, 100);
@@ -289,35 +356,30 @@ export function createApiRouter(db: Database.Database): Router {
   router.get("/api/library", (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
     if (!userId) {
-      res.json({ success: true, items: [], categories: [], tags: [] });
+      res.json({ success: true, items: [], categories: [], tags: [], total: 0, page: 1, page_size: 20 });
       return;
     }
 
-    let items = loadLibrary(db, userId);
-    const q = String(req.query.q || "").trim().toLowerCase();
-    const category = String(req.query.category || "").trim();
-    const tag = String(req.query.tag || "").trim().toLowerCase();
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.page_size || "20"), 10) || 20));
+    const result = queryLibrary(db, userId, {
+      q: String(req.query.q || "").trim(),
+      category: String(req.query.category || "").trim(),
+      tag: String(req.query.tag || "").trim(),
+      sort: String(req.query.sort || "updated_desc"),
+      page,
+      pageSize,
+    });
 
-    if (q) {
-      items = items.filter(
-        (i) =>
-          i.title.toLowerCase().includes(q) ||
-          i.author.toLowerCase().includes(q) ||
-          i.summary.toLowerCase().includes(q) ||
-          (i.tags || []).some((t) => t.toLowerCase().includes(q))
-      );
-    }
-    if (category) {
-      items = items.filter((i) => i.category === category);
-    }
-    if (tag) {
-      items = items.filter((i) => (i.tags || []).some((t) => t.toLowerCase() === tag));
-    }
-
-    const categories = [...new Set(items.map((i) => i.category).filter(Boolean))];
-    const tags = [...new Set(items.flatMap((i) => i.tags || []))];
-
-    res.json({ success: true, items, categories, tags });
+    res.json({
+      success: true,
+      items: result.items,
+      categories: result.categories,
+      tags: result.tags,
+      total: result.total,
+      page: result.page,
+      page_size: result.pageSize,
+    });
   });
 
   router.get("/api/library/check/:bvid", (req: Request, res: Response) => {
@@ -420,9 +482,17 @@ export function createApiRouter(db: Database.Database): Router {
 
   // ── Audio proxy for Xiaoyuzhou podcast (bypasses CORS / Referer restriction) ─
   router.get("/api/proxy/audio", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (!enforceRateLimit(req, res, "proxy-audio", 120, 10 * 60 * 1000, String(userId))) return;
+
     const url = String(req.query.url || "").trim();
     if (!url) {
       res.status(400).json({ success: false, error: "缺少音频URL" });
+      return;
+    }
+    if (!isAllowedAudioProxyUrl(url)) {
+      res.status(400).json({ success: false, error: "不支持的音频来源" });
       return;
     }
 

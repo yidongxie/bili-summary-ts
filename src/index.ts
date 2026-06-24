@@ -6,14 +6,16 @@ import session from "express-session";
 import { createDb } from "./db/schema";
 import { createAuthRouter } from "./db/auth";
 import { createTaskRouter } from "./db/taskQueue";
+import { runStartupMaintenance } from "./db/maintenance";
 import { createApiRouter } from "./routes/api";
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = parseInt(process.env.PORT || "8080", 10);
 const BASE_URL = process.env.BASE_URL || `http://127.0.0.1:${PORT}`;
-const SESSION_SECRET = process.env.SESSION_SECRET || "bilistudy-dev-secret-change-in-production";
+const SESSION_SECRET = process.env.SESSION_SECRET || "bilistudy-dev-session-secret";
 
 const app = express();
+app.set("trust proxy", 1);
 
 // JSON body
 app.use(express.json({ limit: "2mb" }));
@@ -36,6 +38,7 @@ app.use(
 // Database
 const dataDir = path.resolve(__dirname, "..", "data");
 const db = createDb(dataDir);
+runStartupMaintenance(db);
 
 // Attach the authenticated user (if any) to req.user for downstream routes.
 // All API handlers read `(req as any).user`, so this middleware must run
@@ -108,6 +111,11 @@ export function startServer(host?: string, port?: number): Promise<string> {
 if (require.main === module) {
   if (!process.env.ENCRYPTION_KEY) {
     console.error("ERROR: ENCRYPTION_KEY environment variable is required");
+    console.error("Generate one: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"");
+    process.exit(1);
+  }
+  if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) {
+    console.error("ERROR: SESSION_SECRET environment variable is required in production");
     console.error("Generate one: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"");
     process.exit(1);
   }

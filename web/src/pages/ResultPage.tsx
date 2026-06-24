@@ -20,6 +20,49 @@ import {
 import { copyText } from '@/lib/clipboard';
 import { formatDuration, formatTimelineTime, markdownToHtml, parseTagInput } from '@/lib/format';
 
+const PROCESS_STAGES = ['排队中', '获取信息', '语音转写', 'AI 总结', '生成标签', '完成'];
+
+function progressToStage(progress: string) {
+  if (/完成/.test(progress)) return 5;
+  if (/标签/.test(progress)) return 4;
+  if (/总结|AI/.test(progress)) return 3;
+  if (/转写|Whisper|语音/.test(progress)) return 2;
+  if (/获取|视频|播客|信息/.test(progress)) return 1;
+  return 0;
+}
+
+function extractSummaryHeaders(markdown: string) {
+  return Array.from(markdown.matchAll(/^(#{1,3})\s+(.+)$/gm)).map((m, idx) => ({
+    id: `summary-heading-${idx}`,
+    level: m[1].length,
+    text: m[2].trim(),
+  }));
+}
+
+function summaryHtmlWithAnchors(markdown: string) {
+  let idx = 0;
+  return markdownToHtml(markdown).replace(/<h([23])>(.*?)<\/h\1>/g, (_m, level, text) => {
+    const id = `summary-heading-${idx++}`;
+    return `<h${level} id="${id}">${text}</h${level}>`;
+  });
+}
+
+function renderHighlighted(text: string, query: string) {
+  const q = query.trim();
+  if (!q) return text;
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
+  return parts.map((part, idx) =>
+    part.toLowerCase() === q.toLowerCase() ? (
+      <mark key={idx} className="rounded px-0.5" style={{ background: '#fef08a', color: '#713f12' }}>
+        {part}
+      </mark>
+    ) : (
+      part
+    ),
+  );
+}
+
 type Phase = 'submitting' | 'progress' | 'success' | 'error';
 
 interface ResultPageProps {
@@ -39,6 +82,22 @@ const panelStyle: React.CSSProperties = {
   boxShadow:
     '0 4px 24px rgba(14,165,233,0.07), inset 0 1px 0 rgba(255,255,255,0.85)',
 };
+
+function extractYouTubeId(link: string | undefined) {
+  if (!link) return '';
+  try {
+    const u = new URL(link);
+    if (u.hostname.includes('youtu.be')) return u.pathname.replace(/^\//, '');
+    if (u.hostname.includes('youtube.com')) return u.searchParams.get('v') || '';
+  } catch {
+    // ignore
+  }
+  return '';
+}
+
+function isHttpUrl(value: string | undefined) {
+  return /^https?:\/\//i.test(value || '');
+}
 
 // Group transcript segments into readable paragraphs. Same heuristic as
 // public/index.legacy.html: break on a >=4s pause, ~90s of running text, or
@@ -86,6 +145,8 @@ export function ResultPage({
   const [extraTags, setExtraTags] = useState('');
   const [notes, setNotes] = useState('');
   const [category, setCategory] = useState(config.default_category || '待整理');
+  const [transcriptSearch, setTranscriptSearch] = useState('');
+  const [runId, setRunId] = useState(0);
 
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -93,9 +154,14 @@ export function ResultPage({
 
   const closeRef = useRef<(() => void) | null>(null);
 
-  // Kick off the summarize task once on mount.
+  // Kick off the summarize task on mount and when the user retries.
   useEffect(() => {
     let cancelled = false;
+    setPhase('submitting');
+    setProgress('正在提交任务…');
+    setError('');
+    setResult(null);
+    setSaved(false);
     (async () => {
       try {
         const created = await createSummarizeTask({
@@ -124,7 +190,7 @@ export function ResultPage({
             setSelectedTags(new Set(data.suggested_tags || []));
             setPhase('success');
             // Check if this video/podcast is already saved.
-            const idToCheck = data.video?.bvid || data.podcast?.id;
+            const idToCheck = data.video?.bvid || data.podcast?.audioUrl || data.podcast?.id;
             if (idToCheck) {
               checkLibraryByBvid(idToCheck)
                 .then((r) => setSaved(!!r.saved))
@@ -138,6 +204,8 @@ export function ResultPage({
             }
             closeRef.current?.();
             closeRef.current = null;
+          } else if (e.type === 'network-error') {
+            setProgress(e.data?.error || '连接中断，正在等待重连…');
           } else if (e.type === 'error') {
             const msg = e.data?.error || '总结失败';
             setError(msg);
@@ -161,7 +229,7 @@ export function ResultPage({
       closeRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [runId]);
 
   function toggleTag(t: string) {
     setSelectedTags((prev) => {
@@ -196,6 +264,17 @@ export function ResultPage({
     } finally {
       setRegenerating(false);
     }
+  }
+
+  function handleRetry() {
+    closeRef.current?.();
+    closeRef.current = null;
+    setRunId((n) => n + 1);
+  }
+
+  async function handleCopyError() {
+    const copied = await copyText(error || '');
+    onShowToast(copied ? '错误信息已复制' : '复制失败，请手动复制', copied ? 'ok' : 'error');
   }
 
   async function handleCopySummary() {
@@ -260,6 +339,30 @@ export function ResultPage({
               视频/播客较长时可能需要数分钟，处理过程会逐步显示进度。
             </div>
           </div>
+          <div className="w-full flex flex-col gap-2">
+            {PROCESS_STAGES.map((stage, idx) => {
+              const current = progressToStage(progress);
+              const done = idx < current;
+              const active = idx === current;
+              return (
+                <div key={stage} className="flex items-center gap-3 text-xs">
+                  <span
+                    className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+                    style={{
+                      background: done ? 'linear-gradient(135deg,#0ea5e9,#0284c7)' : active ? 'rgba(14,165,233,0.16)' : 'rgba(255,255,255,0.55)',
+                      color: done ? '#fff' : active ? '#0369a1' : '#9ca3af',
+                      border: active ? '2px solid rgba(14,165,233,0.65)' : '1px solid rgba(14,165,233,0.18)',
+                    }}
+                  >
+                    {done ? '✓' : idx + 1}
+                  </span>
+                  <span style={{ color: active || done ? '#0d2d45' : '#9ca3af', fontWeight: active ? 700 : 500 }}>
+                    {stage}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
           <button
             type="button"
             onClick={onBack}
@@ -302,18 +405,38 @@ export function ResultPage({
               {error}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onBack}
-            className="text-sm px-4 py-2 rounded-xl font-semibold transition-all hover:scale-105"
-            style={{
-              background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-              color: '#fff',
-              boxShadow: '0 4px 12px rgba(14,165,233,0.30)',
-            }}
-          >
-            返回
-          </button>
+          <div className="flex flex-wrap justify-center gap-2">
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="text-sm px-4 py-2 rounded-xl font-semibold transition-all hover:scale-105"
+              style={{
+                background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
+                color: '#fff',
+                boxShadow: '0 4px 12px rgba(14,165,233,0.30)',
+              }}
+            >
+              <RefreshCw className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />
+              重试
+            </button>
+            <button
+              type="button"
+              onClick={handleCopyError}
+              className="text-sm px-4 py-2 rounded-xl font-semibold transition-all hover:scale-105"
+              style={{ background: 'rgba(255,255,255,0.6)', color: '#5b8fae', border: '1px solid rgba(14,165,233,0.18)' }}
+            >
+              <Copy className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />
+              复制错误
+            </button>
+            <button
+              type="button"
+              onClick={onBack}
+              className="text-sm px-4 py-2 rounded-xl font-semibold transition-all hover:scale-105"
+              style={{ background: 'rgba(255,255,255,0.6)', color: '#5b8fae', border: '1px solid rgba(14,165,233,0.18)' }}
+            >
+              返回
+            </button>
+          </div>
         </div>
       </main>
     );
@@ -324,7 +447,18 @@ export function ResultPage({
   const v = result.video || result.podcast;
   const isPodcast = result.type === 'xiaoyuzhou' || !!result.podcast;
   const isShortVideo = result.type === 'douyin' || result.type === 'xiaohongshu' || result.type === 'wechat';
+  const isBilibili = result.type === 'bilibili' && !isHttpUrl(result.video?.bvid);
+  const youtubeId = result.type === 'youtube' ? extractYouTubeId(result.video?.link) : '';
   const paragraphs = groupTranscript(result.subtitle_segments);
+  const transcriptQuery = transcriptSearch.trim().toLowerCase();
+  const visibleParagraphs = transcriptQuery
+    ? paragraphs.filter((p) => p.texts.join('\n').toLowerCase().includes(transcriptQuery))
+    : paragraphs;
+  const transcriptMatches = transcriptQuery
+    ? paragraphs.reduce((sum, p) => sum + (p.texts.join('\n').toLowerCase().includes(transcriptQuery) ? 1 : 0), 0)
+    : 0;
+  const summaryHeaders = extractSummaryHeaders(result.summary || '');
+  const summaryHtml = summaryHtmlWithAnchors(result.summary || '');
 
   return (
     <main className="flex-1 overflow-y-auto px-6 py-6">
@@ -430,15 +564,28 @@ export function ResultPage({
                 {v.link}
               </a>
             </div>
-            {v.bvid && !isPodcast && !isShortVideo && (
+            {isBilibili && result.video?.bvid && (
               <div
                 className="relative w-full"
                 style={{ paddingBottom: '56.25%', background: '#05070d' }}
               >
                 <iframe
-                  src={`https://player.bilibili.com/player.html?bvid=${v.bvid}&autoplay=0&high_quality=1`}
+                  src={`https://player.bilibili.com/player.html?bvid=${result.video.bvid}&autoplay=0&high_quality=1`}
                   frameBorder={0}
                   allowFullScreen
+                  loading="lazy"
+                  className="absolute inset-0 w-full h-full"
+                />
+              </div>
+            )}
+            {youtubeId && (
+              <div className="relative w-full" style={{ paddingBottom: '56.25%', background: '#05070d' }}>
+                <iframe
+                  src={`https://www.youtube.com/embed/${youtubeId}`}
+                  frameBorder={0}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  loading="lazy"
                   className="absolute inset-0 w-full h-full"
                 />
               </div>
@@ -460,6 +607,14 @@ export function ResultPage({
                     crossOrigin="anonymous"
                   />
                 )}
+              </div>
+            )}
+            {!isBilibili && !youtubeId && !isPodcast && !isShortVideo && result.video?.pic && (
+              <div className="flex flex-col items-center gap-4 p-4" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }}>
+                <img src={result.video.pic} alt="视频封面" className="w-40 h-40 object-cover rounded-xl shadow-lg" />
+                <a href={result.video.link} target="_blank" rel="noreferrer" className="text-sm font-semibold" style={{ color: '#0284c7' }}>
+                  打开原视频
+                </a>
               </div>
             )}
             {isShortVideo && result.video?.pic && (
@@ -485,12 +640,25 @@ export function ResultPage({
 
           <div className="rounded-2xl p-5 flex flex-col gap-3" style={panelStyle}>
             <div
-              className="flex items-center justify-between pb-2 border-b"
+              className="flex items-center justify-between gap-3 pb-2 border-b flex-wrap"
               style={{ borderColor: 'rgba(14,165,233,0.10)' }}
             >
               <span className="text-sm font-bold" style={{ color: '#0d2d45' }}>
                 {isPodcast ? '音频文本' : '视频文本'}
               </span>
+              <div className="flex items-center gap-2 flex-1 min-w-[220px] justify-end">
+                <input
+                  type="text"
+                  value={transcriptSearch}
+                  onChange={(e) => setTranscriptSearch(e.target.value)}
+                  placeholder="搜索转写文本"
+                  className="text-xs px-3 py-1.5 rounded-lg outline-none min-w-0 flex-1 max-w-xs"
+                  style={{ background: 'rgba(255,255,255,0.65)', border: '1px solid rgba(14,165,233,0.18)', color: '#0d2d45' }}
+                />
+                {transcriptSearch && (
+                  <span className="text-xs whitespace-nowrap" style={{ color: '#7db8d4' }}>{transcriptMatches} 段</span>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={handleCopyTranscript}
@@ -515,7 +683,7 @@ export function ResultPage({
                 </div>
               ) : (
                 <div className="flex flex-col gap-1">
-                  {paragraphs.map((p, idx) => (
+                  {visibleParagraphs.map((p, idx) => (
                     <div
                       key={idx}
                       className="grid gap-3 py-2 border-b last:border-0"
@@ -537,7 +705,7 @@ export function ResultPage({
                         className="text-sm whitespace-pre-wrap"
                         style={{ color: '#263244', lineHeight: 1.7 }}
                       >
-                        {p.texts.join('\n')}
+                        {renderHighlighted(p.texts.join('\n'), transcriptSearch)}
                       </span>
                     </div>
                   ))}
@@ -558,9 +726,28 @@ export function ResultPage({
                 AI 总结
               </span>
             </div>
+            {summaryHeaders.length >= 2 && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {summaryHeaders.map((h) => (
+                  <button
+                    key={h.id}
+                    type="button"
+                    onClick={() => document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                    className="text-xs px-2.5 py-1 rounded-full transition-all hover:scale-105"
+                    style={{
+                      background: 'rgba(14,165,233,0.09)',
+                      color: h.level === 1 ? '#0d2d45' : '#0369a1',
+                      border: '1px solid rgba(14,165,233,0.16)',
+                    }}
+                  >
+                    {h.text}
+                  </button>
+                ))}
+              </div>
+            )}
             <div
-              className="summary max-h-[42vh] overflow-y-auto -mr-2 pr-2"
-              dangerouslySetInnerHTML={{ __html: markdownToHtml(result.summary) }}
+              className="summary max-h-[42vh] overflow-y-auto -mr-2 pr-2 scroll-smooth"
+              dangerouslySetInnerHTML={{ __html: summaryHtml }}
             />
           </div>
 

@@ -1,6 +1,6 @@
 ﻿#!/bin/bash
 # BiliStudy V2 - Nginx 反向代理配置
-# 用法: ./nginx-setup.sh your-domain.com
+# 用法: ./nginx-setup.sh "your-domain.com www.your-domain.com"
 
 DOMAIN="${1:-localhost}"
 

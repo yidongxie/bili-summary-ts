@@ -1,10 +1,33 @@
-﻿/** Deployment migration – ensure admin user exists */
+/** Deployment migration – optionally ensure an admin user exists */
 const path = require("path");
 const db = require(path.resolve(__dirname, "dist/db/schema")).createDb(path.resolve(__dirname, "data"));
 const crypto = require("crypto");
 
-const email = "444925817@qq.com";
-const password = "REDACTED";
+const email = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+const password = String(process.env.ADMIN_PASSWORD || "");
+const legacyEmail = "444925817@qq.com";
+const legacyPasswordSha256 = "c0acaba1a8c1fd23b4c58ae9256a2bb9da8967330fd475cae8b4095663bcde51";
+
+const legacyRow = db.prepare("SELECT u.id, c.password_hash FROM users u LEFT JOIN user_configs c ON c.user_id = u.id WHERE u.email = ?").get(legacyEmail);
+if (legacyRow?.password_hash) {
+  const legacyHash = legacyRow.password_hash;
+  const [, hash = ""] = legacyHash.split(":");
+  if (crypto.createHash("sha256").update(hash).digest("hex") === legacyPasswordSha256) {
+    db.prepare("UPDATE user_configs SET password_hash = '' WHERE user_id = ?").run(legacyRow.id);
+    console.log("Disabled legacy hard-coded admin password");
+  }
+}
+
+if (!email) {
+  console.log("ADMIN_EMAIL not set; skipping admin bootstrap");
+  db.close();
+  process.exit(0);
+}
+if (!password || password.length < 12) {
+  console.error("ADMIN_PASSWORD must be at least 12 characters when ADMIN_EMAIL is set");
+  db.close();
+  process.exit(1);
+}
 
 const row = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
 let uid;

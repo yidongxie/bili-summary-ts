@@ -12,7 +12,7 @@ interface TopNavProps {
 export function TopNav({ onNewSummary, onOpenSearch, user, onLogin, onLogout }: TopNavProps) {
   return (
     <nav
-      className="flex items-center px-6 py-3 border-b shrink-0"
+      className="flex items-center px-3 sm:px-6 py-3 border-b shrink-0"
       style={{
         background: 'rgba(255,255,255,0.40)',
         backdropFilter: 'blur(20px)',
@@ -29,7 +29,7 @@ export function TopNav({ onNewSummary, onOpenSearch, user, onLogin, onLogout }: 
           style={{ color: '#0d2d45' }}
         >
           <Plus className="w-4 h-4" style={{ color: '#0ea5e9' }} />
-          <span className="font-semibold">新总结</span>
+          <span className="font-semibold hidden sm:inline">新总结</span>
         </button>
         <div className="w-px h-4" style={{ background: 'rgba(14,165,233,0.2)' }} />
         <button
@@ -39,7 +39,7 @@ export function TopNav({ onNewSummary, onOpenSearch, user, onLogin, onLogout }: 
           style={{ color: '#5b8fae' }}
         >
           <Search className="w-3.5 h-3.5" />
-          <span>全局搜索</span>
+          <span className="hidden sm:inline">全局搜索</span>
           <span
             className="px-1.5 py-0.5 rounded-lg text-[10px] font-mono"
             style={{ background: 'rgba(14,165,233,0.10)', color: '#0ea5e9' }}
@@ -57,7 +57,8 @@ export function TopNav({ onNewSummary, onOpenSearch, user, onLogin, onLogout }: 
             className="text-sm font-semibold px-3 py-1 rounded-xl"
             style={{ color: '#0369a1', background: 'rgba(255,255,255,0.55)' }}
           >
-            {user.display_name || user.email}
+            <span className="hidden sm:inline">{user.display_name || user.email}</span>
+            <span className="sm:hidden">{(user.display_name || user.email).slice(0, 1).toUpperCase()}</span>
           </span>
           <button
             type="button"
@@ -74,7 +75,7 @@ export function TopNav({ onNewSummary, onOpenSearch, user, onLogin, onLogout }: 
             }}
           >
             <LogOut className="w-3.5 h-3.5" />
-            退出
+            <span className="hidden sm:inline">退出</span>
           </button>
         </div>
       ) : (
@@ -92,7 +93,8 @@ export function TopNav({ onNewSummary, onOpenSearch, user, onLogin, onLogout }: 
           }}
         >
           <User className="w-3.5 h-3.5" />
-          注册 / 登录
+          <span className="hidden sm:inline">注册 / 登录</span>
+          <span className="sm:hidden">登录</span>
         </button>
       )}
     </nav>

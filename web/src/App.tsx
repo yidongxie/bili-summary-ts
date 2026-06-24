@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { AmbientBackdrop } from './components/AmbientBackdrop';
+import { Library, FileText, Settings, User } from 'lucide-react';
 import { Sidebar, type NavKey } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { GlobalSearch } from './components/GlobalSearch';
@@ -120,14 +121,16 @@ export default function App() {
       <AmbientBackdrop />
 
       <div className="relative flex flex-1 overflow-hidden">
-        <Sidebar
-          active={navActive}
-          onChange={navTo}
-          user={user}
-          onUserClick={() => (user ? handleLogout() : setLoginOpen(true))}
-        />
+        <div className="hidden md:block shrink-0">
+          <Sidebar
+            active={navActive}
+            onChange={navTo}
+            user={user}
+            onUserClick={() => (user ? handleLogout() : setLoginOpen(true))}
+          />
+        </div>
 
-        <div className="flex flex-col flex-1 overflow-y-auto min-w-0">
+        <div className="flex flex-col flex-1 overflow-y-auto min-w-0 pb-20 md:pb-0">
           <TopNav
             onNewSummary={() => setView({ kind: 'home' })}
             onOpenSearch={() => setSearchOpen(true)}
@@ -192,6 +195,46 @@ export default function App() {
           </footer>
         </div>
       </div>
+
+      <nav
+        className="md:hidden fixed bottom-3 left-3 right-3 z-40 grid grid-cols-4 gap-1 rounded-2xl p-1"
+        style={{
+          background: 'rgba(255,255,255,0.78)',
+          border: '1px solid rgba(14,165,233,0.18)',
+          backdropFilter: 'blur(18px)',
+          boxShadow: '0 8px 30px rgba(14,165,233,0.18), inset 0 1px 0 rgba(255,255,255,0.9)',
+        }}
+      >
+        {[
+          { key: 'home' as NavKey, label: '首页', icon: Library },
+          { key: 'library' as NavKey, label: '收藏', icon: FileText },
+          { key: 'settings' as NavKey, label: '设置', icon: Settings },
+        ].map((item) => {
+          const Icon = item.icon;
+          const active = navActive === item.key;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => navTo(item.key)}
+              className="flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11px] font-semibold"
+              style={{ color: active ? '#0284c7' : '#5b8fae', background: active ? 'rgba(14,165,233,0.12)' : 'transparent' }}
+            >
+              <Icon className="w-4 h-4" />
+              {item.label}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => (user ? handleLogout() : setLoginOpen(true))}
+          className="flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11px] font-semibold"
+          style={{ color: user ? '#0284c7' : '#5b8fae' }}
+        >
+          <User className="w-4 h-4" />
+          {user ? '我的' : '登录'}
+        </button>
+      </nav>
 
       <LoginOverlay
         open={loginOpen}

@@ -53,7 +53,7 @@ export type SubtitleSegment = {
 };
 
 export type SummaryResult = {
-  type?: 'bilibili' | 'xiaoyuzhou' | 'douyin' | 'xiaohongshu' | 'wechat';
+  type?: 'bilibili' | 'xiaoyuzhou' | 'douyin' | 'xiaohongshu' | 'wechat' | 'youtube' | string;
   video?: VideoMeta;
   podcast?: PodcastMeta;
   summary: string;
@@ -88,6 +88,9 @@ export type LibraryListResponse = {
   items: LibraryItem[];
   categories?: string[];
   tags?: string[];
+  total?: number;
+  page?: number;
+  page_size?: number;
 };
 
 export class ApiError extends Error {
@@ -168,6 +171,20 @@ export function saveConfig(payload: Partial<AppConfig>) {
   });
 }
 
+export function testDeepSeekConfig(payload: { api_key?: string; base_url?: string; model?: string }) {
+  return request<{ success: boolean; error?: string }>('/api/config/test-deepseek', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function testWhisperConfig(payload: { whisper_api_key?: string; whisper_base_url?: string; whisper_model?: string }) {
+  return request<{ success: boolean; error?: string }>('/api/config/test-whisper', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 // ---- summarize task ------------------------------------------------------
 
 export type SummarizePayload = {
@@ -189,7 +206,7 @@ export function createSummarizeTask(payload: SummarizePayload) {
 }
 
 export type TaskProgressEvent = {
-  type: 'status' | 'complete' | 'error';
+  type: 'status' | 'complete' | 'error' | 'network-error';
   data: any;
 };
 
@@ -198,19 +215,29 @@ export function subscribeTask(
   onEvent: (e: TaskProgressEvent) => void,
 ): () => void {
   const src = new EventSource('/api/tasks/' + taskId + '/events');
+  let closed = false;
+  let terminal = false;
   const onStatus = (e: MessageEvent) =>
     onEvent({ type: 'status', data: safeParse(e.data) });
-  const onComplete = (e: MessageEvent) =>
+  const onComplete = (e: MessageEvent) => {
+    terminal = true;
     onEvent({ type: 'complete', data: safeParse(e.data) });
+  };
   const onError = (e: MessageEvent | Event) => {
     const data = (e as MessageEvent).data ? safeParse((e as MessageEvent).data) : {};
+    terminal = true;
     onEvent({ type: 'error', data });
   };
   src.addEventListener('status', onStatus);
   src.addEventListener('complete', onComplete);
   src.addEventListener('error', onError as EventListener);
-  src.onerror = () => onEvent({ type: 'error', data: { error: '连接中断' } });
-  return () => src.close();
+  src.onerror = () => {
+    if (!closed && !terminal) onEvent({ type: 'network-error', data: { error: '连接中断，正在等待重连…' } });
+  };
+  return () => {
+    closed = true;
+    src.close();
+  };
 }
 
 function safeParse(s: any) {
@@ -223,11 +250,14 @@ function safeParse(s: any) {
 
 // ---- library -------------------------------------------------------------
 
-export function getLibrary(params: { q?: string; category?: string; tag?: string } = {}) {
+export function getLibrary(params: { q?: string; category?: string; tag?: string; page?: number; page_size?: number; sort?: string } = {}) {
   const q = new URLSearchParams();
   if (params.q) q.set('q', params.q);
   if (params.category) q.set('category', params.category);
   if (params.tag) q.set('tag', params.tag);
+  if (params.page) q.set('page', String(params.page));
+  if (params.page_size) q.set('page_size', String(params.page_size));
+  if (params.sort) q.set('sort', params.sort);
   const qs = q.toString();
   return request<LibraryListResponse>('/api/library' + (qs ? '?' + qs : ''));
 }

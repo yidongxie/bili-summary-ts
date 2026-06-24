@@ -148,9 +148,15 @@ export function createDb(dataDir: string): Database.Database {
     );
   `);
 
-  // Migration: add summary_tasks indexes
+  // Migration: add indexes for hot lookups and cleanup jobs.
   try {
-    db.exec("CREATE INDEX IF NOT EXISTS idx_summary_tasks_user ON summary_tasks(user_id, updated_at)");
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_summary_tasks_user ON summary_tasks(user_id, updated_at);
+      CREATE INDEX IF NOT EXISTS idx_summary_tasks_updated ON summary_tasks(updated_at);
+      CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_library_user_updated ON library_items(user_id, updated_at);
+      CREATE INDEX IF NOT EXISTS idx_library_user_bvid ON library_items(user_id, bvid);
+    `);
   } catch { /* ignore */ }
 
   const cols = db

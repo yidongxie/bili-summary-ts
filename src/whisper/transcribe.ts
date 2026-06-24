@@ -49,6 +49,16 @@ const BILI_HEADERS_FOR_MEDIA: Record<string, string> = {
   Referer: 'https://www.bilibili.com',
 };
 
+const MAX_AUDIO_DOWNLOAD_BYTES = parseInt(process.env.MAX_AUDIO_DOWNLOAD_BYTES || String(200 * 1024 * 1024), 10);
+const MAX_TRANSCRIBE_UPLOAD_BYTES = parseInt(process.env.MAX_TRANSCRIBE_UPLOAD_BYTES || String(50 * 1024 * 1024), 10);
+
+function assertUploadSize(filePath: string) {
+  const size = fs.statSync(filePath).size;
+  if (size > MAX_TRANSCRIBE_UPLOAD_BYTES) {
+    throw new Error(`转写文件过大（${Math.ceil(size / 1024 / 1024)}MB），请使用更短的音频`);
+  }
+}
+
 function requestJson<T>(url: string, headers: Record<string, string>, timeout = 15000): Promise<T> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -117,7 +127,22 @@ function downloadToFile(url: string, dest: string, redirects = 5): Promise<void>
         reject(new Error(`download HTTP ${res.statusCode}`));
         return;
       }
+      const contentLength = Number(res.headers['content-length'] || 0);
+      if (contentLength > MAX_AUDIO_DOWNLOAD_BYTES) {
+        res.resume();
+        reject(new Error(`音频文件过大（${Math.ceil(contentLength / 1024 / 1024)}MB）`));
+        return;
+      }
+      let downloaded = 0;
       const out = fs.createWriteStream(dest);
+      res.on('data', (chunk: Buffer) => {
+        downloaded += chunk.length;
+        if (downloaded > MAX_AUDIO_DOWNLOAD_BYTES) {
+          req.destroy(new Error('音频文件超过大小限制'));
+          out.destroy();
+          try { fs.unlinkSync(dest); } catch {}
+        }
+      });
       res.pipe(out);
       out.on('finish', () => out.close(() => resolve()));
       out.on('error', reject);
@@ -227,7 +252,22 @@ function downloadGenericAudio(url: string, dest: string, headers?: Record<string
         reject(new Error(`download HTTP ${res.statusCode}`));
         return;
       }
+      const contentLength = Number(res.headers['content-length'] || 0);
+      if (contentLength > MAX_AUDIO_DOWNLOAD_BYTES) {
+        res.resume();
+        reject(new Error(`音频文件过大（${Math.ceil(contentLength / 1024 / 1024)}MB）`));
+        return;
+      }
+      let downloaded = 0;
       const out = fs.createWriteStream(dest);
+      res.on('data', (chunk: Buffer) => {
+        downloaded += chunk.length;
+        if (downloaded > MAX_AUDIO_DOWNLOAD_BYTES) {
+          req.destroy(new Error('音频文件超过大小限制'));
+          out.destroy();
+          try { fs.unlinkSync(dest); } catch {}
+        }
+      });
       res.pipe(out);
       out.on('finish', () => out.close(() => resolve()));
       out.on('error', reject);
@@ -251,6 +291,7 @@ export async function transcribeBilibiliAudio(
     const streamUrl = await getAudioStreamUrl(bvid, cid);
     await downloadToFile(streamUrl, rawFile);
     await ffmpegToMp3(rawFile, mp3File);
+    assertUploadSize(mp3File);
     const result = await postMultipartTranscribe(mp3File, whisper);
     return { text: result.text, segments: result.segments || [] };
   } finally {
@@ -271,6 +312,7 @@ export async function transcribeAudioUrl(
   try {
     await downloadGenericAudio(audioUrl, rawFile, headers);
     await ffmpegToMp3(rawFile, mp3File);
+    assertUploadSize(mp3File);
     const result = await postMultipartTranscribe(mp3File, whisper);
     return { text: result.text, segments: result.segments || [] };
   } finally {

@@ -1,6 +1,11 @@
 import { useEffect } from 'react';
 
-export type ToastState = { id: number; msg: string; type: 'ok' | 'error' | 'info' } | null;
+export type ToastState = {
+  id: number;
+  msg: string;
+  type: 'ok' | 'error' | 'info';
+  action?: { label: string; onClick: () => void };
+} | null;
 
 interface ToastProps {
   toast: ToastState;
@@ -36,7 +41,20 @@ export function Toast({ toast, onClose }: ToastProps) {
       onClick={onClose}
       role="status"
     >
-      {toast.msg}
+      <span>{toast.msg}</span>
+      {toast.action && (
+        <button
+          type="button"
+          className="ml-3 underline underline-offset-2 font-bold"
+          onClick={(e) => {
+            e.stopPropagation();
+            toast.action?.onClick();
+            onClose();
+          }}
+        >
+          {toast.action.label}
+        </button>
+      )}
     </div>
   );
 }

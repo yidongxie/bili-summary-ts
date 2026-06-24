@@ -55,9 +55,22 @@ npm run build:web
 ENV_FILE="$REPO_DIR/.env"
 if [ ! -f "$ENV_FILE" ]; then
   KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+  SESSION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
   echo "ENCRYPTION_KEY=$KEY" > "$ENV_FILE"
+  echo "SESSION_SECRET=$SESSION_KEY" >> "$ENV_FILE"
   echo "PORT=8080" >> "$ENV_FILE"
-  echo ">>> 已生成 ENCRYPTION_KEY"
+  echo "NODE_ENV=production" >> "$ENV_FILE"
+  echo "BASE_URL=https://xydong.site" >> "$ENV_FILE"
+  echo ">>> 已生成 ENCRYPTION_KEY 和 SESSION_SECRET"
+fi
+if ! grep -q '^SESSION_SECRET=' "$ENV_FILE"; then
+  echo "SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")" >> "$ENV_FILE"
+fi
+if ! grep -q '^NODE_ENV=' "$ENV_FILE"; then
+  echo "NODE_ENV=production" >> "$ENV_FILE"
+fi
+if ! grep -q '^BASE_URL=' "$ENV_FILE"; then
+  echo "BASE_URL=https://xydong.site" >> "$ENV_FILE"
 fi
 
 source "$ENV_FILE"
@@ -70,7 +83,8 @@ fi
 
 echo ">>> 启动服务..."
 pm2 delete bilistudy 2>/dev/null || true
-ENCRYPTION_KEY=$ENCRYPTION_KEY pm2 start dist/index.js --name bilistudy
+ENCRYPTION_KEY=$ENCRYPTION_KEY SESSION_SECRET=$SESSION_SECRET NODE_ENV=${NODE_ENV:-production} BASE_URL=${BASE_URL:-https://xydong.site} pm2 start dist/index.js --name bilistudy --max-memory-restart 1G
+pm2 status bilistudy
 
 # 8. 保存 PM2 配置，开机自启
 pm2 save

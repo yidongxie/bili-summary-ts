@@ -33,6 +33,16 @@
 }
 
 html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+html,
 body {
   font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
   color: var(--foreground);

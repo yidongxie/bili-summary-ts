@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, BookOpen, ExternalLink, Trash2, FileDown, FileText, BookMarked } from 'lucide-react';
 import {
   getLibrary,
@@ -10,6 +10,7 @@ import {
   type AppConfig,
 } from '@/lib/api';
 import { formatDate, markdownToHtml } from '@/lib/format';
+import { EmptyState, GlassCard } from '@/components/ui';
 
 interface FavoritesPageProps {
   isLoggedIn: boolean;
@@ -63,11 +64,16 @@ export function FavoritesPage({
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
   const [tag, setTag] = useState('');
+  const [sort, setSort] = useState('updated_desc');
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [openItem, setOpenItem] = useState<LibraryItem | null>(null);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 20;
+  const requestSeq = useRef(0);
   // Obsidian export state — see handleObsidian() for the flow.
   const [obsidianModal, setObsidianModal] = useState<{
     md: string;
@@ -77,20 +83,26 @@ export function FavoritesPage({
   } | null>(null);
 
   const reload = useMemo(
-    () => async (q: string, cat: string, t: string) => {
+    () => async (q: string, cat: string, t: string, nextPage = 1, nextSort = sort) => {
+      const seq = ++requestSeq.current;
       setLoading(true);
       try {
-        const data = await getLibrary({ q, category: cat, tag: t });
+        const data = await getLibrary({ q, category: cat, tag: t, page: nextPage, page_size: pageSize, sort: nextSort });
+        if (seq !== requestSeq.current) return;
         setItems(data.items || []);
         setCategories(data.categories || []);
         setTags(data.tags || []);
+        setTotal(data.total || 0);
+        setPage(data.page || nextPage);
       } catch {
+        if (seq !== requestSeq.current) return;
         setItems([]);
+        setTotal(0);
       } finally {
-        setLoading(false);
+        if (seq === requestSeq.current) setLoading(false);
       }
     },
-    [],
+    [sort],
   );
 
   useEffect(() => {
@@ -100,7 +112,7 @@ export function FavoritesPage({
       setTags([]);
       return;
     }
-    reload(query.trim(), category, tag);
+    reload(query.trim(), category, tag, page, sort);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn, refreshKey]);
 
@@ -123,7 +135,26 @@ export function FavoritesPage({
   }, [initialOpenId]);
 
   async function handleSearch() {
-    await reload(query.trim(), category, tag);
+    await reload(query.trim(), category, tag, 1, sort);
+  }
+
+  async function handlePage(nextPage: number) {
+    await reload(query.trim(), category, tag, nextPage, sort);
+  }
+
+  async function applyFilter(nextCategory = category, nextTag = tag, nextSort = sort) {
+    setCategory(nextCategory);
+    setTag(nextTag);
+    setSort(nextSort);
+    await reload(query.trim(), nextCategory, nextTag, 1, nextSort);
+  }
+
+  async function resetFilters() {
+    setQuery('');
+    setCategory('');
+    setTag('');
+    setSort('updated_desc');
+    await reload('', '', '', 1, 'updated_desc');
   }
 
   async function handleOpen(id: string) {
@@ -202,7 +233,7 @@ export function FavoritesPage({
   }
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto px-8 py-8">
+    <div className="flex flex-col h-full overflow-y-auto px-4 sm:px-8 py-6 sm:py-8">
       <div className="mb-6">
         <h2 className="text-xl font-bold" style={{ color: '#0d2d45' }}>
           收藏库
@@ -233,25 +264,14 @@ export function FavoritesPage({
         </div>
 
         <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
+          value={sort}
+          onChange={(e) => applyFilter(category, tag, e.target.value)}
           style={selectStyle}
         >
-          <option value="">全部分类</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-
-        <select value={tag} onChange={(e) => setTag(e.target.value)} style={selectStyle}>
-          <option value="">全部标签</option>
-          {tags.map((t) => (
-            <option key={t} value={t}>
-              #{t}
-            </option>
-          ))}
+          <option value="updated_desc">最近更新</option>
+          <option value="updated_asc">最早更新</option>
+          <option value="title_asc">标题 A-Z</option>
+          <option value="duration_desc">时长最长</option>
         </select>
 
         <button
@@ -267,6 +287,56 @@ export function FavoritesPage({
         >
           搜索
         </button>
+      </div>
+
+      <div className="max-w-5xl mt-3 flex flex-col gap-2">
+        {categories.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs" style={{ color: '#7db8d4' }}>分类</span>
+            {categories.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => applyFilter(category === c ? '' : c, tag, sort)}
+                className="text-xs px-2.5 py-1 rounded-full transition-all hover:scale-105"
+                style={{
+                  background: category === c ? 'rgba(14,165,233,0.16)' : 'rgba(255,255,255,0.45)',
+                  color: category === c ? '#0369a1' : '#5b8fae',
+                  border: `1px solid ${category === c ? 'rgba(14,165,233,0.38)' : 'rgba(14,165,233,0.14)'}`,
+                  fontWeight: category === c ? 700 : 500,
+                }}
+              >
+                {c}{category === c ? ' ×' : ''}
+              </button>
+            ))}
+          </div>
+        )}
+        {tags.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs" style={{ color: '#7db8d4' }}>标签</span>
+            {tags.slice(0, 18).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => applyFilter(category, tag === t ? '' : t, sort)}
+                className="text-xs px-2.5 py-1 rounded-full transition-all hover:scale-105"
+                style={{
+                  background: tag === t ? 'rgba(14,165,233,0.16)' : 'rgba(255,255,255,0.45)',
+                  color: tag === t ? '#0369a1' : '#5b8fae',
+                  border: `1px solid ${tag === t ? 'rgba(14,165,233,0.38)' : 'rgba(14,165,233,0.14)'}`,
+                  fontWeight: tag === t ? 700 : 500,
+                }}
+              >
+                #{t}{tag === t ? ' ×' : ''}
+              </button>
+            ))}
+            {(query || category || tag || sort !== 'updated_desc') && (
+              <button type="button" onClick={resetFilters} className="text-xs px-2.5 py-1 rounded-full" style={{ color: '#b91c1c', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.18)' }}>
+                重置筛选
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Cards / empty */}
@@ -316,6 +386,11 @@ export function FavoritesPage({
                 className="rounded-2xl p-4 flex flex-col gap-3"
                 style={cardStyle}
               >
+                {item.pic && (
+                  <div className="w-full h-28 rounded-xl overflow-hidden" style={{ background: '#e0f2fe' }}>
+                    <img src={item.pic} alt="" loading="lazy" className="w-full h-full object-cover" />
+                  </div>
+                )}
                 <h3
                   className="text-sm font-bold leading-snug line-clamp-2"
                   style={{ color: '#0d2d45' }}
@@ -345,6 +420,11 @@ export function FavoritesPage({
                       </span>
                     ))}
                   </div>
+                )}
+                {item.summary && (
+                  <p className="text-xs line-clamp-2" style={{ color: '#5b8fae', lineHeight: 1.55 }}>
+                    {item.summary.replace(/[#>*`_\-]/g, '').slice(0, 120)}...
+                  </p>
                 )}
                 <div className="flex flex-wrap gap-2 mt-auto pt-2">
                   <button
@@ -414,6 +494,32 @@ export function FavoritesPage({
           </div>
         )}
       </div>
+
+      {isLoggedIn && total > pageSize && (
+        <div className="max-w-5xl mt-4 flex items-center justify-center gap-3 text-xs" style={{ color: '#5b8fae' }}>
+          <button
+            type="button"
+            disabled={page <= 1 || loading}
+            onClick={() => handlePage(page - 1)}
+            className="px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50"
+            style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(14,165,233,0.18)' }}
+          >
+            上一页
+          </button>
+          <span>
+            第 {page} / {Math.max(1, Math.ceil(total / pageSize))} 页，共 {total} 条
+          </span>
+          <button
+            type="button"
+            disabled={page >= Math.ceil(total / pageSize) || loading}
+            onClick={() => handlePage(page + 1)}
+            className="px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50"
+            style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(14,165,233,0.18)' }}
+          >
+            下一页
+          </button>
+        </div>
+      )}
 
       {/* Detail */}
       {openItem && (

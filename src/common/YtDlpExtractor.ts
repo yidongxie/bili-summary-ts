@@ -3,12 +3,12 @@
  * 支持 1000+ 网站，包括抖音、小红书、YouTube 等
  */
 
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
 import fs from "fs";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export interface VideoInfo {
   title: string;
@@ -66,7 +66,7 @@ export async function getYtDlpVersion(): Promise<string | null> {
   if (!ytDlpPath) return null;
 
   try {
-    const { stdout } = await execAsync(`"${ytDlpPath}" --version`, { timeout: 15000 });
+    const { stdout } = await execFileAsync(ytDlpPath, ["--version"], { timeout: 15000 });
     return stdout.trim();
   } catch (error: any) {
     console.error("[yt-dlp] version check failed:", error.message);
@@ -84,8 +84,8 @@ export async function extractVideoInfo(url: string): Promise<VideoInfo> {
   }
 
   try {
-    // 使用 yt-dlp 获取视频元数据，同时获取最佳音频和视频 URL
-    // 使用 execFile 方式避免路径空格问题
+    // 使用 yt-dlp 获取视频元数据，同时获取最佳音频和视频 URL。
+    // Use execFile with argv so user-controlled URLs never pass through a shell.
     const args = [
       "--no-playlist",
       "--skip-download",
@@ -94,10 +94,7 @@ export async function extractVideoInfo(url: string): Promise<VideoInfo> {
       url,
     ];
 
-    const { stdout } = await execAsync(
-      `"${ytDlpPath}" ${args.map(a => `"${a}"`).join(' ')}`,
-      { timeout: 60000 }
-    );
+    const { stdout } = await execFileAsync(ytDlpPath, args, { timeout: 60000 });
     const data = JSON.parse(stdout.trim());
 
     // 提取音频 URL - 从 requested_formats 或直接获取 url

@@ -8,12 +8,16 @@ import { isXiaoyuzhouUrl, extractEpisodeId, fetchEpisodeInfo } from "../xiaoyuzh
 import { isYtDlpAvailable, extractVideoInfo as extractWithYtDlp, isUrlSupported, getPlatformName, validateUrl } from "../common/YtDlpExtractor";
 import { transcribeBilibiliAudio, transcribeAudioUrl } from "../whisper/transcribe";
 import { summarizeText, suggestTags, SummaryMode } from "../llm/summarize";
+import { enforceRateLimit } from "../common/rateLimit";
 import { getDecryptedConfig } from "./configStore";
 
 const MAX_DAILY_SUMMARIES = parseInt(process.env.MAX_DAILY_SUMMARIES || "10", 10);
 const MAX_SUBTITLE_CHARS = parseInt(process.env.MAX_SUBTITLE_CHARS || "60000", 10);
+const MAX_CONCURRENT_TASKS = Math.max(1, parseInt(process.env.MAX_CONCURRENT_TASKS || "2", 10));
+const MAX_PENDING_TASKS_PER_USER = Math.max(1, parseInt(process.env.MAX_PENDING_TASKS_PER_USER || "5", 10));
+const MAX_MEDIA_DURATION_SECONDS = Math.max(60, parseInt(process.env.MAX_MEDIA_DURATION_SECONDS || "10800", 10));
 
-const ADMIN_EMAIL = "444925817@qq.com";
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
 
 interface Task {
   id: string;
@@ -24,11 +28,37 @@ interface Task {
   result?: any;
   error?: string;
   createdAt: number;
+  url: string;
+  body: any;
   res: Response | null; // SSE response to push to
 }
 
 const tasks = new Map<string, Task>();
 const userTasks = new Map<number, string[]>(); // userId -> taskIds
+const queuedTaskIds: string[] = [];
+let activeTaskCount = 0;
+
+function startQueuedTasks(db: Database.Database) {
+  while (activeTaskCount < MAX_CONCURRENT_TASKS && queuedTaskIds.length > 0) {
+    const id = queuedTaskIds.shift()!;
+    const task = tasks.get(id);
+    if (!task || task.status !== "pending") continue;
+    activeTaskCount += 1;
+    setImmediate(async () => {
+      try {
+        await runTask(db, task, task.url, task.body);
+      } finally {
+        activeTaskCount = Math.max(0, activeTaskCount - 1);
+        startQueuedTasks(db);
+      }
+    });
+  }
+}
+
+function enqueueTask(db: Database.Database, task: Task) {
+  queuedTaskIds.push(task.id);
+  startQueuedTasks(db);
+}
 
 function loadPersistedTask(db: Database.Database, id: string): Task | null {
   const row = db.prepare("SELECT * FROM summary_tasks WHERE id = ?").get(id) as any;
@@ -42,6 +72,8 @@ function loadPersistedTask(db: Database.Database, id: string): Task | null {
     result: row.result_json ? JSON.parse(row.result_json) : undefined,
     error: row.error || undefined,
     createdAt: row.created_at,
+    url: "",
+    body: {},
     res: null,
   };
 }
@@ -71,7 +103,7 @@ function completeTask(db: Database.Database, task: Task, result: any) {
   sendSSE(task, "complete", result);
 }
 
-function getOrCreateTaskId(db: Database.Database, userId: number, userEmail: string): string {
+function getOrCreateTaskId(db: Database.Database, userId: number, userEmail: string, url: string, body: any): string {
   const id = crypto.randomUUID();
   const task: Task = {
     id,
@@ -80,21 +112,54 @@ function getOrCreateTaskId(db: Database.Database, userId: number, userEmail: str
     status: "pending",
     progress: "排队中…",
     createdAt: Date.now(),
+    url,
+    body,
     res: null,
   };
   tasks.set(id, task);
   if (!userTasks.has(userId)) userTasks.set(userId, []);
   const list = userTasks.get(userId)!;
-  if (list.length >= 10) {
-    const old = list.shift()!;
+  while (list.length >= 10) {
+    const old = list[0];
+    const oldTask = tasks.get(old);
+    if (oldTask && (oldTask.status === "pending" || oldTask.status === "running")) break;
+    list.shift();
     tasks.delete(old);
-    db.prepare("DELETE FROM summary_tasks WHERE id = ?").run(old);
+    db.prepare("DELETE FROM summary_tasks WHERE id = ? AND status IN ('done', 'error')").run(old);
   }
   list.push(id);
   db.prepare(
     "INSERT INTO summary_tasks (id, user_id, user_email, status, progress, created_at, updated_at) VALUES (?, ?, ?, 'pending', '排队中…', ?, ?)"
   ).run(id, userId, userEmail, task.createdAt, Date.now());
   return id;
+}
+
+function countActiveUserTasks(userId: number): number {
+  let count = 0;
+  for (const task of tasks.values()) {
+    if (task.userId === userId && (task.status === "pending" || task.status === "running")) count += 1;
+  }
+  return count;
+}
+
+function chargeDailyUsage(db: Database.Database, userId: number, userEmail: string): boolean {
+  if (ADMIN_EMAIL && userEmail === ADMIN_EMAIL) return true;
+  const today = new Date().toISOString().slice(0, 10);
+  const row = db
+    .prepare("SELECT summarize_count FROM daily_usage WHERE user_id = ? AND date = ?")
+    .get(userId, today) as { summarize_count?: number } | undefined;
+  if ((row?.summarize_count || 0) >= MAX_DAILY_SUMMARIES) return false;
+  db.prepare(
+    `INSERT INTO daily_usage (user_id, date, summarize_count) VALUES (?, ?, 1)
+     ON CONFLICT(user_id, date) DO UPDATE SET summarize_count = summarize_count + 1`
+  ).run(userId, today);
+  return true;
+}
+
+function assertDurationWithinLimit(duration: number | undefined, label = "内容") {
+  if (duration && duration > MAX_MEDIA_DURATION_SECONDS) {
+    throw new Error(`${label}时长超过限制（最长 ${Math.floor(MAX_MEDIA_DURATION_SECONDS / 60)} 分钟）`);
+  }
 }
 
 function sendSSE(task: Task, event: string, data: any) {
@@ -127,6 +192,11 @@ export function createTaskRouter(db: Database.Database): Router {
       res.status(404).json({ success: false, error: "任务不存在" });
       return;
     }
+    const userId = (req.user as any)?.id;
+    if (!userId || task.userId !== userId) {
+      res.status(403).json({ success: false, error: "无权访问此任务" });
+      return;
+    }
 
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -149,7 +219,16 @@ export function createTaskRouter(db: Database.Database): Router {
       return;
     }
 
+  const heartbeat = setInterval(() => {
+      if (!task.res || task.res.writableEnded) {
+        clearInterval(heartbeat);
+        return;
+      }
+      try { task.res.write(`: heartbeat\n\n`); } catch { clearInterval(heartbeat); }
+    }, 25000);
+
     req.on("close", () => {
+      clearInterval(heartbeat);
       task.res = null;
     });
   });
@@ -163,16 +242,17 @@ export function createTaskRouter(db: Database.Database): Router {
       return;
     }
 
+    if (!enforceRateLimit(req, res, "task", 20, 60 * 60 * 1000, String(userId))) return;
+
     const url = String(req.body.url || "").trim();
     if (!url) { res.json({ success: false, error: "请输入视频链接" }); return; }
 
-    // Rate limit check
-    const today = new Date().toISOString().slice(0, 10);
-    const usageRow = db
-      .prepare("SELECT summarize_count FROM daily_usage WHERE user_id = ? AND date = ?")
-      .get(userId, today) as any;
+    if (countActiveUserTasks(userId) >= MAX_PENDING_TASKS_PER_USER) {
+      res.status(429).json({ success: false, error: `排队任务过多，请等待当前任务完成后再提交` });
+      return;
+    }
 
-    if (userEmail !== ADMIN_EMAIL && usageRow && usageRow.summarize_count >= MAX_DAILY_SUMMARIES) {
+    if (!chargeDailyUsage(db, userId, userEmail)) {
       res.status(429).json({
         success: false,
         error: `今日总结次数已达上限（${MAX_DAILY_SUMMARIES} 次）`,
@@ -180,15 +260,11 @@ export function createTaskRouter(db: Database.Database): Router {
       return;
     }
 
-    const taskId = getOrCreateTaskId(db, userId, userEmail);
+    const taskId = getOrCreateTaskId(db, userId, userEmail, url, req.body);
     const task = tasks.get(taskId)!;
 
     res.json({ success: true, task_id: taskId });
-
-    // Run asynchronously
-    setImmediate(async () => {
-      await runTask(db, task, url, req.body);
-    });
+    enqueueTask(db, task);
   });
 
   return router;
@@ -200,7 +276,7 @@ function getWhisperConfig(db: Database.Database, userId: number, userEmail: stri
   let whisperBaseUrl = String(body.whisper_base_url || config.whisper_base_url || "https://api.siliconflow.cn/v1").trim();
   let whisperModel = String(body.whisper_model || config.whisper_model || "FunAudioLLM/SenseVoiceSmall").trim();
 
-  if (!whisperApiKey && userEmail !== ADMIN_EMAIL) {
+  if (!whisperApiKey && ADMIN_EMAIL && userEmail !== ADMIN_EMAIL) {
     const adminRow = db
       .prepare("SELECT id FROM users WHERE email = ?")
       .get(ADMIN_EMAIL) as { id?: number } | undefined;
@@ -230,6 +306,7 @@ async function processBilibili(
 
   updateProgress(db, task, "获取视频元数据…");
   const info = await fetchBilibiliVideoInfo(videoId);
+  assertDurationWithinLimit(info.duration, "视频");
   const bvid = info.bvid;
   const cid = info.cid;
 
@@ -310,6 +387,7 @@ async function processXiaoyuzhou(
 
   updateProgress(db, task, "获取播客元数据…");
   const episode = await fetchEpisodeInfo(episodeId, url);
+  assertDurationWithinLimit(episode.duration, "播客");
 
   if (!whisperConfig.apiKey) {
     throw new Error("请先在设置中填写 Whisper API Key");
@@ -410,6 +488,8 @@ async function processWithYtDlp(
     throw new Error(message);
   }
 
+  assertDurationWithinLimit(videoInfo.duration, "视频");
+
   if (!videoInfo.audioUrl) {
     throw new Error(`无法获取 ${getPlatformName(videoInfo.platform)} 视频音频链接，请尝试其他平台或稍后重试`);
   }
@@ -509,6 +589,7 @@ async function runTask(
 ) {
   try {
     task.status = "running";
+    db.prepare("UPDATE summary_tasks SET status = 'running', updated_at = ? WHERE id = ?").run(Date.now(), task.id);
     updateProgress(db, task, "获取信息…");
 
     const config = getDecryptedConfig(db, task.userId);
@@ -549,12 +630,6 @@ async function runTask(
       // 没有 yt-dlp，默认尝试使用 Bilibili 原生提取器
       result = await processBilibili(db, task, cleanedUrl, whisperConfig, llmConfig, mode);
     }
-
-    // Increment daily usage
-    db.prepare(
-      `INSERT INTO daily_usage (user_id, date, summarize_count) VALUES (?, ?, 1)
-       ON CONFLICT(user_id, date) DO UPDATE SET summarize_count = summarize_count + 1`
-    ).run(task.userId, new Date().toISOString().slice(0, 10));
 
     completeTask(db, task, result);
   } catch (err: any) {
