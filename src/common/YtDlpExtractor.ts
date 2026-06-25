@@ -239,7 +239,7 @@ export function validateUrl(url: string): { valid: boolean; message?: string; cl
   // 检查抖音链接格式
   if (/douyin\.com/i.test(cleanedUrl)) {
     // 检查是否是分享短链
-    if (/v\.douyin\.com\/[a-zA-Z0-9]+/i.test(cleanedUrl)) {
+    if (/v\.douyin\.com\/[A-Za-z0-9_-]+\/?/i.test(cleanedUrl)) {
       return { valid: true, cleanedUrl };
     }
     // 检查是否是视频长链
