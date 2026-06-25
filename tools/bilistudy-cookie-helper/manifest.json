@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "BiliStudy Cookie Helper",
+  "version": "1.0.0",
+  "description": "Export Douyin/Xiaohongshu cookies as cookies.txt and save them to BiliStudy.",
+  "permissions": ["cookies", "storage", "clipboardWrite"],
+  "host_permissions": [
+    "https://www.douyin.com/*",
+    "https://*.douyin.com/*",
+    "https://www.xiaohongshu.com/*",
+    "https://*.xiaohongshu.com/*",
+    "https://xydong.site/*",
+    "https://www.xydong.site/*",
+    "http://127.0.0.1:5173/*"
+  ],
+  "action": {
+    "default_title": "BiliStudy Cookies",
+    "default_popup": "popup.html"
+  }
+}

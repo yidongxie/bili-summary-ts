@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BiliStudy Cookie Helper</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      width: 360px;
+      margin: 0;
+      padding: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+      color: #0d2d45;
+      background: linear-gradient(135deg, #ddf4ff, #f0f9ff);
+    }
+    h1 { font-size: 16px; margin: 0 0 4px; }
+    p { margin: 6px 0; color: #5b8fae; font-size: 12px; line-height: 1.55; }
+    label { display: block; margin-top: 10px; font-size: 12px; font-weight: 700; color: #0369a1; }
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid rgba(14,165,233,.22);
+      border-radius: 10px;
+      padding: 8px 10px;
+      outline: none;
+      color: #0d2d45;
+      background: rgba(255,255,255,.78);
+      font-size: 12px;
+    }
+    textarea { height: 118px; font-family: "JetBrains Mono", Consolas, monospace; resize: vertical; }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 9px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform .12s ease;
+    }
+    button:hover { transform: translateY(-1px); }
+    .primary { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; }
+    .ghost { background: rgba(255,255,255,.65); color: #0369a1; border: 1px solid rgba(14,165,233,.20); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .status { margin-top: 10px; padding: 8px; border-radius: 10px; font-size: 12px; display: none; }
+    .ok { display: block; background: rgba(5,150,105,.10); color: #047857; border: 1px solid rgba(5,150,105,.25); }
+    .err { display: block; background: rgba(239,68,68,.10); color: #b91c1c; border: 1px solid rgba(239,68,68,.25); }
+    .info { display: block; background: rgba(14,165,233,.10); color: #0369a1; border: 1px solid rgba(14,165,233,.25); }
+  </style>
+</head>
+<body>
+  <h1>BiliStudy Cookie Helper</h1>
+  <p>从当前浏览器导出抖音/小红书 cookies，并保存到你的 BiliStudy 设置。</p>
+
+  <label>平台</label>
+  <select id="site">
+    <option value="douyin">抖音 douyin.com</option>
+    <option value="xiaohongshu">小红书 xiaohongshu.com</option>
+  </select>
+
+  <label>BiliStudy 地址</label>
+  <input id="baseUrl" value="https://xydong.site" />
+
+  <div class="row">
+    <button id="exportBtn" class="ghost">读取 Cookies</button>
+    <button id="copyBtn" class="ghost">复制 cookies.txt</button>
+  </div>
+
+  <label>cookies.txt 预览</label>
+  <textarea id="output" placeholder="点击读取 Cookies 后显示"></textarea>
+
+  <button id="saveBtn" class="primary" style="width:100%; margin-top:10px;">保存到 BiliStudy</button>
+  <div id="status" class="status"></div>
+
+  <p>提示：需要先在同一个浏览器登录 BiliStudy。Cookies 属于敏感凭证，请勿分享给他人。</p>
+  <script src="popup.js"></script>
+</body>
+</html>
