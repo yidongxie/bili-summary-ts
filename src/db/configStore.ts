@@ -103,7 +103,7 @@ export function saveConfig(
   if ("api_key" in patch && patch.api_key) { updates.push("api_key_enc = @api_key_enc"); params.api_key_enc = encrypt(patch.api_key); }
  if ("whisper_api_key" in patch && patch.whisper_api_key) { updates.push("whisper_api_key_enc = @whisper_api_key_enc"); params.whisper_api_key_enc = encrypt(patch.whisper_api_key); }
   if ("yt_dlp_cookies" in patch && patch.yt_dlp_cookies) { updates.push("yt_dlp_cookies_enc = @yt_dlp_cookies_enc"); params.yt_dlp_cookies_enc = encrypt(patch.yt_dlp_cookies); }
-  if ("yt_dlp_cookies" in patch && !patch.yt_dlp_cookies) { updates.push("yt_dlp_cookies_enc = ''"); }
+  if ("clear_yt_dlp_cookies" in patch && patch.clear_yt_dlp_cookies) { updates.push("yt_dlp_cookies_enc = ''"); }
   if ("whisper_base_url" in patch) { updates.push("whisper_base_url = @whisper_base_url"); params.whisper_base_url = patch.whisper_base_url; }
   if ("whisper_model" in patch) { updates.push("whisper_model = @whisper_model"); params.whisper_model = patch.whisper_model; }
   if ("deepseek_base_url" in patch) { updates.push("deepseek_base_url = @deepseek_base_url"); params.deepseek_base_url = patch.deepseek_base_url; }

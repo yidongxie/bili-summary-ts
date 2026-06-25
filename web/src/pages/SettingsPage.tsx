@@ -175,6 +175,29 @@ export function SettingsPage({
     }
   }
 
+
+  async function handleClearYtDlpCookies() {
+    if (!isLoggedIn) {
+      setStatus({ msg: '请先登录', type: 'error' });
+      onRequireLogin();
+      return;
+    }
+    if (!window.confirm('确定清空已保存的 yt-dlp Cookies 吗？')) return;
+    setSaving(true);
+    setStatus(null);
+    try {
+      const data = await saveConfig({ clear_yt_dlp_cookies: '1' } as any);
+      onConfigSaved(data.config);
+      setYtDlpCookiesSet(false);
+      setYtDlpCookies('');
+      setStatus({ msg: 'yt-dlp Cookies 已清空', type: 'ok' });
+    } catch (err: any) {
+      setStatus({ msg: err.message || '清空失败', type: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleSave() {
     if (!isLoggedIn) {
       setStatus({ msg: '请先登录', type: 'error' });
@@ -190,7 +213,6 @@ export function SettingsPage({
         whisper_base_url: whisperApiUrl.trim() || 'https://api.siliconflow.cn/v1',
         whisper_model: whisperModel.trim() || 'FunAudioLLM/SenseVoiceSmall',
         default_category: defaultCategory.trim() || '待整理',
-        yt_dlp_cookies: ytDlpCookies.trim(),
         obsidian_vault_name: obsidianVault.trim(),
         obsidian_folder: obsidianSubfolder.trim() || 'BiliStudy',
       };
@@ -198,6 +220,7 @@ export function SettingsPage({
       // we'd overwrite the encrypted-at-rest value with an empty string.
       if (deepseekKey.trim()) (payload as any).api_key = deepseekKey.trim();
       if (whisperKey.trim()) (payload as any).whisper_api_key = whisperKey.trim();
+      if (ytDlpCookies.trim()) (payload as any).yt_dlp_cookies = ytDlpCookies.trim();
 
       const data = await saveConfig(payload);
       onConfigSaved(data.config);
@@ -381,15 +404,25 @@ export function SettingsPage({
             <label style={labelStyle}>yt-dlp Cookies（抖音/小红书等平台）</label>
             <textarea
               style={{ ...inputStyle, minHeight: 120, resize: 'vertical', fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}
-              placeholder={ytDlpCookiesSet ? '已保存，留空则清空；粘贴 Netscape cookies.txt 内容后保存' : '粘贴 Netscape cookies.txt 内容，例如从浏览器导出的 douyin.com cookies'}
+              placeholder={ytDlpCookiesSet ? '已保存，留空则不修改；粘贴新内容后保存可更新' : '粘贴 Netscape cookies.txt 内容，例如从浏览器导出的 douyin.com cookies'}
               value={ytDlpCookies}
               onChange={(e) => setYtDlpCookies(e.target.value)}
             />
-            <div className="mt-1.5 flex items-center justify-between gap-2">
+            <div className="mt-1.5 flex items-center justify-between gap-2 flex-wrap">
               <KeyStatus configured={ytDlpCookiesSet} />
               <span className="text-xs" style={{ color: '#7db8d4' }}>
-                Cookies 会加密保存，仅服务器调用 yt-dlp 时临时使用。
+                Cookies 会加密保存；留空保存不会修改现有 Cookies。
               </span>
+              {ytDlpCookiesSet && (
+                <button
+                  type="button"
+                  onClick={handleClearYtDlpCookies}
+                  className="text-xs px-2 py-1 rounded-lg font-semibold"
+                  style={{ color: '#b91c1c', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.20)' }}
+                >
+                  清空 Cookies
+                </button>
+              )}
             </div>
           </div>
         </div>
