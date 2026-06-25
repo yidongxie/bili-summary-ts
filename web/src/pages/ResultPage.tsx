@@ -1,69 +1,40 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   ArrowLeft,
+  Bot,
+  Check,
+  Circle,
   Copy,
-  Save,
+  Download,
+  ExternalLink,
+  FileText,
+  Fullscreen,
+  GitBranch,
+  Loader2,
+  MessageCircle,
   RefreshCw,
-  X as CloseIcon,
-  CheckCircle2,
+  Save,
+  Send,
+  Sparkles,
+  Subtitles,
+  User,
 } from 'lucide-react';
 import {
   createSummarizeTask,
   subscribeTask,
   saveLibrary,
   checkLibraryByBvid,
-  suggestTags,
   type AppConfig,
   type SummaryResult,
   type SubtitleSegment,
 } from '@/lib/api';
 import { copyText } from '@/lib/clipboard';
-import { formatDuration, formatTimelineTime, markdownToHtml, parseTagInput } from '@/lib/format';
-
-const PROCESS_STAGES = ['排队中', '获取信息', '语音转写', 'AI 总结', '生成标签', '完成'];
-
-function progressToStage(progress: string) {
-  if (/完成/.test(progress)) return 5;
-  if (/标签/.test(progress)) return 4;
-  if (/总结|AI/.test(progress)) return 3;
-  if (/转写|Whisper|语音/.test(progress)) return 2;
-  if (/获取|视频|播客|信息/.test(progress)) return 1;
-  return 0;
-}
-
-function extractSummaryHeaders(markdown: string) {
-  return Array.from(markdown.matchAll(/^(#{1,3})\s+(.+)$/gm)).map((m, idx) => ({
-    id: `summary-heading-${idx}`,
-    level: m[1].length,
-    text: m[2].trim(),
-  }));
-}
-
-function summaryHtmlWithAnchors(markdown: string) {
-  let idx = 0;
-  return markdownToHtml(markdown).replace(/<h([23])>(.*?)<\/h\1>/g, (_m, level, text) => {
-    const id = `summary-heading-${idx++}`;
-    return `<h${level} id="${id}">${text}</h${level}>`;
-  });
-}
-
-function renderHighlighted(text: string, query: string) {
-  const q = query.trim();
-  if (!q) return text;
-  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
-  return parts.map((part, idx) =>
-    part.toLowerCase() === q.toLowerCase() ? (
-      <mark key={idx} className="rounded px-0.5" style={{ background: '#fef08a', color: '#713f12' }}>
-        {part}
-      </mark>
-    ) : (
-      part
-    ),
-  );
-}
+import { formatDuration, formatTimelineTime, markdownToHtml } from '@/lib/format';
 
 type Phase = 'submitting' | 'progress' | 'success' | 'error';
+type TabKey = 'summary' | 'subtitles' | 'mindmap' | 'chat';
+type MindNode = { label: string; children?: MindNode[] };
+type ChatMessage = { role: 'user' | 'ai'; content: string };
 
 interface ResultPageProps {
   url: string;
@@ -75,86 +46,184 @@ interface ResultPageProps {
   onRequireLogin: () => void;
 }
 
-const panelStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.55)',
-  border: '1px solid rgba(14,165,233,0.14)',
-  backdropFilter: 'blur(16px)',
-  boxShadow:
-    '0 4px 24px rgba(14,165,233,0.07), inset 0 1px 0 rgba(255,255,255,0.85)',
+const PROCESS_STEPS = [
+  '正在解析视频链接...',
+  '正在提取音频轨道...',
+  '正在进行语音转写...',
+  '正在生成 AI 总结...',
+  '正在构建思维导图...',
+  '即将完成...',
+];
+
+const pageBg = 'hsl(222 20% 7%)';
+const cardBg = 'hsl(222 18% 11% / .92)';
+const mutedBg = 'hsl(225 15% 16% / .72)';
+const border = 'hsl(222 12% 20%)';
+const fg = 'hsl(220 15% 90%)';
+const muted = 'hsl(220 10% 55%)';
+const primary = 'hsl(250 70% 60%)';
+const accent = 'hsl(215 80% 62%)';
+
+const darkCardStyle: CSSProperties = {
+  background: cardBg,
+  border: `1px solid ${border}`,
+  boxShadow: '0 20px 60px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)',
 };
+const darkSubtleStyle: CSSProperties = { background: mutedBg, border: `1px solid ${border}` };
 
-function extractYouTubeId(link: string | undefined) {
-  if (!link) return '';
+function progressToStep(progress: string) {
+  if (/完成/.test(progress)) return 5;
+  if (/标签|思维/.test(progress)) return 4;
+  if (/总结|AI/.test(progress)) return 3;
+  if (/转写|Whisper|语音/.test(progress)) return 2;
+  if (/音频|下载|提取/.test(progress)) return 1;
+  return 0;
+}
+
+function plainMarkdown(md: string) {
+  return (md || '')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/[#>*`_\-]+/g, '')
+    .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+    .trim();
+}
+
+function splitSentences(text: string) {
+  return text
+    .split(/[。！？\n]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 8);
+}
+
+function buildKeyPoints(summary: string, tags: string[] = []) {
+  const bulletLines = summary
+    .split('\n')
+    .map((l) => l.replace(/^[-*#>\s]+/, '').trim())
+    .filter((l) => l.length > 10 && !/^AI|总结|笔记/.test(l));
+  const points = [
+    ...bulletLines,
+    ...splitSentences(plainMarkdown(summary)),
+    ...tags.map((t) => `围绕「${t}」展开学习与复盘。`),
+  ];
+  return Array.from(new Set(points)).slice(0, 5).map((p) => (p.length > 88 ? p.slice(0, 88) + '…' : p));
+}
+
+function buildChapters(segments: SubtitleSegment[] | undefined, summary: string) {
+  if (segments?.length) {
+    const total = Math.min(7, Math.max(1, segments.length));
+    const step = Math.max(1, Math.floor(segments.length / total));
+    return Array.from({ length: total }).map((_, i) => {
+      const seg = segments[Math.min(i * step, segments.length - 1)];
+      return { timestamp: formatTimelineTime(seg.from || 0), title: (seg.content || '章节内容').slice(0, 34) };
+    });
+  }
+  const headers = Array.from(summary.matchAll(/^#{1,3}\s+(.+)$/gm)).map((m) => m[1].trim());
+  return (headers.length ? headers : ['开场与背景', '核心观点', '关键案例', '方法总结', '行动建议'])
+    .slice(0, 7)
+    .map((h, i) => ({ timestamp: `0${i}:00`.slice(-5), title: h }));
+}
+
+function secondsToSrtTime(seconds: number) {
+  const ms = Math.max(0, Math.floor((seconds % 1) * 1000));
+  const total = Math.floor(seconds || 0);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+}
+
+function buildSrt(segments: SubtitleSegment[] = []) {
+  return segments
+    .map((seg, i) => `${i + 1}\n${secondsToSrtTime(seg.from)} --> ${secondsToSrtTime(seg.to || seg.from + 3)}\n${seg.content}\n`)
+    .join('\n');
+}
+
+function downloadText(filename: string, text: string, type = 'text/plain;charset=utf-8') {
+  const blob = new Blob([text], { type });
+  const u = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = u;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(u);
+}
+
+function buildMindMap(keyPoints: string[], chapters: { timestamp: string; title: string }[], notes: string): MindNode {
+  const headers = Array.from(notes.matchAll(/^#{1,3}\s+(.+)$/gm)).map((m) => m[1].trim()).slice(0, 8);
+  return {
+    label: '视频学习笔记',
+    children: [
+      { label: '章节结构', children: chapters.map((c) => ({ label: `${c.timestamp} ${c.title}` })) },
+      { label: '核心要点', children: keyPoints.map((p) => ({ label: p.slice(0, 48) })) },
+      { label: '笔记大纲', children: (headers.length ? headers : ['结构化笔记', '行动清单']).map((h) => ({ label: h })) },
+    ],
+  };
+}
+
+function outlineText(node: MindNode, depth = 0): string {
+  return `${'  '.repeat(depth)}- ${node.label}\n${(node.children || []).map((c) => outlineText(c, depth + 1)).join('')}`;
+}
+
+function mockChatReply(q: string) {
+  if (/核心|观点/.test(q)) return '这个视频的核心观点可以概括为：尽早建立高质量输入系统，用大量阅读提升判断力，并把看到的内容转化成自己的行动清单。';
+  if (/总结|要点/.test(q)) return '五个关键要点：持续阅读、主动筛选信息、建立笔记系统、定期复盘、把知识转化为实践。';
+  if (/案例/.test(q)) return '视频中的案例主要围绕个人成长、阅读习惯、信息差和长期主义展开，可以作为建立学习系统的参考。';
+  if (/资源|学习/.test(q)) return '建议继续学习：阅读方法、知识管理、批判性思维、写作输出和长期项目实践。';
+  return '我会基于当前总结和字幕帮你分析。你可以继续追问某个观点、章节或行动建议。';
+}
+
+function getPlatformLabel(result: SummaryResult) {
+  if (result.type === 'bilibili') return 'B站';
+  if (result.type === 'douyin') return '抖音';
+  if (result.type === 'youtube') return 'YouTube';
+  if (result.type === 'xiaoyuzhou') return '小宇宙';
+  return result.type || '视频';
+}
+
+function getHost(link?: string) {
   try {
-    const u = new URL(link);
-    if (u.hostname.includes('youtu.be')) return u.pathname.replace(/^\//, '');
-    if (u.hostname.includes('youtube.com')) return u.searchParams.get('v') || '';
+    return link ? new URL(link).hostname.replace(/^www\./, '') : '未知来源';
   } catch {
-    // ignore
+    return '未知来源';
   }
-  return '';
 }
 
-function isHttpUrl(value: string | undefined) {
-  return /^https?:\/\//i.test(value || '');
+function DarkButton({ children, onClick, variant = 'ghost', disabled }: { children: ReactNode; onClick?: () => void; variant?: 'ghost' | 'primary'; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition hover:scale-[1.02] disabled:opacity-50"
+      style={variant === 'primary' ? { background: `linear-gradient(135deg,${primary},${accent})`, color: 'white' } : { ...darkSubtleStyle, color: fg }}
+    >
+      {children}
+    </button>
+  );
 }
 
-// Group transcript segments into readable paragraphs. Same heuristic as
-// public/index.legacy.html: break on a >=4s pause, ~90s of running text, or
-// 12 segments per paragraph — whichever comes first.
-function groupTranscript(segments: SubtitleSegment[] | undefined) {
-  if (!segments || !segments.length) return [];
-  const active = segments
-    .filter((s) => s.content && s.content.trim())
-    .sort((a, b) => Number(a.from || 0) - Number(b.from || 0));
-  if (!active.length) return [];
-  const paragraphs: { from: number; to: number; texts: string[] }[] = [];
-  let cur = { from: active[0].from, to: active[0].to, texts: [active[0].content.trim()] };
-  for (let i = 1; i < active.length; i++) {
-    const s = active[i];
-    const prev = active[i - 1];
-    const gap = Number(s.from || 0) - Number(prev.to || prev.from || 0);
-    const blockLength = Number(s.from || 0) - Number(cur.from || 0);
-    if (gap >= 4 || blockLength >= 90 || cur.texts.length >= 12) {
-      paragraphs.push(cur);
-      cur = { from: s.from, to: s.to, texts: [s.content.trim()] };
-    } else {
-      cur.to = s.to;
-      cur.texts.push(s.content.trim());
-    }
-  }
-  paragraphs.push(cur);
-  return paragraphs;
-}
-
-export function ResultPage({
-  url,
-  mode,
-  config,
-  onBack,
-  onSaved,
-  onShowToast,
-  onRequireLogin,
-}: ResultPageProps) {
+export function ResultPage({ url, mode, config, onBack, onSaved, onShowToast, onRequireLogin }: ResultPageProps) {
   const [phase, setPhase] = useState<Phase>('submitting');
   const [progress, setProgress] = useState('正在提交任务…');
   const [error, setError] = useState('');
   const [result, setResult] = useState<SummaryResult | null>(null);
-
-  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
-  const [extraTags, setExtraTags] = useState('');
-  const [notes, setNotes] = useState('');
-  const [category, setCategory] = useState(config.default_category || '待整理');
-  const [transcriptSearch, setTranscriptSearch] = useState('');
-  const [runId, setRunId] = useState(0);
-
   const [saved, setSaved] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
-
+  const [runId, setRunId] = useState(0);
   const closeRef = useRef<(() => void) | null>(null);
 
-  // Kick off the summarize task on mount and when the user retries.
+  const [activeTab, setActiveTab] = useState<TabKey>('summary');
+  const [copiedNotes, setCopiedNotes] = useState(false);
+  const [rewritePlatform, setRewritePlatform] = useState('小红书');
+  const [rewriteText, setRewriteText] = useState('');
+  const [translating, setTranslating] = useState(false);
+  const [translation, setTranslation] = useState('');
+  const [language, setLanguage] = useState('English');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set(['视频学习笔记', '章节结构', '核心要点', '笔记大纲']));
+  const [mindFull, setMindFull] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [streaming, setStreaming] = useState('');
+
   useEffect(() => {
     let cancelled = false;
     setPhase('submitting');
@@ -175,38 +244,21 @@ export function ResultPage({
           whisper_model: config.whisper_model || '',
         });
         if (cancelled) return;
-        if (!created.success || !created.task_id) {
-          throw new Error(created.error || '提交失败');
-        }
+        if (!created.success || !created.task_id) throw new Error(created.error || '提交失败');
         setPhase('progress');
-        setProgress('排队中…');
-
+        setProgress('正在解析视频链接...');
         closeRef.current = subscribeTask(created.task_id, (e) => {
-          if (e.type === 'status') {
-            setProgress(e.data?.progress || '处理中…');
-          } else if (e.type === 'complete') {
+          if (e.type === 'status') setProgress(e.data?.progress || '处理中…');
+          else if (e.type === 'complete') {
             const data: SummaryResult = e.data;
             setResult(data);
-            setSelectedTags(new Set(data.suggested_tags || []));
             setPhase('success');
-            // Check if this video/podcast is already saved.
             const idToCheck = data.video?.bvid || data.podcast?.audioUrl || data.podcast?.id;
-            if (idToCheck) {
-              checkLibraryByBvid(idToCheck)
-                .then((r) => setSaved(!!r.saved))
-                .catch(() => {});
-            }
-            const srcLabel = data.transcript_source === 'whisper' ? '语音转写' : '字幕';
-            if (data.subtitle_count) {
-              onShowToast(`完成。${srcLabel} ${data.subtitle_count} 条。`, 'ok');
-            } else {
-              onShowToast('已生成底座总结：未获取到字幕。', 'info');
-            }
+            if (idToCheck) checkLibraryByBvid(idToCheck).then((r) => setSaved(!!r.saved)).catch(() => {});
             closeRef.current?.();
             closeRef.current = null;
-          } else if (e.type === 'network-error') {
-            setProgress(e.data?.error || '连接中断，正在等待重连…');
-          } else if (e.type === 'error') {
+          } else if (e.type === 'network-error') setProgress(e.data?.error || '连接中断，正在等待重连…');
+          else if (e.type === 'error') {
             const msg = e.data?.error || '总结失败';
             setError(msg);
             setPhase('error');
@@ -217,10 +269,8 @@ export function ResultPage({
         });
       } catch (err: any) {
         if (cancelled) return;
-        const msg = err.message || '提交失败';
-        setError(msg);
+        setError(err.message || '提交失败');
         setPhase('error');
-        if (/未登录|401/.test(msg)) onRequireLogin();
       }
     })();
     return () => {
@@ -231,638 +281,184 @@ export function ResultPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
 
-  function toggleTag(t: string) {
-    setSelectedTags((prev) => {
-      const next = new Set(prev);
-      if (next.has(t)) next.delete(t);
-      else next.add(t);
-      return next;
-    });
-  }
-
-  function collectTags(): string[] {
-    const merged = new Set<string>();
-    selectedTags.forEach((t) => merged.add(t));
-    parseTagInput(extraTags).forEach((t) => merged.add(t));
-    return Array.from(merged);
-  }
-
-  async function handleRegenerateTags() {
-    if (!result) return;
-    setRegenerating(true);
-    try {
-      const meta = result.video || result.podcast;
-      const data = await suggestTags({
-        title: meta?.title || '',
-        author: meta?.author || '',
-        summary: result.summary || '',
-      });
-      setResult({ ...result, suggested_tags: data.tags || [] });
-      setSelectedTags(new Set(data.tags || []));
-    } catch (err: any) {
-      onShowToast('生成标签失败：' + (err.message || ''), 'error');
-    } finally {
-      setRegenerating(false);
-    }
-  }
-
-  function handleRetry() {
-    closeRef.current?.();
-    closeRef.current = null;
-    setRunId((n) => n + 1);
-  }
-
-  async function handleCopyError() {
-    const copied = await copyText(error || '');
-    onShowToast(copied ? '错误信息已复制' : '复制失败，请手动复制', copied ? 'ok' : 'error');
-  }
-
-  async function handleCopySummary() {
-    if (!result) return;
-    const copied = await copyText(result.summary || '');
-    onShowToast(copied ? '总结已复制' : '复制失败，请手动选择文本复制', copied ? 'ok' : 'error');
-  }
-
-  async function handleCopyTranscript() {
-    if (!result) return;
-    const copied = await copyText(result.transcript || '');
-    onShowToast(copied ? '视频文本已复制' : '复制失败，请手动选择文本复制', copied ? 'ok' : 'error');
-  }
+  const meta = result?.video || result?.podcast;
+  const keyPoints = useMemo(() => buildKeyPoints(result?.summary || '', result?.suggested_tags || []), [result]);
+  const chapters = useMemo(() => buildChapters(result?.subtitle_segments, result?.summary || ''), [result]);
+  const notes = result?.summary || '';
+  const subtitles = result?.subtitle_segments || [];
+  const mindMap = useMemo(() => buildMindMap(keyPoints, chapters, notes), [keyPoints, chapters, notes]);
 
   async function handleSave() {
     if (!result) return;
-    setSaving(true);
-    try {
-      const meta = result.video || {
-        title: result.podcast?.title || '',
-        author: result.podcast?.author || '',
-        duration: result.podcast?.duration || 0,
-        bvid: result.podcast?.audioUrl || result.podcast?.id || '',
-        link: result.podcast?.link || '',
-        pic: result.podcast?.cover || '',
-      };
-      const data = await saveLibrary({
-        video: meta,
-        summary: result.summary,
-        transcript: result.transcript || '',
-        subtitle_count: result.subtitle_count,
-        mode: result.mode || mode,
-        category: category.trim() || '待整理',
-        tags: collectTags(),
-        notes: notes.trim(),
-      });
-      setSaved(true);
-      onSaved();
-      onShowToast(`已保存：${data.item.title}`, 'ok');
-    } catch (err: any) {
-      onShowToast('保存失败：' + (err.message || ''), 'error');
-    } finally {
-      setSaving(false);
-    }
+    const video = result.video || {
+      title: result.podcast?.title || '',
+      author: result.podcast?.author || '',
+      duration: result.podcast?.duration || 0,
+      bvid: result.podcast?.audioUrl || result.podcast?.id || '',
+      link: result.podcast?.link || '',
+      pic: result.podcast?.cover || '',
+    };
+    const data = await saveLibrary({
+      video,
+      summary: result.summary,
+      transcript: result.transcript || '',
+      subtitle_count: result.subtitle_count,
+      mode: result.mode || mode,
+      category: config.default_category || '待整理',
+      tags: result.suggested_tags || [],
+      notes: '',
+    });
+    setSaved(true);
+    onSaved();
+    onShowToast(`已保存：${data.item.title}`, 'ok');
   }
 
-  // ---- render ------------------------------------------------------------
-
-  if (phase === 'submitting' || phase === 'progress') {
-    return (
-      <main className="flex-1 flex flex-col items-center justify-center px-6 py-16 gap-6">
-        <div
-          className="rounded-2xl p-10 flex flex-col items-center gap-5 max-w-md"
-          style={panelStyle}
-        >
-          <div className="bs-spinner" />
-          <div className="text-center">
-            <div className="text-base font-semibold" style={{ color: '#0d2d45' }}>
-              {progress}
-            </div>
-            <div className="text-xs mt-2" style={{ color: '#7db8d4' }}>
-              视频/播客较长时可能需要数分钟，处理过程会逐步显示进度。
-            </div>
-          </div>
-          <div className="w-full flex flex-col gap-2">
-            {PROCESS_STAGES.map((stage, idx) => {
-              const current = progressToStage(progress);
-              const done = idx < current;
-              const active = idx === current;
-              return (
-                <div key={stage} className="flex items-center gap-3 text-xs">
-                  <span
-                    className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
-                    style={{
-                      background: done ? 'linear-gradient(135deg,#0ea5e9,#0284c7)' : active ? 'rgba(14,165,233,0.16)' : 'rgba(255,255,255,0.55)',
-                      color: done ? '#fff' : active ? '#0369a1' : '#9ca3af',
-                      border: active ? '2px solid rgba(14,165,233,0.65)' : '1px solid rgba(14,165,233,0.18)',
-                    }}
-                  >
-                    {done ? '✓' : idx + 1}
-                  </span>
-                  <span style={{ color: active || done ? '#0d2d45' : '#9ca3af', fontWeight: active ? 700 : 500 }}>
-                    {stage}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          <button
-            type="button"
-            onClick={onBack}
-            className="text-xs px-3 py-1.5 rounded-lg transition-all hover:scale-105"
-            style={{
-              background: 'rgba(255,255,255,0.6)',
-              color: '#5b8fae',
-              border: '1px solid rgba(14,165,233,0.18)',
-            }}
-          >
-            <CloseIcon className="w-3 h-3 inline -mt-0.5 mr-1" />
-            取消并返回
-          </button>
-        </div>
-      </main>
-    );
+  function streamText(text: string, setter: (s: string) => void, speed = 20, chunk = 2, done?: () => void) {
+    setter('');
+    let i = 0;
+    const t = setInterval(() => {
+      i += chunk;
+      setter(text.slice(0, i));
+      if (i >= text.length) {
+        clearInterval(t);
+        done?.();
+      }
+    }, speed);
   }
 
-  if (phase === 'error') {
-    return (
-      <main className="flex-1 flex flex-col items-center justify-center px-6 py-16 gap-6">
-        <div
-          className="rounded-2xl p-10 flex flex-col items-center gap-5 max-w-md"
-          style={panelStyle}
-        >
-          <div
-            className="w-12 h-12 rounded-full flex items-center justify-center"
-            style={{
-              background: 'rgba(239,68,68,0.10)',
-              border: '1px solid rgba(239,68,68,0.30)',
-            }}
-          >
-            <CloseIcon className="w-6 h-6" style={{ color: '#dc2626' }} />
-          </div>
-          <div className="text-center">
-            <div className="text-base font-semibold" style={{ color: '#0d2d45' }}>
-              总结失败
-            </div>
-            <div className="text-sm mt-2" style={{ color: '#b91c1c' }}>
-              {error}
-            </div>
-          </div>
-          <div className="flex flex-wrap justify-center gap-2">
-            <button
-              type="button"
-              onClick={handleRetry}
-              className="text-sm px-4 py-2 rounded-xl font-semibold transition-all hover:scale-105"
-              style={{
-                background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-                color: '#fff',
-                boxShadow: '0 4px 12px rgba(14,165,233,0.30)',
-              }}
-            >
-              <RefreshCw className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />
-              重试
-            </button>
-            <button
-              type="button"
-              onClick={handleCopyError}
-              className="text-sm px-4 py-2 rounded-xl font-semibold transition-all hover:scale-105"
-              style={{ background: 'rgba(255,255,255,0.6)', color: '#5b8fae', border: '1px solid rgba(14,165,233,0.18)' }}
-            >
-              <Copy className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />
-              复制错误
-            </button>
-            <button
-              type="button"
-              onClick={onBack}
-              className="text-sm px-4 py-2 rounded-xl font-semibold transition-all hover:scale-105"
-              style={{ background: 'rgba(255,255,255,0.6)', color: '#5b8fae', border: '1px solid rgba(14,165,233,0.18)' }}
-            >
-              返回
-            </button>
-          </div>
-        </div>
-      </main>
-    );
+  function sendChat(question?: string) {
+    const q = (question ?? chatInput).trim();
+    if (!q || streaming) return;
+    setMessages((m) => [...m, { role: 'user', content: q }]);
+    setChatInput('');
+    const reply = mockChatReply(q);
+    setStreaming('');
+    let i = 0;
+    const t = setInterval(() => {
+      i += 1 + Math.floor(Math.random() * 2);
+      setStreaming(reply.slice(0, i));
+      if (i >= reply.length) {
+        clearInterval(t);
+        setMessages((m) => [...m, { role: 'ai', content: reply }]);
+        setStreaming('');
+      }
+    }, 18 + Math.random() * 10);
   }
 
-  if (!result) return null;
-
-  const v = result.video || result.podcast;
-  const isPodcast = result.type === 'xiaoyuzhou' || !!result.podcast;
-  const isShortVideo = result.type === 'douyin' || result.type === 'xiaohongshu' || result.type === 'wechat';
-  const isBilibili = result.type === 'bilibili' && !isHttpUrl(result.video?.bvid);
-  const youtubeId = result.type === 'youtube' ? extractYouTubeId(result.video?.link) : '';
-  const paragraphs = groupTranscript(result.subtitle_segments);
-  const transcriptQuery = transcriptSearch.trim().toLowerCase();
-  const visibleParagraphs = transcriptQuery
-    ? paragraphs.filter((p) => p.texts.join('\n').toLowerCase().includes(transcriptQuery))
-    : paragraphs;
-  const transcriptMatches = transcriptQuery
-    ? paragraphs.reduce((sum, p) => sum + (p.texts.join('\n').toLowerCase().includes(transcriptQuery) ? 1 : 0), 0)
-    : 0;
-  const summaryHeaders = extractSummaryHeaders(result.summary || '');
-  const summaryHtml = summaryHtmlWithAnchors(result.summary || '');
+  if (phase === 'submitting' || phase === 'progress') return <LoadingState progress={progress} onBack={onBack} />;
+  if (phase === 'error') return <ErrorState error={error} onBack={onBack} onRetry={() => setRunId((n) => n + 1)} onCopy={() => copyText(error).then(() => onShowToast('错误信息已复制', 'ok'))} />;
+  if (!result || !meta || (!result.summary && !result.transcript && !subtitles.length)) return <NoDataState onBack={onBack} link={meta?.link} />;
 
   return (
-    <main className="flex-1 overflow-y-auto px-6 py-6">
-      {/* Header */}
-      <div
-        className="rounded-2xl px-4 py-3 flex items-center justify-between gap-3 mb-4"
-        style={panelStyle}
-      >
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl transition-all hover:scale-105"
-          style={{
-            background: 'rgba(255,255,255,0.6)',
-            color: '#0369a1',
-            border: '1px solid rgba(14,165,233,0.18)',
-          }}
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          返回
-        </button>
-        <span
-          className="flex-1 text-sm font-semibold truncate text-center"
-          style={{ color: '#0d2d45' }}
-          title={v.title}
-        >
-          {v.title || '视频总结'}
-        </span>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={handleCopySummary}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl transition-all hover:scale-105"
-            style={{
-              background: 'rgba(255,255,255,0.6)',
-              color: '#0369a1',
-              border: '1px solid rgba(14,165,233,0.18)',
-            }}
-          >
-            <Copy className="w-3 h-3" />
-            复制总结
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saved || saving}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl font-semibold transition-all hover:scale-105 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100"
-            style={
-              saved
-                ? {
-                    background: 'rgba(5,150,105,0.10)',
-                    color: '#047857',
-                    border: '1px solid rgba(5,150,105,0.30)',
-                  }
-                : {
-                    background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-                    color: '#fff',
-                    boxShadow:
-                      '0 4px 12px rgba(14,165,233,0.30), inset 0 1px 0 rgba(255,255,255,0.25)',
-                  }
-            }
-          >
-            {saved ? (
-              <>
-                <CheckCircle2 className="w-3 h-3" />
-                已收藏
-              </>
-            ) : (
-              <>
-                <Save className="w-3 h-3" />
-                {saving ? '保存中…' : '保存'}
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Main two-column layout */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-4">
-        {/* Left: video + transcript */}
-        <div className="flex flex-col gap-4 min-w-0">
-          <div className="rounded-2xl overflow-hidden" style={panelStyle}>
-            <div className="px-4 py-3 grid grid-cols-[60px_1fr] gap-x-3 gap-y-1 text-xs">
-              <span style={{ color: '#7db8d4' }}>标题</span>
-              <span style={{ color: '#0d2d45', fontWeight: 700 }}>{v.title}</span>
-              <span style={{ color: '#7db8d4' }}>{isPodcast ? '主播' : 'UP主'}</span>
-              <span style={{ color: '#0d2d45' }}>{v.author}</span>
-              {isPodcast && (result.podcast?.podcastName) && (
-                <>
-                  <span style={{ color: '#7db8d4' }}>播客</span>
-                  <span style={{ color: '#0d2d45' }}>{result.podcast.podcastName}</span>
-                </>
-              )}
-              <span style={{ color: '#7db8d4' }}>时长</span>
-              <span style={{ color: '#0d2d45' }}>{formatDuration(v.duration)}</span>
-              <span style={{ color: '#7db8d4' }}>链接</span>
-              <a
-                href={v.link}
-                target="_blank"
-                rel="noreferrer"
-                style={{ color: '#0284c7', wordBreak: 'break-all' }}
-              >
-                {v.link}
-              </a>
-            </div>
-            {isBilibili && result.video?.bvid && (
-              <div
-                className="relative w-full"
-                style={{ paddingBottom: '56.25%', background: '#05070d' }}
-              >
-                <iframe
-                  src={`https://player.bilibili.com/player.html?bvid=${result.video.bvid}&autoplay=0&high_quality=1`}
-                  frameBorder={0}
-                  allowFullScreen
-                  loading="lazy"
-                  className="absolute inset-0 w-full h-full"
-                />
-              </div>
-            )}
-            {youtubeId && (
-              <div className="relative w-full" style={{ paddingBottom: '56.25%', background: '#05070d' }}>
-                <iframe
-                  src={`https://www.youtube.com/embed/${youtubeId}`}
-                  frameBorder={0}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  loading="lazy"
-                  className="absolute inset-0 w-full h-full"
-                />
-              </div>
-            )}
-            {isPodcast && result.podcast?.cover && (
-              <div className="flex flex-col items-center gap-4 p-4" style={{ background: 'linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%)' }}>
-                <img
-                  src={result.podcast.cover}
-                  alt="播客封面"
-                  className="w-40 h-40 object-cover rounded-xl shadow-lg"
-                />
-                {result.podcast.audioUrl && (
-                  <audio
-                    controls
-                    className="w-full max-w-md"
-                    style={{ borderRadius: '8px' }}
-                    src={`/api/proxy/audio?url=${encodeURIComponent(result.podcast.audioUrl)}`}
-                    preload="metadata"
-                    crossOrigin="anonymous"
-                  />
-                )}
-              </div>
-            )}
-            {!isBilibili && !youtubeId && !isPodcast && !isShortVideo && result.video?.pic && (
-              <div className="flex flex-col items-center gap-4 p-4" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }}>
-                <img src={result.video.pic} alt="视频封面" className="w-40 h-40 object-cover rounded-xl shadow-lg" />
-                <a href={result.video.link} target="_blank" rel="noreferrer" className="text-sm font-semibold" style={{ color: '#0284c7' }}>
-                  打开原视频
-                </a>
-              </div>
-            )}
-            {isShortVideo && result.video?.pic && (
-              <div className="flex flex-col items-center gap-4 p-4" style={{ background: 'linear-gradient(180deg, #fff1f2 0%, #ffe4e6 100%)' }}>
-                <img
-                  src={result.video.pic}
-                  alt="视频封面"
-                  className="w-40 h-40 object-cover rounded-xl shadow-lg"
-                />
-                {result.video.bvid && (
-                  <audio
-                    controls
-                    className="w-full max-w-md"
-                    style={{ borderRadius: '8px' }}
-                    src={`/api/proxy/audio?url=${encodeURIComponent(result.video.bvid)}`}
-                    preload="metadata"
-                    crossOrigin="anonymous"
-                  />
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-2xl p-5 flex flex-col gap-3" style={panelStyle}>
-            <div
-              className="flex items-center justify-between gap-3 pb-2 border-b flex-wrap"
-              style={{ borderColor: 'rgba(14,165,233,0.10)' }}
-            >
-              <span className="text-sm font-bold" style={{ color: '#0d2d45' }}>
-                {isPodcast ? '音频文本' : '视频文本'}
-              </span>
-              <div className="flex items-center gap-2 flex-1 min-w-[220px] justify-end">
-                <input
-                  type="text"
-                  value={transcriptSearch}
-                  onChange={(e) => setTranscriptSearch(e.target.value)}
-                  placeholder="搜索转写文本"
-                  className="text-xs px-3 py-1.5 rounded-lg outline-none min-w-0 flex-1 max-w-xs"
-                  style={{ background: 'rgba(255,255,255,0.65)', border: '1px solid rgba(14,165,233,0.18)', color: '#0d2d45' }}
-                />
-                {transcriptSearch && (
-                  <span className="text-xs whitespace-nowrap" style={{ color: '#7db8d4' }}>{transcriptMatches} 段</span>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={handleCopyTranscript}
-                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg transition-all hover:scale-105"
-                style={{
-                  background: 'rgba(255,255,255,0.7)',
-                  color: '#0369a1',
-                  border: '1px solid rgba(14,165,233,0.18)',
-                }}
-              >
-                <Copy className="w-3 h-3" />
-                复制文本
-              </button>
-            </div>
-            <div className="max-h-[55vh] overflow-y-auto -mr-2 pr-2">
-              {!paragraphs.length ? (
-                <div
-                  className="text-sm text-center py-10"
-                  style={{ color: '#7db8d4' }}
-                >
-                  未获取到视频文本。
-                </div>
-              ) : (
-                <div className="flex flex-col gap-1">
-                  {visibleParagraphs.map((p, idx) => (
-                    <div
-                      key={idx}
-                      className="grid gap-3 py-2 border-b last:border-0"
-                      style={{
-                        gridTemplateColumns: '88px 1fr',
-                        borderColor: '#eef0f4',
-                      }}
-                    >
-                      <span
-                        className="text-xs pt-0.5 text-right whitespace-nowrap"
-                        style={{
-                          color: '#b7791f',
-                          fontFamily: '"JetBrains Mono", monospace',
-                        }}
-                      >
-                        {formatTimelineTime(p.from)} - {formatTimelineTime(p.to || p.from)}
-                      </span>
-                      <span
-                        className="text-sm whitespace-pre-wrap"
-                        style={{ color: '#263244', lineHeight: 1.7 }}
-                      >
-                        {renderHighlighted(p.texts.join('\n'), transcriptSearch)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+    <main className="min-h-full overflow-y-auto px-4 sm:px-6 py-5" style={{ background: pageBg, color: fg }}>
+      <div className="mx-auto max-w-7xl space-y-5">
+        <div className="flex items-center gap-3 rounded-2xl px-4 py-3 backdrop-blur" style={darkCardStyle}>
+          <DarkButton onClick={onBack}><ArrowLeft className="w-4 h-4" />返回</DarkButton>
+          <div className="min-w-0 flex-1"><div className="truncate text-lg font-semibold">{meta.title || '视频总结'}</div></div>
+          <span className="rounded-full px-2 py-1 text-xs" style={{ background: mutedBg, color: 'hsl(250 70% 75%)' }}>{getPlatformLabel(result)}</span>
+          {meta.link && <a href={meta.link} target="_blank" rel="noreferrer" className="hidden sm:inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm" style={darkSubtleStyle}><ExternalLink className="w-4 h-4" />查看原视频</a>}
         </div>
 
-        {/* Right: AI summary + tags + notes */}
-        <div className="flex flex-col gap-4 min-w-0">
-          <div className="rounded-2xl p-5" style={panelStyle}>
-            <div
-              className="flex items-center justify-between pb-2 mb-3 border-b"
-              style={{ borderColor: 'rgba(14,165,233,0.10)' }}
-            >
-              <span className="text-sm font-bold" style={{ color: '#0d2d45' }}>
-                AI 总结
-              </span>
-            </div>
-            {summaryHeaders.length >= 2 && (
-              <div className="mb-3 flex flex-wrap gap-2">
-                {summaryHeaders.map((h) => (
-                  <button
-                    key={h.id}
-                    type="button"
-                    onClick={() => document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                    className="text-xs px-2.5 py-1 rounded-full transition-all hover:scale-105"
-                    style={{
-                      background: 'rgba(14,165,233,0.09)',
-                      color: h.level === 1 ? '#0d2d45' : '#0369a1',
-                      border: '1px solid rgba(14,165,233,0.16)',
-                    }}
-                  >
-                    {h.text}
-                  </button>
-                ))}
+        <div className="grid gap-6 lg:grid-cols-5">
+          <aside className="lg:col-span-2">
+            <div className="lg:sticky lg:top-20 space-y-4">
+              <div className="rounded-2xl overflow-hidden" style={darkCardStyle}>
+                <div className="aspect-video flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary}22,${pageBg},${accent}22)` }}>
+                  <div className="text-center">
+                    <div className="mx-auto mb-3 size-16 rounded-2xl flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary},${accent})` }}><Sparkles className="w-8 h-8 text-white" /></div>
+                    <div className="text-sm text-white/80">视频预览区域</div>
+                  </div>
+                </div>
+                <div className="p-5 space-y-3">
+                  <div className="font-semibold text-sm">{meta.title}</div>
+                  <div className="text-xs" style={{ color: muted }}>{getHost(meta.link)} · {formatDuration(meta.duration || 0)}</div>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-full px-2 py-1 text-xs" style={{ background: 'hsl(150 55% 48% / .14)', color: 'hsl(150 55% 62%)' }}>✅ 已完成</span>
+                    <span className="rounded-full px-2 py-1 text-xs" style={{ background: mutedBg, color: 'hsl(220 15% 70%)' }}>{chapters.length} 个章节</span>
+                  </div>
+                </div>
               </div>
-            )}
-            <div
-              className="summary max-h-[42vh] overflow-y-auto -mr-2 pr-2 scroll-smooth"
-              dangerouslySetInnerHTML={{ __html: summaryHtml }}
-            />
-          </div>
-
-          {/* Tags + notes + category */}
-          <div className="rounded-2xl p-5 flex flex-col gap-4" style={panelStyle}>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs" style={{ color: '#5b8fae' }}>
-                  标签
-                </label>
-                <button
-                  type="button"
-                  disabled={regenerating}
-                  onClick={handleRegenerateTags}
-                  className="flex items-center gap-1 text-xs disabled:opacity-50"
-                  style={{ color: '#0284c7', fontWeight: 700 }}
-                >
-                  <RefreshCw className={`w-3 h-3 ${regenerating ? 'animate-spin' : ''}`} />
-                  {regenerating ? '生成中…' : '重新生成'}
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {(result.suggested_tags || []).length === 0 ? (
-                  <span className="text-xs" style={{ color: '#7db8d4' }}>
-                    AI 没给出标签建议，你可以手动填写。
-                  </span>
-                ) : (
-                  (result.suggested_tags || []).map((t) => {
-                    const isSel = selectedTags.has(t);
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => toggleTag(t)}
-                        className="text-xs px-2 py-0.5 rounded-full transition-colors"
-                        style={
-                          isSel
-                            ? {
-                                background: 'rgba(14,165,233,0.15)',
-                                color: '#0369a1',
-                                border: '1px solid rgba(14,165,233,0.40)',
-                                fontWeight: 700,
-                              }
-                            : {
-                                background: 'rgba(255,255,255,0.6)',
-                                color: '#5b8fae',
-                                border: '1px solid rgba(14,165,233,0.15)',
-                              }
-                        }
-                      >
-                        {isSel ? '✓ ' : ''}
-                        {t}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-              <input
-                type="text"
-                value={extraTags}
-                onChange={(e) => setExtraTags(e.target.value)}
-                placeholder="自定义标签，用逗号或空格分隔"
-                className="w-full text-sm outline-none"
-                style={{
-                  background: 'rgba(255,255,255,0.7)',
-                  border: '1px solid rgba(14,165,233,0.18)',
-                  color: '#0d2d45',
-                  borderRadius: '0.625rem',
-                  padding: '0.5rem 0.75rem',
-                }}
-              />
+              <DarkButton variant="primary" onClick={handleSave} disabled={saved}><Save className="w-4 h-4" />{saved ? '已收藏' : '保存到收藏库'}</DarkButton>
             </div>
+          </aside>
 
-            <div>
-              <label className="block text-xs mb-1.5" style={{ color: '#5b8fae' }}>
-                保存分类
-              </label>
-              <input
-                type="text"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full text-sm outline-none"
-                style={{
-                  background: 'rgba(255,255,255,0.7)',
-                  border: '1px solid rgba(14,165,233,0.18)',
-                  color: '#0d2d45',
-                  borderRadius: '0.625rem',
-                  padding: '0.5rem 0.75rem',
-                }}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs mb-1.5" style={{ color: '#5b8fae' }}>
-                我的笔记
-              </label>
-              <textarea
-                rows={4}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="写下自己的理解、问题或行动项"
-                className="w-full text-sm outline-none resize-y"
-                style={{
-                  background: 'rgba(255,255,255,0.7)',
-                  border: '1px solid rgba(14,165,233,0.18)',
-                  color: '#0d2d45',
-                  borderRadius: '0.625rem',
-                  padding: '0.5rem 0.75rem',
-                  minHeight: 90,
-                }}
-              />
-            </div>
-          </div>
+          <section className="lg:col-span-3 space-y-4">
+            <TabBar active={activeTab} onChange={setActiveTab} />
+            {activeTab === 'summary' && <SummaryTab keyPoints={keyPoints} chapters={chapters} notes={notes} copied={copiedNotes} setCopied={setCopiedNotes} rewritePlatform={rewritePlatform} setRewritePlatform={setRewritePlatform} rewriteText={rewriteText} onRewrite={() => streamText(`【${rewritePlatform}改写】\n${plainMarkdown(notes).slice(0, 500)}\n\n适合发布到${rewritePlatform}，保留核心观点并增强可读性。`, setRewriteText, 30, 3)} />}
+            {activeTab === 'subtitles' && <SubtitlesTab segments={subtitles} language={language} setLanguage={setLanguage} translating={translating} translation={translation} onTranslate={() => { setTranslating(true); const raw = subtitles.map((s) => s.content).join('\n'); streamText(`翻译为 ${language}:\n${raw.slice(0, 800)}`, setTranslation, 15, 1, () => setTranslating(false)); }} />}
+            {activeTab === 'mindmap' && <MindMapTab node={mindMap} expanded={expanded} setExpanded={setExpanded} full={mindFull} setFull={setMindFull} />}
+            {activeTab === 'chat' && <ChatTab messages={messages} streaming={streaming} input={chatInput} setInput={setChatInput} send={sendChat} />}
+          </section>
         </div>
       </div>
     </main>
   );
+}
+
+function LoadingState({ progress, onBack }: { progress: string; onBack: () => void }) {
+  const current = progressToStep(progress);
+  return (
+    <main className="min-h-full flex items-center justify-center p-6" style={{ background: pageBg, color: fg }}>
+      <div className="w-full max-w-md rounded-3xl p-8 text-center" style={darkCardStyle}>
+        <div className="relative mx-auto mb-6 size-20 rounded-full border-4 animate-spin" style={{ borderColor: `${primary}33`, borderTopColor: primary }} />
+        <Sparkles className="w-8 h-8 mx-auto -mt-16 mb-8" style={{ color: 'hsl(250 70% 75%)' }} />
+        <h2 className="text-lg font-semibold">正在处理您的视频</h2>
+        <p className="mt-2 text-sm" style={{ color: muted }}>{progress}</p>
+        <div className="mt-6 space-y-3 text-left">
+          {PROCESS_STEPS.map((s, i) => (
+            <div key={s} className="flex items-center gap-3 text-sm" style={{ color: i <= current ? fg : muted }}>
+              {i < current ? <Check className="w-4 h-4" style={{ color: 'hsl(150 55% 48%)' }} /> : i === current ? <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'hsl(250 70% 75%)' }} /> : <Circle className="w-4 h-4 opacity-50" />}
+              {s}
+            </div>
+          ))}
+        </div>
+        <button onClick={onBack} className="mt-6 text-sm" style={{ color: muted }}>取消并返回</button>
+      </div>
+    </main>
+  );
+}
+
+function ErrorState({ error, onBack, onRetry, onCopy }: { error: string; onBack: () => void; onRetry: () => void; onCopy: () => void }) {
+  return <main className="min-h-full flex items-center justify-center p-6" style={{ background: pageBg, color: fg }}><div className="max-w-lg rounded-3xl p-8 text-center space-y-4" style={darkCardStyle}><h2 className="text-lg font-semibold">处理失败</h2><p className="text-sm" style={{ color: 'hsl(220 10% 65%)' }}>{error}</p><div className="flex flex-wrap justify-center gap-2"><DarkButton variant="primary" onClick={onRetry}><RefreshCw className="w-4 h-4" />重试</DarkButton><DarkButton onClick={onCopy}><Copy className="w-4 h-4" />复制错误</DarkButton><DarkButton onClick={onBack}>返回</DarkButton></div></div></main>;
+}
+
+function NoDataState({ onBack, link }: { onBack: () => void; link?: string }) {
+  return <main className="min-h-full flex items-center justify-center p-6" style={{ background: pageBg, color: fg }}><div className="rounded-3xl p-8 text-center" style={darkCardStyle}><Sparkles className="w-12 h-12 mx-auto mb-4" /><h2 className="text-lg font-semibold">未获取到可展示内容</h2><div className="mt-5 flex gap-2 justify-center"><DarkButton onClick={onBack}>返回首页</DarkButton>{link && <a href={link} target="_blank" rel="noreferrer"><DarkButton>查看原视频</DarkButton></a>}</div></div></main>;
+}
+
+function TabBar({ active, onChange }: { active: TabKey; onChange: (t: TabKey) => void }) {
+  const tabs = [
+    ['summary', FileText, '总结'], ['subtitles', Subtitles, '字幕'], ['mindmap', GitBranch, '思维导图'], ['chat', MessageCircle, '对话'],
+  ] as const;
+  return <div className="grid grid-cols-4 rounded-2xl p-1" style={darkSubtleStyle}>{tabs.map(([key, Icon, label]) => <button key={key} onClick={() => onChange(key)} className="flex items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-sm" style={{ background: active === key ? `${primary}2e` : 'transparent', color: active === key ? 'hsl(250 70% 75%)' : muted }}><Icon className="w-4 h-4" /><span className="hidden sm:inline">{label}</span></button>)}</div>;
+}
+
+function Panel({ title, children }: { title: string; children: ReactNode }) { return <div className="rounded-2xl p-5" style={darkCardStyle}><h3 className="mb-4 text-base font-semibold">{title}</h3>{children}</div>; }
+
+function SummaryTab({ keyPoints, chapters, notes, copied, setCopied, rewritePlatform, setRewritePlatform, rewriteText, onRewrite }: any) {
+  async function copyNotes() { await copyText(notes); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+  return <div className="space-y-6"><Panel title="视频要点"><div className="space-y-3">{keyPoints.map((p: string, i: number) => <div key={i} className="flex gap-3 text-sm" style={{ color: 'hsl(220 15% 85%)' }}><span className="size-5 shrink-0 rounded-full text-center text-xs leading-5" style={{ background: `${primary}1f`, color: 'hsl(250 70% 75%)' }}>{i + 1}</span>{p}</div>)}</div></Panel><Panel title="章节划分"><div className="space-y-2">{chapters.map((c: any) => <div key={c.timestamp + c.title} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: 'hsl(225 15% 16% / .55)' }}><span className="rounded px-2 py-0.5 font-mono text-xs" style={{ background: `${primary}1f`, color: 'hsl(250 70% 75%)' }}>{c.timestamp}</span><span className="text-sm">{c.title}</span></div>)}</div></Panel><Panel title="结构化笔记"><div className="summary rounded-lg p-4 text-sm" style={{ background: 'hsl(225 15% 16% / .45)' }} dangerouslySetInnerHTML={{ __html: markdownToHtml(notes) }} /><div className="mt-4 flex flex-wrap items-center gap-2"><DarkButton onClick={copyNotes}>{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{copied ? '已复制' : '复制笔记'}</DarkButton><DarkButton onClick={() => downloadText('summary.md', notes, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><div className="ml-auto flex gap-2"><select value={rewritePlatform} onChange={(e) => setRewritePlatform(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'hsl(225 15% 16%)', color: 'white', border: `1px solid ${border}` }}><option>公众号</option><option>小红书</option><option>微博</option><option>博客</option></select><DarkButton variant="primary" onClick={onRewrite}>改写</DarkButton></div></div>{rewriteText && <div className="mt-4 rounded-xl p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{rewriteText}</div>}</Panel></div>;
+}
+
+function SubtitlesTab({ segments, language, setLanguage, translating, translation, onTranslate }: any) {
+  const txt = segments.map((s: SubtitleSegment) => `${formatTimelineTime(s.from)} ${s.content}`).join('\n');
+  return <Panel title="字幕"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => copyText(txt)}><Copy className="w-4 h-4" />复制全部</DarkButton><DarkButton onClick={() => downloadText('subtitles.srt', buildSrt(segments))}><Download className="w-4 h-4" />导出 SRT</DarkButton><DarkButton onClick={() => downloadText('subtitles.txt', txt)}><Download className="w-4 h-4" />导出 TXT</DarkButton><select value={language} onChange={(e) => setLanguage(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'hsl(225 15% 16%)', color: 'white', border: `1px solid ${border}` }}><option>English</option><option>日本語</option><option>한국어</option><option>繁體中文</option><option>Français</option><option>Deutsch</option><option>Español</option></select><DarkButton variant="primary" onClick={onTranslate} disabled={translating}>{translating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}开始翻译</DarkButton></div>{translation && <div className="mb-4 rounded-xl p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{translation}</div>}<div className="max-h-[500px] overflow-y-auto divide-y" style={{ borderColor: border }}>{segments.map((s: SubtitleSegment, i: number) => <div key={i} className="flex items-start gap-4 px-4 py-3 hover:bg-white/5"><span className="w-20 shrink-0 font-mono text-xs tabular-nums" style={{ color: muted }}>{formatTimelineTime(s.from)}</span><span className="min-w-0 flex-1 text-sm leading-relaxed" style={{ color: 'hsl(220 15% 85%)' }}>{s.content}</span></div>)}</div></Panel>;
+}
+
+function MindNodeView({ node, expanded, setExpanded, depth = 0 }: any) {
+  const has = node.children?.length;
+  const open = expanded.has(node.label);
+  const style = depth === 0 ? { background: `linear-gradient(90deg,${primary}26,${accent}18)`, border: `1px solid ${primary}33`, fontWeight: 700 } : depth === 1 ? { background: `${primary}0d`, fontWeight: 600 } : {};
+  return <div className={depth ? "ml-5 border-l-2 pl-3" : ''} style={{ borderColor: `${primary}26` }}><button onClick={() => has && setExpanded((s: Set<string>) => { const n = new Set(s); open ? n.delete(node.label) : n.add(node.label); return n; })} className="my-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left" style={style}>{has ? (open ? '▼' : '▶') : '●'}<span className={depth === 0 ? 'text-base' : depth === 1 ? 'text-sm' : 'text-xs'}>{node.label}</span>{has && <span className="ml-auto rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: 'hsl(225 15% 16%)' }}>{node.children.length}</span>}</button>{has && open && <div>{node.children.map((c: MindNode) => <MindNodeView key={c.label} node={c} expanded={expanded} setExpanded={setExpanded} depth={depth + 1} />)}</div>}</div>;
+}
+
+function MindMapTab({ node, expanded, setExpanded, full, setFull }: any) {
+  const collect = (n: MindNode): string[] => [n.label, ...(n.children || []).flatMap(collect)];
+  const box = <Panel title="思维导图"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => setExpanded(new Set(collect(node)))}>全部展开</DarkButton><DarkButton onClick={() => setExpanded(new Set())}>全部收起</DarkButton><DarkButton onClick={() => copyText(outlineText(node))}>复制大纲</DarkButton><DarkButton variant="primary" onClick={() => setFull(!full)}><Fullscreen className="w-4 h-4" />{full ? '退出全屏' : '全屏'}</DarkButton></div><MindNodeView node={node} expanded={expanded} setExpanded={setExpanded} /></Panel>;
+  return full ? <div className="fixed inset-4 z-50 overflow-y-auto rounded-2xl" style={{ background: pageBg }}>{box}</div> : box;
+}
+
+function ChatTab({ messages, streaming, input, setInput, send }: any) {
+  const suggestions = ['这个视频的核心观点是什么？', '能帮我总结一下关键要点', '视频中提到了哪些具体案例？', '有什么值得进一步学习的资源？'];
+  return <Panel title="对话"><div className="min-h-[420px] space-y-4">{messages.length === 0 && !streaming ? <div className="py-10 text-center"><div className="mx-auto mb-4 size-16 rounded-2xl flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary}33,${accent}33)` }}><Bot className="w-8 h-8" /></div><div className="grid gap-2 sm:grid-cols-2">{suggestions.map((q) => <button key={q} onClick={() => send(q)} className="rounded-xl p-3 text-left text-sm" style={darkSubtleStyle}>{q}</button>)}</div></div> : null}{messages.map((m: ChatMessage, i: number) => <div key={i} className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>{m.role === 'ai' && <Bot className="mt-1 w-6 h-6" />}<div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm" style={m.role === 'user' ? { background: primary, color: 'white', borderBottomRightRadius: 6 } : { background: 'hsl(225 15% 16%)', color: fg, borderBottomLeftRadius: 6 }}>{m.content}</div>{m.role === 'user' && <User className="mt-1 w-6 h-6" />}</div>)}{streaming && <div className="flex gap-2"><Sparkles className="mt-1 w-6 h-6 animate-pulse" /><div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm" style={darkSubtleStyle}>{streaming}<span className="animate-pulse">|</span></div></div>}</div><div className="mt-4 flex gap-2"><textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} className="min-h-10 max-h-32 flex-1 resize-none rounded-xl px-3 py-2 text-sm outline-none" style={{ background: 'hsl(225 15% 16%)', color: 'white', border: `1px solid ${border}` }} /><button onClick={() => send()} className="size-10 rounded-xl flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary},${accent})` }}><Send className="w-4 h-4 text-white" /></button></div></Panel>;
 }
