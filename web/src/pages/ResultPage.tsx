@@ -175,6 +175,17 @@ function mockChatReply(q: string) {
   return '我会基于当前总结和字幕帮你分析。你可以继续追问某个观点、章节或行动建议。';
 }
 
+function extractYouTubeId(link: string) {
+  try {
+    const u = new URL(link);
+    if (u.hostname.includes('youtu.be')) return u.pathname.replace(/^\//, '');
+    if (u.hostname.includes('youtube.com')) return u.searchParams.get('v') || '';
+  } catch {
+    return '';
+  }
+  return '';
+}
+
 function getPlatformLabel(result: SummaryResult) {
   if (result.type === 'bilibili') return 'B站';
   if (result.type === 'douyin') return '抖音';
@@ -372,11 +383,35 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
           <aside className="lg:col-span-2">
             <div className="lg:sticky lg:top-20 space-y-4">
               <div className="rounded-2xl overflow-hidden" style={darkCardStyle}>
-                <div className="aspect-video flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary}22,${pageBg},${accent}22)` }}>
-                  <div className="text-center">
-                    <div className="mx-auto mb-3 size-16 rounded-2xl flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary},${accent})` }}><Sparkles className="w-8 h-8 text-white" /></div>
-                    <div className="text-sm text-white/80">视频预览区域</div>
-                  </div>
+                <div className="aspect-video overflow-hidden flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary}22,rgba(255,255,255,.35),${accent}22)` }}>
+                  {result.video?.bvid && result.type === 'bilibili' && !result.video.bvid.startsWith('http') ? (
+                    <iframe
+                      src={`https://player.bilibili.com/player.html?bvid=${result.video.bvid}&autoplay=0&high_quality=1`}
+                      frameBorder={0}
+                      allowFullScreen
+                      loading="lazy"
+                      className="w-full h-full"
+                    />
+                  ) : result.type === 'youtube' && result.video?.link ? (
+                    <iframe
+                      src={`https://www.youtube.com/embed/${extractYouTubeId(result.video.link)}`}
+                      frameBorder={0}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      loading="lazy"
+                      className="w-full h-full"
+                    />
+                  ) : result.video?.bvid?.startsWith('http') || result.podcast?.audioUrl ? (
+                    <div className="w-full p-5 flex flex-col items-center gap-4">
+                      {(result.video?.pic || result.podcast?.cover) && <img src={result.video?.pic || result.podcast?.cover} alt="封面" className="w-36 h-36 object-cover rounded-2xl shadow-lg" />}
+                      <audio controls className="w-full max-w-sm" src={`/api/proxy/audio?url=${encodeURIComponent(result.video?.bvid || result.podcast?.audioUrl || '')}`} />
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <div className="mx-auto mb-3 size-16 rounded-2xl flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary},${accent})` }}><Sparkles className="w-8 h-8 text-white" /></div>
+                      <div className="text-sm" style={{ color: muted }}>视频预览区域</div>
+                    </div>
+                  )}
                 </div>
                 <div className="p-5 space-y-3">
                   <div className="font-semibold text-sm">{meta.title}</div>
@@ -446,7 +481,7 @@ function Panel({ title, children }: { title: string; children: ReactNode }) { re
 
 function SummaryTab({ keyPoints, chapters, notes, copied, setCopied, rewritePlatform, setRewritePlatform, rewriteText, onRewrite }: any) {
   async function copyNotes() { await copyText(notes); setCopied(true); setTimeout(() => setCopied(false), 2000); }
-  return <div className="space-y-6"><Panel title="视频要点"><div className="space-y-3">{keyPoints.map((p: string, i: number) => <div key={i} className="flex gap-3 text-sm" style={{ color: fg }}><span className="size-5 shrink-0 rounded-full text-center text-xs leading-5" style={{ background: `${primary}1f`, color: 'hsl(250 70% 75%)' }}>{i + 1}</span>{p}</div>)}</div></Panel><Panel title="章节划分"><div className="space-y-2">{chapters.map((c: any) => <div key={c.timestamp + c.title} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: 'hsl(225 15% 16% / .55)' }}><span className="rounded px-2 py-0.5 font-mono text-xs" style={{ background: `${primary}1f`, color: 'hsl(250 70% 75%)' }}>{c.timestamp}</span><span className="text-sm">{c.title}</span></div>)}</div></Panel><Panel title="结构化笔记"><div className="summary rounded-lg p-4 text-sm" style={{ background: 'hsl(225 15% 16% / .45)' }} dangerouslySetInnerHTML={{ __html: markdownToHtml(notes) }} /><div className="mt-4 flex flex-wrap items-center gap-2"><DarkButton onClick={copyNotes}>{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{copied ? '已复制' : '复制笔记'}</DarkButton><DarkButton onClick={() => downloadText('summary.md', notes, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><div className="ml-auto flex gap-2"><select value={rewritePlatform} onChange={(e) => setRewritePlatform(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'rgba(255,255,255,.62)', color: fg, border: `1px solid ${border}` }}><option>公众号</option><option>小红书</option><option>微博</option><option>博客</option></select><DarkButton variant="primary" onClick={onRewrite}>改写</DarkButton></div></div>{rewriteText && <div className="mt-4 rounded-xl p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{rewriteText}</div>}</Panel></div>;
+  return <div className="space-y-6"><Panel title="视频要点"><div className="space-y-3">{keyPoints.map((p: string, i: number) => <div key={i} className="flex gap-3 text-sm" style={{ color: fg }}><span className="size-5 shrink-0 rounded-full text-center text-xs leading-5" style={{ background: `${primary}1f`, color: 'hsl(250 70% 75%)' }}>{i + 1}</span>{p}</div>)}</div></Panel><Panel title="章节划分"><div className="space-y-2">{chapters.map((c: any) => <div key={c.timestamp + c.title} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,.58)' }}><span className="rounded px-2 py-0.5 font-mono text-xs" style={{ background: `${primary}1f`, color: 'hsl(250 70% 75%)' }}>{c.timestamp}</span><span className="text-sm">{c.title}</span></div>)}</div></Panel><Panel title="结构化笔记"><div className="summary rounded-lg p-4 text-sm" style={{ background: 'rgba(255,255,255,.62)' }} dangerouslySetInnerHTML={{ __html: markdownToHtml(notes) }} /><div className="mt-4 flex flex-wrap items-center gap-2"><DarkButton onClick={copyNotes}>{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{copied ? '已复制' : '复制笔记'}</DarkButton><DarkButton onClick={() => downloadText('summary.md', notes, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><div className="ml-auto flex gap-2"><select value={rewritePlatform} onChange={(e) => setRewritePlatform(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'rgba(255,255,255,.62)', color: fg, border: `1px solid ${border}` }}><option>公众号</option><option>小红书</option><option>微博</option><option>博客</option></select><DarkButton variant="primary" onClick={onRewrite}>改写</DarkButton></div></div>{rewriteText && <div className="mt-4 rounded-xl p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{rewriteText}</div>}</Panel></div>;
 }
 
 function SubtitlesTab({ segments, language, setLanguage, translating, translation, onTranslate }: any) {
