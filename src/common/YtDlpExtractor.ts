@@ -93,6 +93,10 @@ export async function extractVideoInfo(url: string, cookies?: string): Promise<V
       "--no-playlist",
       "--skip-download",
       "--no-update",
+      "--user-agent",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      "--add-header", "Referer:https://www.douyin.com/",
+      "--add-header", "Accept-Language:zh-CN,zh;q=0.9,en;q=0.8",
       "--print-json",
       "--format", "bestaudio/best",
     ];
@@ -176,7 +180,11 @@ export async function extractVideoInfo(url: string, cookies?: string): Promise<V
     console.error("[yt-dlp] 提取失败:", error.message);
     const msg = error.message || "请检查链接是否正确";
     if (/Fresh cookies|cookies.*needed|login required/i.test(msg)) {
-      throw new Error("视频提取失败: 该平台需要服务器配置有效 Cookies。请在服务器设置 YT_DLP_COOKIES_FILE 后重试。\n导出浏览器 cookies.txt 后放到服务器，例如 /opt/bili-summary/cookies/douyin.txt");
+      throw new Error(
+        cookies?.trim()
+          ? "视频提取失败: 已读取你保存的 Cookies，但平台仍然要求更新 Cookies。请在抖音目标视频页重新读取并保存最新 Cookies 后重试。"
+          : "视频提取失败: 该平台需要有效 Cookies。请到设置页粘贴/保存 yt-dlp Cookies 后重试。"
+      );
     }
     throw new Error(`视频提取失败: ${msg}`);
   }
