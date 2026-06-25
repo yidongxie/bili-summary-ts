@@ -40,6 +40,8 @@ interface ResultPageProps {
   url: string;
   mode: string;
   config: AppConfig;
+  initialResult?: SummaryResult;
+  initialSaved?: boolean;
   onBack: () => void;
   onSaved: () => void;
   onShowToast: (msg: string, type: 'ok' | 'error' | 'info') => void;
@@ -55,19 +57,20 @@ const PROCESS_STEPS = [
   '即将完成...',
 ];
 
-const pageBg = 'hsl(222 20% 7%)';
-const cardBg = 'hsl(222 18% 11% / .92)';
-const mutedBg = 'hsl(225 15% 16% / .72)';
-const border = 'hsl(222 12% 20%)';
-const fg = 'hsl(220 15% 90%)';
-const muted = 'hsl(220 10% 55%)';
-const primary = 'hsl(250 70% 60%)';
-const accent = 'hsl(215 80% 62%)';
+const pageBg = 'transparent';
+const cardBg = 'rgba(255,255,255,0.72)';
+const mutedBg = 'rgba(255,255,255,0.55)';
+const border = 'rgba(14,165,233,0.16)';
+const fg = '#0d2d45';
+const muted = '#5b8fae';
+const primary = '#0ea5e9';
+const accent = '#38bdf8';
 
 const darkCardStyle: CSSProperties = {
   background: cardBg,
   border: `1px solid ${border}`,
-  boxShadow: '0 20px 60px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)',
+  backdropFilter: 'blur(16px)',
+  boxShadow: '0 8px 36px rgba(14,165,233,.12), inset 0 1px 0 rgba(255,255,255,.88)',
 };
 const darkSubtleStyle: CSSProperties = { background: mutedBg, border: `1px solid ${border}` };
 
@@ -195,19 +198,19 @@ function DarkButton({ children, onClick, variant = 'ghost', disabled }: { childr
       disabled={disabled}
       onClick={onClick}
       className="inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition hover:scale-[1.02] disabled:opacity-50"
-      style={variant === 'primary' ? { background: `linear-gradient(135deg,${primary},${accent})`, color: 'white' } : { ...darkSubtleStyle, color: fg }}
+      style={variant === 'primary' ? { background: `linear-gradient(135deg,${primary},${accent})`, color: fg } : { ...darkSubtleStyle, color: fg }}
     >
       {children}
     </button>
   );
 }
 
-export function ResultPage({ url, mode, config, onBack, onSaved, onShowToast, onRequireLogin }: ResultPageProps) {
-  const [phase, setPhase] = useState<Phase>('submitting');
+export function ResultPage({ url, mode, config, initialResult, initialSaved, onBack, onSaved, onShowToast, onRequireLogin }: ResultPageProps) {
+  const [phase, setPhase] = useState<Phase>(initialResult ? 'success' : 'submitting');
   const [progress, setProgress] = useState('正在提交任务…');
   const [error, setError] = useState('');
-  const [result, setResult] = useState<SummaryResult | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [result, setResult] = useState<SummaryResult | null>(initialResult || null);
+  const [saved, setSaved] = useState(!!initialSaved);
   const [runId, setRunId] = useState(0);
   const closeRef = useRef<(() => void) | null>(null);
 
@@ -225,6 +228,12 @@ export function ResultPage({ url, mode, config, onBack, onSaved, onShowToast, on
   const [streaming, setStreaming] = useState('');
 
   useEffect(() => {
+    if (initialResult) {
+      setResult(initialResult);
+      setSaved(!!initialSaved);
+      setPhase('success');
+      return;
+    }
     let cancelled = false;
     setPhase('submitting');
     setProgress('正在提交任务…');
@@ -279,7 +288,7 @@ export function ResultPage({ url, mode, config, onBack, onSaved, onShowToast, on
       closeRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId]);
+  }, [runId, initialResult, initialSaved]);
 
   const meta = result?.video || result?.podcast;
   const keyPoints = useMemo(() => buildKeyPoints(result?.summary || '', result?.suggested_tags || []), [result]);
@@ -373,7 +382,7 @@ export function ResultPage({ url, mode, config, onBack, onSaved, onShowToast, on
                   <div className="font-semibold text-sm">{meta.title}</div>
                   <div className="text-xs" style={{ color: muted }}>{getHost(meta.link)} · {formatDuration(meta.duration || 0)}</div>
                   <div className="flex flex-wrap gap-2">
-                    <span className="rounded-full px-2 py-1 text-xs" style={{ background: 'hsl(150 55% 48% / .14)', color: 'hsl(150 55% 62%)' }}>✅ 已完成</span>
+                    <span className="rounded-full px-2 py-1 text-xs" style={{ background: 'rgba(5,150,105,.12)', color: '#047857' }}>✅ 已完成</span>
                     <span className="rounded-full px-2 py-1 text-xs" style={{ background: mutedBg, color: 'hsl(220 15% 70%)' }}>{chapters.length} 个章节</span>
                   </div>
                 </div>
@@ -437,19 +446,19 @@ function Panel({ title, children }: { title: string; children: ReactNode }) { re
 
 function SummaryTab({ keyPoints, chapters, notes, copied, setCopied, rewritePlatform, setRewritePlatform, rewriteText, onRewrite }: any) {
   async function copyNotes() { await copyText(notes); setCopied(true); setTimeout(() => setCopied(false), 2000); }
-  return <div className="space-y-6"><Panel title="视频要点"><div className="space-y-3">{keyPoints.map((p: string, i: number) => <div key={i} className="flex gap-3 text-sm" style={{ color: 'hsl(220 15% 85%)' }}><span className="size-5 shrink-0 rounded-full text-center text-xs leading-5" style={{ background: `${primary}1f`, color: 'hsl(250 70% 75%)' }}>{i + 1}</span>{p}</div>)}</div></Panel><Panel title="章节划分"><div className="space-y-2">{chapters.map((c: any) => <div key={c.timestamp + c.title} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: 'hsl(225 15% 16% / .55)' }}><span className="rounded px-2 py-0.5 font-mono text-xs" style={{ background: `${primary}1f`, color: 'hsl(250 70% 75%)' }}>{c.timestamp}</span><span className="text-sm">{c.title}</span></div>)}</div></Panel><Panel title="结构化笔记"><div className="summary rounded-lg p-4 text-sm" style={{ background: 'hsl(225 15% 16% / .45)' }} dangerouslySetInnerHTML={{ __html: markdownToHtml(notes) }} /><div className="mt-4 flex flex-wrap items-center gap-2"><DarkButton onClick={copyNotes}>{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{copied ? '已复制' : '复制笔记'}</DarkButton><DarkButton onClick={() => downloadText('summary.md', notes, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><div className="ml-auto flex gap-2"><select value={rewritePlatform} onChange={(e) => setRewritePlatform(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'hsl(225 15% 16%)', color: 'white', border: `1px solid ${border}` }}><option>公众号</option><option>小红书</option><option>微博</option><option>博客</option></select><DarkButton variant="primary" onClick={onRewrite}>改写</DarkButton></div></div>{rewriteText && <div className="mt-4 rounded-xl p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{rewriteText}</div>}</Panel></div>;
+  return <div className="space-y-6"><Panel title="视频要点"><div className="space-y-3">{keyPoints.map((p: string, i: number) => <div key={i} className="flex gap-3 text-sm" style={{ color: fg }}><span className="size-5 shrink-0 rounded-full text-center text-xs leading-5" style={{ background: `${primary}1f`, color: 'hsl(250 70% 75%)' }}>{i + 1}</span>{p}</div>)}</div></Panel><Panel title="章节划分"><div className="space-y-2">{chapters.map((c: any) => <div key={c.timestamp + c.title} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: 'hsl(225 15% 16% / .55)' }}><span className="rounded px-2 py-0.5 font-mono text-xs" style={{ background: `${primary}1f`, color: 'hsl(250 70% 75%)' }}>{c.timestamp}</span><span className="text-sm">{c.title}</span></div>)}</div></Panel><Panel title="结构化笔记"><div className="summary rounded-lg p-4 text-sm" style={{ background: 'hsl(225 15% 16% / .45)' }} dangerouslySetInnerHTML={{ __html: markdownToHtml(notes) }} /><div className="mt-4 flex flex-wrap items-center gap-2"><DarkButton onClick={copyNotes}>{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{copied ? '已复制' : '复制笔记'}</DarkButton><DarkButton onClick={() => downloadText('summary.md', notes, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><div className="ml-auto flex gap-2"><select value={rewritePlatform} onChange={(e) => setRewritePlatform(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'rgba(255,255,255,.62)', color: fg, border: `1px solid ${border}` }}><option>公众号</option><option>小红书</option><option>微博</option><option>博客</option></select><DarkButton variant="primary" onClick={onRewrite}>改写</DarkButton></div></div>{rewriteText && <div className="mt-4 rounded-xl p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{rewriteText}</div>}</Panel></div>;
 }
 
 function SubtitlesTab({ segments, language, setLanguage, translating, translation, onTranslate }: any) {
   const txt = segments.map((s: SubtitleSegment) => `${formatTimelineTime(s.from)} ${s.content}`).join('\n');
-  return <Panel title="字幕"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => copyText(txt)}><Copy className="w-4 h-4" />复制全部</DarkButton><DarkButton onClick={() => downloadText('subtitles.srt', buildSrt(segments))}><Download className="w-4 h-4" />导出 SRT</DarkButton><DarkButton onClick={() => downloadText('subtitles.txt', txt)}><Download className="w-4 h-4" />导出 TXT</DarkButton><select value={language} onChange={(e) => setLanguage(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'hsl(225 15% 16%)', color: 'white', border: `1px solid ${border}` }}><option>English</option><option>日本語</option><option>한국어</option><option>繁體中文</option><option>Français</option><option>Deutsch</option><option>Español</option></select><DarkButton variant="primary" onClick={onTranslate} disabled={translating}>{translating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}开始翻译</DarkButton></div>{translation && <div className="mb-4 rounded-xl p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{translation}</div>}<div className="max-h-[500px] overflow-y-auto divide-y" style={{ borderColor: border }}>{segments.map((s: SubtitleSegment, i: number) => <div key={i} className="flex items-start gap-4 px-4 py-3 hover:bg-white/5"><span className="w-20 shrink-0 font-mono text-xs tabular-nums" style={{ color: muted }}>{formatTimelineTime(s.from)}</span><span className="min-w-0 flex-1 text-sm leading-relaxed" style={{ color: 'hsl(220 15% 85%)' }}>{s.content}</span></div>)}</div></Panel>;
+  return <Panel title="字幕"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => copyText(txt)}><Copy className="w-4 h-4" />复制全部</DarkButton><DarkButton onClick={() => downloadText('subtitles.srt', buildSrt(segments))}><Download className="w-4 h-4" />导出 SRT</DarkButton><DarkButton onClick={() => downloadText('subtitles.txt', txt)}><Download className="w-4 h-4" />导出 TXT</DarkButton><select value={language} onChange={(e) => setLanguage(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'rgba(255,255,255,.62)', color: fg, border: `1px solid ${border}` }}><option>English</option><option>日本語</option><option>한국어</option><option>繁體中文</option><option>Français</option><option>Deutsch</option><option>Español</option></select><DarkButton variant="primary" onClick={onTranslate} disabled={translating}>{translating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}开始翻译</DarkButton></div>{translation && <div className="mb-4 rounded-xl p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{translation}</div>}<div className="max-h-[500px] overflow-y-auto divide-y" style={{ borderColor: border }}>{segments.map((s: SubtitleSegment, i: number) => <div key={i} className="flex items-start gap-4 px-4 py-3 hover:bg-white/5"><span className="w-20 shrink-0 font-mono text-xs tabular-nums" style={{ color: muted }}>{formatTimelineTime(s.from)}</span><span className="min-w-0 flex-1 text-sm leading-relaxed" style={{ color: fg }}>{s.content}</span></div>)}</div></Panel>;
 }
 
 function MindNodeView({ node, expanded, setExpanded, depth = 0 }: any) {
   const has = node.children?.length;
   const open = expanded.has(node.label);
   const style = depth === 0 ? { background: `linear-gradient(90deg,${primary}26,${accent}18)`, border: `1px solid ${primary}33`, fontWeight: 700 } : depth === 1 ? { background: `${primary}0d`, fontWeight: 600 } : {};
-  return <div className={depth ? "ml-5 border-l-2 pl-3" : ''} style={{ borderColor: `${primary}26` }}><button onClick={() => has && setExpanded((s: Set<string>) => { const n = new Set(s); open ? n.delete(node.label) : n.add(node.label); return n; })} className="my-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left" style={style}>{has ? (open ? '▼' : '▶') : '●'}<span className={depth === 0 ? 'text-base' : depth === 1 ? 'text-sm' : 'text-xs'}>{node.label}</span>{has && <span className="ml-auto rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: 'hsl(225 15% 16%)' }}>{node.children.length}</span>}</button>{has && open && <div>{node.children.map((c: MindNode) => <MindNodeView key={c.label} node={c} expanded={expanded} setExpanded={setExpanded} depth={depth + 1} />)}</div>}</div>;
+  return <div className={depth ? "ml-5 border-l-2 pl-3" : ''} style={{ borderColor: `${primary}26` }}><button onClick={() => has && setExpanded((s: Set<string>) => { const n = new Set(s); open ? n.delete(node.label) : n.add(node.label); return n; })} className="my-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left" style={style}>{has ? (open ? '▼' : '▶') : '●'}<span className={depth === 0 ? 'text-base' : depth === 1 ? 'text-sm' : 'text-xs'}>{node.label}</span>{has && <span className="ml-auto rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: 'rgba(255,255,255,.62)' }}>{node.children.length}</span>}</button>{has && open && <div>{node.children.map((c: MindNode) => <MindNodeView key={c.label} node={c} expanded={expanded} setExpanded={setExpanded} depth={depth + 1} />)}</div>}</div>;
 }
 
 function MindMapTab({ node, expanded, setExpanded, full, setFull }: any) {
@@ -460,5 +469,5 @@ function MindMapTab({ node, expanded, setExpanded, full, setFull }: any) {
 
 function ChatTab({ messages, streaming, input, setInput, send }: any) {
   const suggestions = ['这个视频的核心观点是什么？', '能帮我总结一下关键要点', '视频中提到了哪些具体案例？', '有什么值得进一步学习的资源？'];
-  return <Panel title="对话"><div className="min-h-[420px] space-y-4">{messages.length === 0 && !streaming ? <div className="py-10 text-center"><div className="mx-auto mb-4 size-16 rounded-2xl flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary}33,${accent}33)` }}><Bot className="w-8 h-8" /></div><div className="grid gap-2 sm:grid-cols-2">{suggestions.map((q) => <button key={q} onClick={() => send(q)} className="rounded-xl p-3 text-left text-sm" style={darkSubtleStyle}>{q}</button>)}</div></div> : null}{messages.map((m: ChatMessage, i: number) => <div key={i} className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>{m.role === 'ai' && <Bot className="mt-1 w-6 h-6" />}<div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm" style={m.role === 'user' ? { background: primary, color: 'white', borderBottomRightRadius: 6 } : { background: 'hsl(225 15% 16%)', color: fg, borderBottomLeftRadius: 6 }}>{m.content}</div>{m.role === 'user' && <User className="mt-1 w-6 h-6" />}</div>)}{streaming && <div className="flex gap-2"><Sparkles className="mt-1 w-6 h-6 animate-pulse" /><div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm" style={darkSubtleStyle}>{streaming}<span className="animate-pulse">|</span></div></div>}</div><div className="mt-4 flex gap-2"><textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} className="min-h-10 max-h-32 flex-1 resize-none rounded-xl px-3 py-2 text-sm outline-none" style={{ background: 'hsl(225 15% 16%)', color: 'white', border: `1px solid ${border}` }} /><button onClick={() => send()} className="size-10 rounded-xl flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary},${accent})` }}><Send className="w-4 h-4 text-white" /></button></div></Panel>;
+  return <Panel title="对话"><div className="min-h-[420px] space-y-4">{messages.length === 0 && !streaming ? <div className="py-10 text-center"><div className="mx-auto mb-4 size-16 rounded-2xl flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary}33,${accent}33)` }}><Bot className="w-8 h-8" /></div><div className="grid gap-2 sm:grid-cols-2">{suggestions.map((q) => <button key={q} onClick={() => send(q)} className="rounded-xl p-3 text-left text-sm" style={darkSubtleStyle}>{q}</button>)}</div></div> : null}{messages.map((m: ChatMessage, i: number) => <div key={i} className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>{m.role === 'ai' && <Bot className="mt-1 w-6 h-6" />}<div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm" style={m.role === 'user' ? { background: primary, color: fg, borderBottomRightRadius: 6 } : { background: 'rgba(255,255,255,.62)', color: fg, borderBottomLeftRadius: 6 }}>{m.content}</div>{m.role === 'user' && <User className="mt-1 w-6 h-6" />}</div>)}{streaming && <div className="flex gap-2"><Sparkles className="mt-1 w-6 h-6 animate-pulse" /><div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm" style={darkSubtleStyle}>{streaming}<span className="animate-pulse">|</span></div></div>}</div><div className="mt-4 flex gap-2"><textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} className="min-h-10 max-h-32 flex-1 resize-none rounded-xl px-3 py-2 text-sm outline-none" style={{ background: 'rgba(255,255,255,.62)', color: fg, border: `1px solid ${border}` }} /><button onClick={() => send()} className="size-10 rounded-xl flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary},${accent})` }}><Send className="w-4 h-4 text-white" /></button></div></Panel>;
 }

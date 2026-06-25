@@ -17,13 +17,35 @@ import {
   type AppConfig,
   type CurrentUser,
   type LibraryItem,
+  type SummaryResult,
 } from './lib/api';
 
 type View =
   | { kind: 'home' }
-  | { kind: 'result'; url: string; mode: string }
+  | { kind: 'result'; url: string; mode: string; initialResult?: SummaryResult; initialSaved?: boolean }
   | { kind: 'library'; openId?: string }
   | { kind: 'settings' };
+
+
+function libraryItemToSummaryResult(item: LibraryItem): SummaryResult {
+  return {
+    type: item.bvid?.startsWith('http') ? 'xiaoyuzhou' : 'bilibili',
+    video: {
+      title: item.title,
+      author: item.author,
+      duration: item.duration || 0,
+      bvid: item.bvid || '',
+      link: item.link || '',
+      pic: item.pic || '',
+    },
+    summary: item.summary || '',
+    transcript: item.transcript || '',
+    subtitle_count: item.subtitle_count || 0,
+    mode: item.mode || 'brief',
+    suggested_tags: item.tags || [],
+    transcript_source: 'whisper',
+  };
+}
 
 export default function App() {
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -87,7 +109,13 @@ export default function App() {
   }
 
   function openLibraryItem(item: LibraryItem) {
-    setView({ kind: 'library', openId: item.id });
+    setView({
+      kind: 'result',
+      url: item.link || item.bvid || '',
+      mode: item.mode || 'brief',
+      initialResult: libraryItemToSummaryResult(item),
+      initialSaved: true,
+    });
   }
 
   async function handleLogout() {
@@ -154,6 +182,8 @@ export default function App() {
               url={view.url}
               mode={view.mode}
               config={config}
+              initialResult={view.initialResult}
+              initialSaved={view.initialSaved}
               onBack={() => setView({ kind: 'home' })}
               onSaved={() => setRefreshKey((n) => n + 1)}
               onShowToast={showToast}
@@ -172,6 +202,7 @@ export default function App() {
                 setView((v) => (v.kind === 'library' ? { kind: 'library' } : v))
               }
               onShowToast={showToast}
+              onOpenItem={openLibraryItem}
             />
           )}
 

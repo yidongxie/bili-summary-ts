@@ -20,6 +20,7 @@ interface FavoritesPageProps {
   initialOpenId?: string | null;
   onConsumedInitialOpen?: () => void;
   onShowToast: (msg: string, type: 'ok' | 'error' | 'info') => void;
+  onOpenItem?: (item: LibraryItem) => void;
 }
 
 const inputBoxStyle: React.CSSProperties = {
@@ -60,6 +61,7 @@ export function FavoritesPage({
   initialOpenId,
   onConsumedInitialOpen,
   onShowToast,
+  onOpenItem,
 }: FavoritesPageProps) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
@@ -122,7 +124,10 @@ export function FavoritesPage({
     let cancelled = false;
     getLibraryItem(initialOpenId)
       .then((data) => {
-        if (!cancelled && data?.item) setOpenItem(data.item);
+        if (!cancelled && data?.item) {
+          if (onOpenItem) onOpenItem(data.item);
+          else setOpenItem(data.item);
+        }
       })
       .catch(() => {})
       .finally(() => {
@@ -161,6 +166,10 @@ export function FavoritesPage({
     try {
       const data = await getLibraryItem(id);
       if (data?.item) {
+        if (onOpenItem) {
+          onOpenItem(data.item);
+          return;
+        }
         setOpenItem(data.item);
         // Scroll the detail panel into view next tick.
         setTimeout(() => {
@@ -699,6 +708,7 @@ function ObsidianExportModal({
   state: ObsidianModalState;
   onClose: () => void;
   onShowToast: (msg: string, type: 'ok' | 'error' | 'info') => void;
+  onOpenItem?: (item: LibraryItem) => void;
 }) {
   async function copyAgain() {
     try {
