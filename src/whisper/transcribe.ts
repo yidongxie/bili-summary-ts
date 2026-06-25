@@ -277,6 +277,25 @@ function downloadGenericAudio(url: string, dest: string, headers?: Record<string
   });
 }
 
+
+/** End-to-end: convert a local media file, send to whisper, return segments. */
+export async function transcribeLocalMedia(
+  mediaPath: string,
+  whisper: WhisperConfig,
+): Promise<AudioTranscribeResult> {
+  if (!whisper.apiKey) throw new Error('缺少 Whisper API Key');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bilistudy-local-'));
+  const mp3File = path.join(tmpDir, 'audio.mp3');
+  try {
+    await ffmpegToMp3(mediaPath, mp3File);
+    assertUploadSize(mp3File);
+    const result = await postMultipartTranscribe(mp3File, whisper);
+    return { text: result.text, segments: result.segments || [] };
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+}
+
 /** End-to-end: pull bilibili audio, convert, send to whisper, return segments. */
 export async function transcribeBilibiliAudio(
   bvid: string,

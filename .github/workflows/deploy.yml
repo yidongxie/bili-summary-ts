@@ -120,6 +120,53 @@ jobs:
             fi
             [ -n "$YT_DLP_BIN" ] && ("$YT_DLP_BIN" --version || true)
 
+            echo "=== STEP: install douyin-downloader sidecar ==="
+            if command -v python3 >/dev/null 2>&1; then
+              mkdir -p /opt/bili-summary/tools /opt/bili-summary/douyin-downloader/Downloaded
+              if [ ! -d "/opt/bili-summary/tools/douyin-downloader/.git" ]; then
+                git clone --depth 1 https://github.com/jiji262/douyin-downloader.git /opt/bili-summary/tools/douyin-downloader || true
+              else
+                git -C /opt/bili-summary/tools/douyin-downloader pull --ff-only || true
+              fi
+              cd /opt/bili-summary/tools/douyin-downloader
+              python3 -m venv .venv
+              .venv/bin/pip install --upgrade pip || true
+              .venv/bin/pip install -r requirements.txt fastapi uvicorn || true
+              cat > /opt/bili-summary/douyin-downloader/config.yml <<'EOF'
+link: []
+path: /opt/bili-summary/douyin-downloader/Downloaded/
+music: false
+cover: false
+avatar: false
+json: true
+folderstyle: true
+filename_template: "{date}_{title}_{id}"
+folder_template: "{date}_{title}_{id}"
+author_dir: "nickname"
+mode:
+  - post
+number:
+  post: 1
+thread: 2
+retry_times: 3
+proxy: ""
+database: false
+progress:
+  quiet_logs: true
+server:
+  max_jobs: 100
+  job_ttl_seconds: 86400
+cookies:
+  msToken: ""
+  ttwid: ""
+  odin_tt: ""
+  passport_csrf_token: ""
+  sid_guard: ""
+EOF
+            else
+              echo "WARN: python3 not found; Douyin fallback sidecar disabled"
+            fi
+
             REPO_DIR="/opt/bili-summary"
             PROJ_DIR="$REPO_DIR/bili-summary-ts"
 
@@ -144,6 +191,12 @@ jobs:
             fi
             if ! grep -q '^BASE_URL=' "$REPO_DIR/.env"; then
               echo "BASE_URL=https://xydong.site" >> "$REPO_DIR/.env"
+            fi
+            if ! grep -q '^DOUYIN_DOWNLOADER_API=' "$REPO_DIR/.env"; then
+              echo "DOUYIN_DOWNLOADER_API=http://127.0.0.1:8765" >> "$REPO_DIR/.env"
+            fi
+            if ! grep -q '^DOUYIN_DOWNLOADER_OUTPUT_DIR=' "$REPO_DIR/.env"; then
+              echo "DOUYIN_DOWNLOADER_OUTPUT_DIR=/opt/bili-summary/douyin-downloader/Downloaded" >> "$REPO_DIR/.env"
             fi
 
             echo "=== STEP: update code ==="
@@ -178,7 +231,13 @@ jobs:
             # Start fresh (PM2 restart keeps old env, so delete + start)
             source "$REPO_DIR/.env"
             pm2 delete bilistudy 2>/dev/null || true
-            PATH="/opt/bili-summary/bin:$PATH" ENCRYPTION_KEY=$ENCRYPTION_KEY SESSION_SECRET=$SESSION_SECRET NODE_ENV=${NODE_ENV:-production} BASE_URL=${BASE_URL:-https://xydong.site} ADMIN_EMAIL=${ADMIN_EMAIL:-} FFMPEG_PATH=$FFMPEG_BIN YT_DLP_PATH=$YT_DLP_BIN YT_DLP_COOKIES_FILE=${YT_DLP_COOKIES_FILE:-} YT_DLP_BROWSER_COOKIES=${YT_DLP_BROWSER_COOKIES:-} pm2 start dist/index.js --name bilistudy --max-memory-restart 1G
+            pm2 delete douyin-downloader 2>/dev/null || true
+            if [ -x "/opt/bili-summary/tools/douyin-downloader/.venv/bin/python" ]; then
+              cd /opt/bili-summary/tools/douyin-downloader
+              pm2 start .venv/bin/python --name douyin-downloader -- run.py --serve --serve-host 127.0.0.1 --serve-port 8765 --config /opt/bili-summary/douyin-downloader/config.yml || true
+            fi
+            cd "$PROJ_DIR"
+            PATH="/opt/bili-summary/bin:$PATH" ENCRYPTION_KEY=$ENCRYPTION_KEY SESSION_SECRET=$SESSION_SECRET NODE_ENV=${NODE_ENV:-production} BASE_URL=${BASE_URL:-https://xydong.site} ADMIN_EMAIL=${ADMIN_EMAIL:-} FFMPEG_PATH=$FFMPEG_BIN YT_DLP_PATH=$YT_DLP_BIN YT_DLP_COOKIES_FILE=${YT_DLP_COOKIES_FILE:-} YT_DLP_BROWSER_COOKIES=${YT_DLP_BROWSER_COOKIES:-} DOUYIN_DOWNLOADER_API=${DOUYIN_DOWNLOADER_API:-http://127.0.0.1:8765} DOUYIN_DOWNLOADER_OUTPUT_DIR=${DOUYIN_DOWNLOADER_OUTPUT_DIR:-/opt/bili-summary/douyin-downloader/Downloaded} pm2 start dist/index.js --name bilistudy --max-memory-restart 1G
             pm2 save
             pm2 status bilistudy
 

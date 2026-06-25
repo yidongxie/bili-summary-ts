@@ -6,10 +6,11 @@ import crypto from "crypto";
 import { extractVideoId as extractBilibiliVideoId, fetchVideoInfo as fetchBilibiliVideoInfo, segmentsToParagraphs, fetchPageList, isBilibiliUrl } from "../bilibili/api";
 import { isXiaoyuzhouUrl, extractEpisodeId, fetchEpisodeInfo } from "../xiaoyuzhou/api";
 import { isYtDlpAvailable, extractVideoInfo as extractWithYtDlp, isUrlSupported, getPlatformName, validateUrl } from "../common/YtDlpExtractor";
-import { transcribeBilibiliAudio, transcribeAudioUrl } from "../whisper/transcribe";
+import { transcribeBilibiliAudio, transcribeAudioUrl, transcribeLocalMedia } from "../whisper/transcribe";
 import { summarizeText, suggestTags, SummaryMode } from "../llm/summarize";
 import { enforceRateLimit } from "../common/rateLimit";
 import { getDecryptedConfig } from "./configStore";
+import { downloadWithDouyinDownloader, isDouyinDownloaderAvailable } from "../common/DouyinDownloaderFallback";
 
 const MAX_DAILY_SUMMARIES = parseInt(process.env.MAX_DAILY_SUMMARIES || "10", 10);
 const MAX_SUBTITLE_CHARS = parseInt(process.env.MAX_SUBTITLE_CHARS || "60000", 10);
@@ -582,6 +583,68 @@ async function processWithYtDlp(
   };
 }
 
+
+async function processWithDouyinDownloader(
+  db: Database.Database,
+  task: Task,
+  url: string,
+  whisperConfig: { apiKey: string; baseUrl: string; model: string },
+  llmConfig: { apiKey: string; baseUrl: string; model: string },
+  mode: SummaryMode
+) {
+  if (!whisperConfig.apiKey) throw new Error("请先在设置中填写 Whisper API Key");
+
+  updateProgress(db, task, "抖音专用解析中…");
+  const media = await downloadWithDouyinDownloader(url);
+
+  updateProgress(db, task, "语音转写中…");
+  const whisperResult = await transcribeLocalMedia(media.filePath, whisperConfig);
+  const subtitles = whisperResult.segments?.length
+    ? whisperResult.segments
+    : whisperResult.text ? [{ from: 0, to: 0, content: whisperResult.text }] : [];
+  if (!subtitles.length) throw new Error("未能获取转写内容，请稍后重试");
+
+  let transcript = segmentsToParagraphs(subtitles).map((p: any) => p.content).join("\n\n");
+  let transcriptTruncated = false;
+  const originalTranscriptLength = transcript.length;
+  if (transcript.length > MAX_SUBTITLE_CHARS) {
+    transcriptTruncated = true;
+    const head = Math.floor(MAX_SUBTITLE_CHARS * 0.7);
+    const tail = MAX_SUBTITLE_CHARS - head;
+    transcript = transcript.slice(0, head) + `\n\n[内容过长，中间部分已省略 / Content truncated, middle omitted]\n\n` + transcript.slice(-tail);
+    updateProgress(db, task, `内容过长（${originalTranscriptLength} 字），已自动截取前后共 ${MAX_SUBTITLE_CHARS} 字进行总结…`);
+  }
+
+  updateProgress(db, task, "AI 总结中…");
+  let summary = await summarizeText(transcript, llmConfig, mode);
+  if (transcriptTruncated) summary += `\n\n> 内容过长（${originalTranscriptLength} 字），本总结基于截取后的 ${MAX_SUBTITLE_CHARS} 字内容生成。`;
+
+  updateProgress(db, task, "生成标签…");
+  const suggestedTags = await suggestTags(media.title, media.author, summary, llmConfig);
+  const subtitleSegments = subtitles
+    .filter((seg: any) => seg.content?.trim())
+    .map((seg: any) => ({ from: seg.from, to: seg.to, content: seg.content.trim() }));
+
+  return {
+    type: "douyin" as const,
+    video: {
+      title: media.title,
+      author: media.author,
+      duration: 0,
+      bvid: media.filePath,
+      link: media.webpageUrl,
+      pic: "",
+    },
+    subtitle_count: subtitles.length,
+    transcript_source: "whisper" as const,
+    subtitle_segments: subtitleSegments,
+    transcript,
+    summary,
+    mode,
+    suggested_tags: suggestedTags,
+  };
+}
+
 async function runTask(
   db: Database.Database,
   task: Task,
@@ -622,11 +685,29 @@ async function runTask(
       // B站优先使用原生提取器（更稳定）
       result = await processBilibili(db, task, cleanedUrl, whisperConfig, llmConfig, mode);
     } else if (hasYtDlp && isUrlSupported(cleanedUrl)) {
-      // 使用 yt-dlp 处理支持的通用视频平台（抖音、小红书、YouTube 等）
-      result = await processWithYtDlp(db, task, cleanedUrl, whisperConfig, llmConfig, mode, config.yt_dlp_cookies);
+      try {
+        result = await processWithYtDlp(db, task, cleanedUrl, whisperConfig, llmConfig, mode, config.yt_dlp_cookies);
+      } catch (err: any) {
+        if (/douyin|iesdouyin/i.test(cleanedUrl) && isDouyinDownloaderAvailable()) {
+          console.warn("[douyin-fallback] yt-dlp failed, trying douyin-downloader:", err.message);
+          result = await processWithDouyinDownloader(db, task, cleanedUrl, whisperConfig, llmConfig, mode);
+        } else {
+          throw err;
+        }
+      }
     } else if (hasYtDlp) {
-      // 有 yt-dlp 但不确定平台，让 yt-dlp 自己尝试解析
-      result = await processWithYtDlp(db, task, cleanedUrl, whisperConfig, llmConfig, mode, config.yt_dlp_cookies);
+      try {
+        result = await processWithYtDlp(db, task, cleanedUrl, whisperConfig, llmConfig, mode, config.yt_dlp_cookies);
+      } catch (err: any) {
+        if (/douyin|iesdouyin/i.test(cleanedUrl) && isDouyinDownloaderAvailable()) {
+          console.warn("[douyin-fallback] yt-dlp failed, trying douyin-downloader:", err.message);
+          result = await processWithDouyinDownloader(db, task, cleanedUrl, whisperConfig, llmConfig, mode);
+        } else {
+          throw err;
+        }
+      }
+    } else if (/douyin|iesdouyin/i.test(cleanedUrl) && isDouyinDownloaderAvailable()) {
+      result = await processWithDouyinDownloader(db, task, cleanedUrl, whisperConfig, llmConfig, mode);
     } else {
       // 没有 yt-dlp，默认尝试使用 Bilibili 原生提取器
       result = await processBilibili(db, task, cleanedUrl, whisperConfig, llmConfig, mode);
