@@ -133,36 +133,36 @@ jobs:
               .venv/bin/pip install --upgrade pip || true
               .venv/bin/pip install -r requirements.txt fastapi uvicorn || true
               cat > /opt/bili-summary/douyin-downloader/config.yml <<'EOF'
-link: []
-path: /opt/bili-summary/douyin-downloader/Downloaded/
-music: false
-cover: false
-avatar: false
-json: true
-folderstyle: true
-filename_template: "{date}_{title}_{id}"
-folder_template: "{date}_{title}_{id}"
-author_dir: "nickname"
-mode:
-  - post
-number:
-  post: 1
-thread: 2
-retry_times: 3
-proxy: ""
-database: false
-progress:
-  quiet_logs: true
-server:
-  max_jobs: 100
-  job_ttl_seconds: 86400
-cookies:
-  msToken: ""
-  ttwid: ""
-  odin_tt: ""
-  passport_csrf_token: ""
-  sid_guard: ""
-EOF
+            link: []
+            path: /opt/bili-summary/douyin-downloader/Downloaded/
+            music: false
+            cover: false
+            avatar: false
+            json: true
+            folderstyle: true
+            filename_template: "{date}_{title}_{id}"
+            folder_template: "{date}_{title}_{id}"
+            author_dir: "nickname"
+            mode:
+              - post
+            number:
+              post: 1
+            thread: 2
+            retry_times: 3
+            proxy: ""
+            database: false
+            progress:
+              quiet_logs: true
+            server:
+              max_jobs: 100
+              job_ttl_seconds: 86400
+            cookies:
+              msToken: ""
+              ttwid: ""
+              odin_tt: ""
+              passport_csrf_token: ""
+              sid_guard: ""
+            EOF
             else
               echo "WARN: python3 not found; Douyin fallback sidecar disabled"
             fi
