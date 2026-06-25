@@ -122,6 +122,9 @@ jobs:
 
             echo "=== STEP: install douyin-downloader sidecar ==="
             if command -v python3 >/dev/null 2>&1; then
+              if command -v apt-get >/dev/null 2>&1; then
+                apt-get update -y && apt-get install -y python3-venv python3-pip || true
+              fi
               mkdir -p /opt/bili-summary/tools /opt/bili-summary/douyin-downloader/Downloaded
               if [ ! -d "/opt/bili-summary/tools/douyin-downloader/.git" ]; then
                 git clone --depth 1 https://github.com/jiji262/douyin-downloader.git /opt/bili-summary/tools/douyin-downloader || true
@@ -129,9 +132,11 @@ jobs:
                 git -C /opt/bili-summary/tools/douyin-downloader pull --ff-only || true
               fi
               cd /opt/bili-summary/tools/douyin-downloader
-              python3 -m venv .venv
-              .venv/bin/pip install --upgrade pip || true
-              .venv/bin/pip install -r requirements.txt fastapi uvicorn || true
+              python3 -m venv .venv || { echo "WARN: python3 venv unavailable; Douyin fallback sidecar disabled"; cd /; }
+              if [ -x ".venv/bin/pip" ]; then
+                .venv/bin/pip install --upgrade pip || true
+                .venv/bin/pip install -r requirements.txt fastapi uvicorn || true
+              fi
               cat > /opt/bili-summary/douyin-downloader/config.yml <<'EOF'
             link: []
             path: /opt/bili-summary/douyin-downloader/Downloaded/
