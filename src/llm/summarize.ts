@@ -71,7 +71,7 @@ function temperatureForMode(mode: SummaryMode): number {
   }
 }
 
-async function chatCompletion(config: LlmConfig, messages: { role: string; content: string }[], maxTokens: number, mode?: SummaryMode): Promise<string> {
+export async function chatCompletion(config: LlmConfig, messages: { role: string; content: string }[], maxTokens: number, mode?: SummaryMode): Promise<string> {
   const temp = mode ? temperatureForMode(mode) : 0.1;
   const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
   // 清理 API Key，移除换行和无效字符

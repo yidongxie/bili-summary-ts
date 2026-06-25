@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import React, { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   ArrowLeft,
   Bot,
@@ -27,6 +27,8 @@ import {
   type AppConfig,
   type SummaryResult,
   type SubtitleSegment,
+  chatApi,
+  rewriteApi,
 } from '@/lib/api';
 import { copyText } from '@/lib/clipboard';
 import { formatDuration, formatTimelineTime, markdownToHtml } from '@/lib/format';
@@ -194,6 +196,45 @@ function getPlatformLabel(result: SummaryResult) {
   return result.type || '视频';
 }
 
+
+function buildOverview(summary: string) {
+  return {
+    oneLiner: summary.split(/[。！？\n]/).filter(Boolean)[0]?.slice(0, 80) || '无内容',
+    audience: summary.includes('项目管理') || summary.includes('技术') ? '开发者、项目经理' : summary.includes('阅读') || summary.includes('学习') ? '知识工作者、学生' : summary.includes('投资') || summary.includes('经济') ? '投资者、创业者' : '对此方向感兴趣的人',
+    takeaways: splitSentences(plainMarkdown(summary)).slice(0, 3).map((s) => s.length > 48 ? s.slice(0, 48) + '…' : s),
+    action: summary.includes('阅读') ? '今天开始每天阅读1小时' : summary.includes('学习') ? '建立结构化学习系统' : summary.includes('投资') ? '开始定投学习' : '回顾并实践',
+  };
+}
+
+function buildTimestampedMarkdown(summary: string, chapters: { timestamp: string; title: string }[], segments: SubtitleSegment[]) {
+  const chap = chapters.map((c) => `## [${c.timestamp}] ${c.title}`).join('\n');
+  const subs = segments.map((s) => `[${formatTimelineTime(s.from)}] ${s.content}`).join('\n');
+  return `# 视频笔记\n\n${summary}\n\n## 章节\n\n${chap}\n\n## 字幕\n\n${subs}`;
+}
+
+function buildMermaidMindmap(node: MindNode): string {
+  const lines = ['mindmap', '  root((视频学习笔记))'];
+  function collect(n: MindNode, depth: number) {
+    const indent = '  '.repeat(depth + 2);
+    (n.children || []).forEach((c) => {
+      lines.push(`${indent}${c.label.replace(/[()]/g, '')}`);
+      collect(c, depth + 1);
+    });
+  }
+  collect(node, 0);
+  return lines.join('\n');
+}
+
+function highlightText(text: string, query: string) {
+  const q = query.trim();
+  if (!q) return text;
+  const escaped = q.replace(new RegExp('[-/\^$*+?.()|[\]{}]', 'g'), '\$&');
+  return text.split(new RegExp(`(${escaped})`, 'gi')).map((part, i) =>
+    part.toLowerCase() === q.toLowerCase()
+      ? <mark key={i} className="rounded px-0.5" style={{ background: '#fef08a', color: '#713f12' }}>{part}</mark>
+      : part
+  );
+}
 function getHost(link?: string) {
   try {
     return link ? new URL(link).hostname.replace(/^www\./, '') : '未知来源';
@@ -234,9 +275,13 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
   const [language, setLanguage] = useState('English');
   const [expanded, setExpanded] = useState<Set<string>>(new Set(['视频学习笔记', '章节结构', '核心要点', '笔记大纲']));
   const [mindFull, setMindFull] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<Array<ChatMessage & { citations?: Array<{ time: number; text: string }> }>>([]);
   const [chatInput, setChatInput] = useState('');
   const [streaming, setStreaming] = useState('');
+  const [subtitleSearch, setSubtitleSearch] = useState('');
+  const [highlightTime, setHighlightTime] = useState<number | null>(null);
+  const [mindView, setMindView] = useState<'tree' | 'cards'>('tree');
+  const [subtitleView, setSubtitleView] = useState<'original' | 'translated' | 'bilingual'>('original');
 
   useEffect(() => {
     if (initialResult) {
@@ -307,6 +352,35 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
   const notes = result?.summary || '';
   const subtitles = result?.subtitle_segments || [];
   const mindMap = useMemo(() => buildMindMap(keyPoints, chapters, notes), [keyPoints, chapters, notes]);
+  const chatKey = useMemo(() => `bilistudy:chat:${meta?.link || meta?.bvid || url}`, [meta, url]);
+
+  useEffect(() => {
+    if (!result) return;
+    try {
+      const raw = localStorage.getItem(chatKey);
+      if (raw) setMessages(JSON.parse(raw));
+    } catch { /* ignore */ }
+  }, [chatKey, result]);
+
+  useEffect(() => {
+    if (!result) return;
+    try { localStorage.setItem(chatKey, JSON.stringify(messages)); } catch { /* ignore */ }
+  }, [chatKey, messages, result]);
+
+  function jumpToSubtitle(time: number) {
+    setActiveTab('subtitles');
+    setHighlightTime(time);
+    setTimeout(() => document.getElementById(`subtitle-${Math.floor(time)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+    setTimeout(() => setHighlightTime(null), 2200);
+  }
+
+  function askSelectedText() {
+    const selected = window.getSelection()?.toString().trim() || '';
+    if (selected.length > 8) {
+      setActiveTab('chat');
+      sendChat(`请解释这段话：${selected.slice(0, 500)}`);
+    }
+  }
 
   async function handleSave() {
     if (!result) return;
@@ -346,23 +420,26 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
     }, speed);
   }
 
-  function sendChat(question?: string) {
+  async function sendChat(question?: string) {
     const q = (question ?? chatInput).trim();
     if (!q || streaming) return;
     setMessages((m) => [...m, { role: 'user', content: q }]);
     setChatInput('');
-    const reply = mockChatReply(q);
     setStreaming('');
-    let i = 0;
-    const t = setInterval(() => {
-      i += 1 + Math.floor(Math.random() * 2);
-      setStreaming(reply.slice(0, i));
-      if (i >= reply.length) {
-        clearInterval(t);
+    try {
+      const data = await chatApi({ question: q, summary: result?.summary || '', transcript: result?.transcript || '', segments: subtitles, history: messages.slice(-6) });
+      const reply = data.answer || mockChatReply(q);
+      streamText(reply, setStreaming, 18, 2, () => {
+        setMessages((m) => [...m, { role: 'ai', content: reply, citations: data.citations || [] }]);
+        setStreaming('');
+      });
+    } catch {
+      const reply = mockChatReply(q);
+      streamText(reply, setStreaming, 18, 2, () => {
         setMessages((m) => [...m, { role: 'ai', content: reply }]);
         setStreaming('');
-      }
-    }, 18 + Math.random() * 10);
+      });
+    }
   }
 
   if (phase === 'submitting' || phase === 'progress') return <LoadingState progress={progress} onBack={onBack} />;
@@ -429,9 +506,9 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
           <section className="lg:col-span-3 space-y-4">
             <TabBar active={activeTab} onChange={setActiveTab} />
             {activeTab === 'summary' && <SummaryTab keyPoints={keyPoints} chapters={chapters} notes={notes} copied={copiedNotes} setCopied={setCopiedNotes} rewritePlatform={rewritePlatform} setRewritePlatform={setRewritePlatform} rewriteText={rewriteText} onRewrite={() => streamText(`【${rewritePlatform}改写】\n${plainMarkdown(notes).slice(0, 500)}\n\n适合发布到${rewritePlatform}，保留核心观点并增强可读性。`, setRewriteText, 30, 3)} />}
-            {activeTab === 'subtitles' && <SubtitlesTab segments={subtitles} language={language} setLanguage={setLanguage} translating={translating} translation={translation} onTranslate={() => { setTranslating(true); const raw = subtitles.map((s) => s.content).join('\n'); streamText(`翻译为 ${language}:\n${raw.slice(0, 800)}`, setTranslation, 15, 1, () => setTranslating(false)); }} />}
-            {activeTab === 'mindmap' && <MindMapTab node={mindMap} expanded={expanded} setExpanded={setExpanded} full={mindFull} setFull={setMindFull} />}
-            {activeTab === 'chat' && <ChatTab messages={messages} streaming={streaming} input={chatInput} setInput={setChatInput} send={sendChat} />}
+            {activeTab === 'subtitles' && <SubtitlesTab segments={subtitles} search={subtitleSearch} setSearch={setSubtitleSearch} highlightTime={highlightTime} language={language} setLanguage={setLanguage} translating={translating} translation={translation} view={subtitleView} setView={setSubtitleView} onAskSelected={askSelectedText} onTranslate={() => { setTranslating(true); const raw = subtitles.map((s) => s.content).join('\n'); streamText(`翻译为 ${language}:\n${raw.slice(0, 800)}`, setTranslation, 15, 1, () => setTranslating(false)); }} />}
+            {activeTab === 'mindmap' && <MindMapTab node={mindMap} expanded={expanded} setExpanded={setExpanded} full={mindFull} setFull={setMindFull} view={mindView} setView={setMindView} />}
+            {activeTab === 'chat' && <ChatTab messages={messages} streaming={streaming} input={chatInput} setInput={setChatInput} send={sendChat} jump={jumpToSubtitle} />}
           </section>
         </div>
       </div>

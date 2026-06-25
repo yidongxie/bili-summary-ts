@@ -187,6 +187,21 @@ export function testWhisperConfig(payload: { whisper_api_key?: string; whisper_b
   });
 }
 
+
+export function chatApi(payload: { question: string; summary: string; transcript?: string; segments?: SubtitleSegment[]; history?: Array<{ role: string; content: string }> }) {
+  return request<{ success: boolean; answer: string; citations?: Array<{ time: number; text: string }> }>('/api/llm/chat', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function rewriteApi(payload: { platform: string; summary: string; keyPoints?: string[] }) {
+  return request<{ success: boolean; text: string }>('/api/llm/rewrite', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 // ---- summarize task ------------------------------------------------------
 
 export type SummarizePayload = {

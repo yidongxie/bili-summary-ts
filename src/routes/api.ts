@@ -19,7 +19,7 @@ import {
   saveLibraryItem,
   deleteLibraryItem,
 } from "../db/libraryStore";
-import { suggestTags } from "../llm/summarize";
+import { chatCompletion, suggestTags } from "../llm/summarize";
 import { enforceRateLimit } from "../common/rateLimit";
 
 function nowIso(): string {
@@ -298,6 +298,75 @@ export function createApiRouter(db: Database.Database): Router {
       res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ success: false, error: err.message || "连接失败" });
+    }
+  });
+
+
+  router.post("/api/llm/chat", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (!enforceRateLimit(req, res, "llm-chat", 40, 60 * 60 * 1000, String(userId))) return;
+    const question = String(req.body.question || "").trim().slice(0, 800);
+    const summary = String(req.body.summary || "").slice(0, 6000);
+    const transcript = String(req.body.transcript || "").slice(0, 8000);
+    const segments = Array.isArray(req.body.segments) ? req.body.segments : [];
+    if (!question) { res.status(400).json({ success: false, error: "缺少问题" }); return; }
+    const config = getDecryptedConfig(db, userId);
+    if (!config.api_key) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
+    const qWords = question.toLowerCase().split(/\s+|，|。|、|？|！|,|\./).filter(Boolean);
+    const citations = segments
+      .map((seg: any) => {
+        const text = String(seg.content || "");
+        const score = qWords.reduce((n, w) => n + (text.toLowerCase().includes(w) ? 1 : 0), 0);
+        return { time: Number(seg.from || 0), text: text.slice(0, 120), score };
+      })
+      .filter((x: any) => x.text)
+      .sort((a: any, b: any) => b.score - a.score || a.time - b.time)
+      .slice(0, 3)
+      .map(({ time, text }: any) => ({ time, text }));
+    try {
+      const answer = await chatCompletion(
+        { apiKey: config.api_key, baseUrl: config.deepseek_base_url, model: config.deepseek_model },
+        [
+          { role: "system", content: "你是视频学习助手。只能基于用户提供的视频总结、字幕和引用回答；如果信息不足，请明确说明。回答中文，结构清晰，必要时引用时间戳。" },
+          { role: "user", content: `问题：${question}\n\n视频总结：\n${summary}\n\n相关字幕引用：\n${citations.map((c: any) => `[${Math.floor(c.time)}s] ${c.text}`).join("\n")}\n\n完整文本摘录：\n${transcript.slice(0, 4000)}` },
+        ],
+        900,
+      );
+      res.json({ success: true, answer, citations });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || "问答失败" });
+    }
+  });
+
+  router.post("/api/llm/rewrite", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (!enforceRateLimit(req, res, "llm-rewrite", 30, 60 * 60 * 1000, String(userId))) return;
+    const platform = String(req.body.platform || "小红书").trim().slice(0, 20);
+    const summary = String(req.body.summary || "").trim().slice(0, 8000);
+    const keyPoints = Array.isArray(req.body.keyPoints) ? req.body.keyPoints.map(String).slice(0, 8) : [];
+    if (!summary) { res.status(400).json({ success: false, error: "缺少总结内容" }); return; }
+    const config = getDecryptedConfig(db, userId);
+    if (!config.api_key) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
+    const styleMap: Record<string, string> = {
+      "公众号": "写成公众号文章，标题吸引人，结构完整，分节清晰。",
+      "小红书": "写成小红书笔记，口语化，emoji 适量，标题吸睛，要点短。",
+      "微博": "写成微博长文，观点鲜明，适合转发，尽量精炼。",
+      "博客": "写成博客文章，逻辑严谨，适合知识沉淀。",
+    };
+    try {
+      const text = await chatCompletion(
+        { apiKey: config.api_key, baseUrl: config.deepseek_base_url, model: config.deepseek_model },
+        [
+          { role: "system", content: "你是内容改写助手。只基于提供的视频总结改写，不编造事实。" },
+          { role: "user", content: `目标平台：${platform}\n风格要求：${styleMap[platform] || styleMap["小红书"]}\n\n核心要点：\n${keyPoints.map((p: string, i: number) => `${i + 1}. ${p}`).join("\n")}\n\n原始总结：\n${summary}` },
+        ],
+        1600,
+      );
+      res.json({ success: true, text });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || "改写失败" });
     }
   });
 
