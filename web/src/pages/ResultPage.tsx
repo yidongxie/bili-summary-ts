@@ -389,6 +389,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
   const [result, setResult] = useState<SummaryResult | null>(initialResult || null);
   const [saved, setSaved] = useState(!!initialSaved);
   const [runId, setRunId] = useState(0);
+  const [reRunKey, setReRunKey] = useState(0);
   const closeRef = useRef<(() => void) | null>(null);
 
   const [activeTab, setActiveTab] = useState<TabKey>('summary');
@@ -409,7 +410,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
   const [subtitleView, setSubtitleView] = useState<'original' | 'translated' | 'bilingual'>('original');
 
   useEffect(() => {
-    if (initialResult) {
+    if (initialResult && !reRunKey) {
       setResult(initialResult);
       setSaved(!!initialSaved);
       setPhase('success');
@@ -469,7 +470,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
       closeRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId, initialResult, initialSaved]);
+  }, [runId, initialResult, initialSaved, reRunKey]);
 
   const meta = result?.video || result?.podcast;
   const keyPoints = useMemo(() => buildKeyPoints(result?.summary || '', result?.suggested_tags || []), [result]);
@@ -578,6 +579,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
           <DarkButton onClick={onBack}><ArrowLeft className="w-4 h-4" />返回</DarkButton>
           <div className="min-w-0 flex-1"><div className="truncate text-lg font-semibold">{meta.title || '视频总结'}</div></div>
           <span className="rounded-full px-2 py-1 text-xs" style={{ background: mutedBg, color: 'var(--ink)' }}>{getPlatformLabel(result)}</span>
+          <DarkButton variant="primary" onClick={() => setReRunKey((n) => n + 1)}><RefreshCw className="w-4 h-4" />重新总结</DarkButton>
           {meta.link && <a href={meta.link} target="_blank" rel="noreferrer" className="hidden sm:inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm" style={darkSubtleStyle}><ExternalLink className="w-4 h-4" />查看原视频</a>}
         </div>
 
