@@ -32,6 +32,7 @@ import {
 } from '@/lib/api';
 import { copyText } from '@/lib/clipboard';
 import { formatDuration, formatTimelineTime, markdownToHtml } from '@/lib/format';
+import { MarkmapMindMap, mindNodeToMarkdown } from '@/components/MarkmapMindMap';
 
 type Phase = 'submitting' | 'progress' | 'success' | 'error';
 type TabKey = 'summary' | 'subtitles' | 'mindmap' | 'chat';
@@ -111,19 +112,61 @@ function buildKeyPoints(summary: string, tags: string[] = []) {
   return Array.from(new Set(points)).slice(0, 5).map((p) => (p.length > 88 ? p.slice(0, 88) + '…' : p));
 }
 
-function buildChapters(segments: SubtitleSegment[] | undefined, summary: string) {
+type ChapterItem = { timestamp: string; title: string; detail?: string; from: number };
+
+function cleanChapterTitle(text: string) {
+  return plainMarkdown(text)
+    .replace(/^[\d一二三四五六七八九十、.\s-]+/, '')
+    .replace(/[，。！？；：,.!?;:]$/, '')
+    .trim();
+}
+
+function summaryHeadings(summary: string) {
+  const headings = Array.from(summary.matchAll(/^#{1,3}\s+(.+)$/gm)).map((m) => cleanChapterTitle(m[1]));
+  if (headings.length) return headings;
+  const bold = Array.from(summary.matchAll(/\*\*(.+?)\*\*/g)).map((m) => cleanChapterTitle(m[1]));
+  return bold.filter((h) => h.length >= 4 && h.length <= 30);
+}
+
+function scoreBoundary(prev: string, next: string) {
+  let score = 0;
+  if (/[。！？!?]$/.test(prev)) score += 5;
+  if (/[，；：,;:]$/.test(prev)) score += 2;
+  if (/^(但是|所以|然后|接下来|第二|第三|另外|同时|最后|总结|那么|其实|比如|我们|你会|重点|核心)/.test(next)) score += 5;
+  if (/^(好|那|诶|嗯|呃|这个|接着)/.test(next)) score += 2;
+  if (prev.length > 18) score += 1;
+  return score;
+}
+
+function buildChapters(segments: SubtitleSegment[] | undefined, summary: string): ChapterItem[] {
+  const headings = summaryHeadings(summary).slice(0, 8);
   if (segments?.length) {
-    const total = Math.min(7, Math.max(1, segments.length));
-    const step = Math.max(1, Math.floor(segments.length / total));
-    return Array.from({ length: total }).map((_, i) => {
-      const seg = segments[Math.min(i * step, segments.length - 1)];
-      return { timestamp: formatTimelineTime(seg.from || 0), title: (seg.content || '章节内容').slice(0, 34) };
+    const duration = Math.max(...segments.map((s) => Number(s.to || s.from || 0)), 0);
+    const targetCount = Math.min(8, Math.max(3, Math.round(duration / 180) || Math.ceil(segments.length / 12)));
+    const minGap = Math.max(4, Math.floor(segments.length / Math.max(targetCount, 1) / 2));
+    const candidates: Array<{ index: number; score: number }> = [];
+    for (let i = 1; i < segments.length; i++) {
+      candidates.push({ index: i, score: scoreBoundary(segments[i - 1]?.content || '', segments[i]?.content || '') });
+    }
+    const picked = [0];
+    for (const c of candidates.sort((a, b) => b.score - a.score || a.index - b.index)) {
+      if (picked.length >= targetCount) break;
+      if (picked.every((idx) => Math.abs(idx - c.index) >= minGap)) picked.push(c.index);
+    }
+    while (picked.length < targetCount) {
+      const idx = Math.floor((segments.length * picked.length) / targetCount);
+      if (!picked.includes(idx)) picked.push(idx); else break;
+    }
+    return picked.sort((a, b) => a - b).map((idx, i) => {
+      const seg = segments[Math.min(idx, segments.length - 1)];
+      const context = segments.slice(idx, Math.min(idx + 3, segments.length)).map((s) => s.content).join('');
+      const fallback = cleanChapterTitle(context).slice(0, 22) || '章节内容';
+      const title = headings[i] || fallback;
+      return { timestamp: formatTimelineTime(seg.from || 0), from: Number(seg.from || 0), title: title.length > 26 ? title.slice(0, 26) + '…' : title, detail: fallback };
     });
   }
-  const headers = Array.from(summary.matchAll(/^#{1,3}\s+(.+)$/gm)).map((m) => m[1].trim());
-  return (headers.length ? headers : ['开场与背景', '核心观点', '关键案例', '方法总结', '行动建议'])
-    .slice(0, 7)
-    .map((h, i) => ({ timestamp: `0${i}:00`.slice(-5), title: h }));
+  const fallbackTitles = headings.length ? headings : ['开场与背景', '核心观点', '关键案例', '方法总结', '行动建议'];
+  return fallbackTitles.slice(0, 7).map((h, i) => ({ timestamp: `0${i}:00`.slice(-5), from: i * 60, title: h }));
 }
 
 function secondsToSrtTime(seconds: number) {
@@ -139,6 +182,86 @@ function buildSrt(segments: SubtitleSegment[] = []) {
   return segments
     .map((seg, i) => `${i + 1}\n${secondsToSrtTime(seg.from)} --> ${secondsToSrtTime(seg.to || seg.from + 3)}\n${seg.content}\n`)
     .join('\n');
+}
+
+
+type FormattedSubtitleLine = { from: number; text: string };
+
+function subtitleTimestamp(seconds: number) {
+  const total = Math.max(0, Math.floor(Number(seconds || 0)));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function normalizeSubtitleText(text: string) {
+  return String(text || '').replace(/\s+/g, ' ').replace(/([，。！？；：,.!?;:])+/g, '$1').trim();
+}
+
+function ensureLinePunctuation(text: string, isFinal: boolean) {
+  const clean = text.trim().replace(/[，。！？；：,.!?;:]+$/, '');
+  if (!clean) return '';
+  return clean + (isFinal ? '。' : '，');
+}
+
+function splitByPunctuation(text: string) {
+  return normalizeSubtitleText(text).match(/[^，。！？；：,.!?;:]+[，。！？；：,.!?;:]?/g)?.map((s) => s.trim()).filter(Boolean) || [];
+}
+
+function semanticBreakIndex(text: string, min = 12, ideal = 18, max = 25) {
+  const candidates = ['但是', '所以', '因为', '如果', '那么', '而且', '然后', '其实', '比如', '或者', '以及', '同时', '不过', '只是', '并且', '对于', '关于', '通过', '我们', '你会', '就会', '才会', '才能'];
+  const positions: number[] = [];
+  for (const token of candidates) {
+    let idx = text.indexOf(token, 1);
+    while (idx > 0) {
+      positions.push(idx);
+      idx = text.indexOf(token, idx + token.length);
+    }
+  }
+  const usable = positions.filter((idx) => idx >= min && idx <= max);
+  if (usable.length) return usable.sort((a, b) => Math.abs(a - ideal) - Math.abs(b - ideal))[0];
+  const softMarks = ['，', '；', '：', ',', ';', ':', '、'];
+  const markPositions = [...text].map((ch, i) => (softMarks.includes(ch) ? i + 1 : -1)).filter((i) => i >= min && i <= max);
+  if (markPositions.length) return markPositions.sort((a, b) => Math.abs(a - ideal) - Math.abs(b - ideal))[0];
+  return Math.min(Math.max(min, ideal), max, text.length);
+}
+
+function splitLongSubtitleClause(text: string): string[] {
+  let rest = text.trim();
+  const out: string[] = [];
+  while (rest.length > 25) {
+    const idx = semanticBreakIndex(rest);
+    out.push(rest.slice(0, idx).trim());
+    rest = rest.slice(idx).trim();
+  }
+  if (rest) out.push(rest);
+  return out;
+}
+
+function formatSubtitleSegments(segments: SubtitleSegment[] = []): FormattedSubtitleLine[] {
+  const lines: FormattedSubtitleLine[] = [];
+  for (const seg of segments) {
+    const clauses = splitByPunctuation(seg.content).flatMap(splitLongSubtitleClause);
+    const merged: string[] = [];
+    for (const raw of clauses) {
+      const part = raw.replace(/[，。！？；：,.!?;:]+$/, '').trim();
+      if (!part) continue;
+      const last = merged[merged.length - 1] || '';
+      if (last && last.length < 12 && (last + part).length <= 20) merged[merged.length - 1] = last + part;
+      else merged.push(part);
+    }
+    const duration = Math.max(1, Number(seg.to || seg.from + Math.max(merged.length, 1) * 2) - Number(seg.from || 0));
+    merged.forEach((line, index) => {
+      const from = Number(seg.from || 0) + (duration * index) / Math.max(merged.length, 1);
+      lines.push({ from, text: ensureLinePunctuation(line, index === merged.length - 1) });
+    });
+  }
+  return lines;
+}
+
+function formattedSubtitleText(lines: FormattedSubtitleLine[]) {
+  return lines.map((line) => `[${subtitleTimestamp(line.from)}] ${line.text}`).join('\n\n');
 }
 
 function downloadText(filename: string, text: string, type = 'text/plain;charset=utf-8') {
@@ -242,18 +365,17 @@ function getHost(link?: string) {
 }
 
 function DarkButton({ children, onClick, variant = 'ghost', disabled }: { children: ReactNode; onClick?: () => void; variant?: 'ghost' | 'primary'; disabled?: boolean }) {
-  const isPrimary = variant === 'primary';
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition disabled:opacity-50"
-      style={
-        isPrimary
-          ? { background: disabled ? 'var(--surface)' : 'var(--primary)', color: disabled ? 'var(--steel)' : 'var(--on-primary)', border: '1px solid var(--hairline)' }
-          : { background: 'transparent', border: '1px solid var(--hairline)', color: 'var(--ink)' }
-      }
+      className="inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition disabled:opacity-60"
+      style={{
+        background: 'var(--canvas)',
+        color: disabled ? 'var(--muted)' : 'var(--ink)',
+        border: '1px solid var(--hairline)',
+      }}
     >
       {children}
     </button>
@@ -559,14 +681,16 @@ function TabBar({ active, onChange }: { active: TabKey; onChange: (t: TabKey) =>
 
 function Panel({ title, children }: { title: string; children: ReactNode }) { return <div className="rounded-lg p-5" style={darkCardStyle}><h3 className="mb-4 text-base font-semibold">{title}</h3>{children}</div>; }
 
-function SummaryTab({ keyPoints, chapters, notes, copied, setCopied, rewritePlatform, setRewritePlatform, rewriteText, onRewrite }: any) {
+function SummaryTab({ keyPoints, chapters, notes, copied, setCopied, rewritePlatform, setRewritePlatform, rewriteText, onRewrite, onJumpChapter }: any) {
   async function copyNotes() { await copyText(notes); setCopied(true); setTimeout(() => setCopied(false), 2000); }
-  return <div className="space-y-6"><Panel title="视频要点"><div className="space-y-3">{keyPoints.map((p: string, i: number) => <div key={i} className="flex gap-3 text-sm" style={{ color: fg }}><span className="size-5 shrink-0 rounded-full text-center text-xs leading-5" style={{ background: `${primary}1f`, color: 'var(--ink)' }}>{i + 1}</span>{p}</div>)}</div></Panel><Panel title="章节划分"><div className="space-y-2">{chapters.map((c: any) => <div key={c.timestamp + c.title} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,.58)' }}><span className="rounded px-2 py-0.5 font-mono text-xs" style={{ background: `${primary}1f`, color: 'var(--ink)' }}>{c.timestamp}</span><span className="text-sm">{c.title}</span></div>)}</div></Panel><Panel title="结构化笔记"><div className="summary rounded-lg p-4 text-sm" style={{ background: 'rgba(255,255,255,.62)' }} dangerouslySetInnerHTML={{ __html: markdownToHtml(notes) }} /><div className="mt-4 flex flex-wrap items-center gap-2"><DarkButton onClick={copyNotes}>{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{copied ? '已复制' : '复制笔记'}</DarkButton><DarkButton onClick={() => downloadText('summary.md', notes, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><div className="ml-auto flex gap-2"><select value={rewritePlatform} onChange={(e) => setRewritePlatform(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'rgba(255,255,255,.62)', color: fg, border: `1px solid ${border}` }}><option>公众号</option><option>小红书</option><option>微博</option><option>博客</option></select><DarkButton variant="primary" onClick={onRewrite}>改写</DarkButton></div></div>{rewriteText && <div className="mt-4 rounded-full p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{rewriteText}</div>}</Panel></div>;
+  return <div className="space-y-6"><Panel title="视频要点"><div className="space-y-3">{keyPoints.map((p: string, i: number) => <div key={i} className="flex gap-3 text-sm" style={{ color: fg }}><span className="size-5 shrink-0 rounded-full text-center text-xs leading-5" style={{ background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--hairline)' }}>{i + 1}</span>{p}</div>)}</div></Panel><Panel title="章节划分"><div className="space-y-2">{chapters.map((c: ChapterItem, index: number) => <button key={c.timestamp + c.title} type="button" onClick={() => onJumpChapter?.(c.from)} className="group flex w-full items-start gap-4 rounded-lg px-4 py-3 text-left" style={{ background: 'var(--surface)', border: '1px solid var(--hairline-soft)' }}><span className="w-16 shrink-0 font-mono text-xs tabular-nums" style={{ color: 'var(--stone)' }}>{c.timestamp}</span><span className="flex-1"><span className="block text-sm font-medium" style={{ color: 'var(--ink)' }}>{index + 1}. {c.title}</span>{c.detail && c.detail !== c.title && <span className="mt-1 block text-xs line-clamp-1" style={{ color: 'var(--steel)' }}>{c.detail}</span>}</span></button>)}</div></Panel><Panel title="结构化笔记"><div className="summary rounded-lg p-4 text-sm" style={{ background: 'var(--surface)' }} dangerouslySetInnerHTML={{ __html: markdownToHtml(notes) }} /><div className="mt-4 flex flex-wrap items-center gap-2"><DarkButton onClick={copyNotes}>{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{copied ? '已复制' : '复制笔记'}</DarkButton><DarkButton onClick={() => downloadText('summary.md', notes, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><div className="ml-auto flex gap-2"><select value={rewritePlatform} onChange={(e) => setRewritePlatform(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'var(--canvas)', color: fg, border: `1px solid ${border}` }}><option>公众号</option><option>小红书</option><option>微博</option><option>博客</option></select><DarkButton variant="primary" onClick={onRewrite}>改写</DarkButton></div></div>{rewriteText && <div className="mt-4 rounded-lg p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{rewriteText}</div>}</Panel></div>;
 }
 
 function SubtitlesTab({ segments, language, setLanguage, translating, translation, onTranslate }: any) {
-  const txt = segments.map((s: SubtitleSegment) => `${formatTimelineTime(s.from)} ${s.content}`).join('\n');
-  return <Panel title="字幕"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => copyText(txt)}><Copy className="w-4 h-4" />复制全部</DarkButton><DarkButton onClick={() => downloadText('subtitles.srt', buildSrt(segments))}><Download className="w-4 h-4" />导出 SRT</DarkButton><DarkButton onClick={() => downloadText('subtitles.txt', txt)}><Download className="w-4 h-4" />导出 TXT</DarkButton><select value={language} onChange={(e) => setLanguage(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'rgba(255,255,255,.62)', color: fg, border: `1px solid ${border}` }}><option>English</option><option>日本語</option><option>한국어</option><option>繁體中文</option><option>Français</option><option>Deutsch</option><option>Español</option></select><DarkButton variant="primary" onClick={onTranslate} disabled={translating}>{translating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}开始翻译</DarkButton></div>{translation && <div className="mb-4 rounded-full p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{translation}</div>}<div className="max-h-[500px] overflow-y-auto divide-y" style={{ borderColor: border }}>{segments.map((s: SubtitleSegment, i: number) => <div key={i} className="flex items-start gap-4 px-4 py-3 hover:bg-white/5"><span className="w-20 shrink-0 font-mono text-xs tabular-nums" style={{ color: muted }}>{formatTimelineTime(s.from)}</span><span className="min-w-0 flex-1 text-sm leading-relaxed" style={{ color: fg }}>{s.content}</span></div>)}</div></Panel>;
+  const formatted = formatSubtitleSegments(segments);
+  const txt = formattedSubtitleText(formatted);
+  const markdown = `# 字幕\n\n${txt}`;
+  return <Panel title="字幕"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => copyText(txt)}><Copy className="w-4 h-4" />复制全部</DarkButton><DarkButton onClick={() => downloadText('subtitles.srt', buildSrt(segments))}><Download className="w-4 h-4" />导出 SRT</DarkButton><DarkButton onClick={() => downloadText('subtitles.md', markdown, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><select value={language} onChange={(e) => setLanguage(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'var(--canvas)', color: fg, border: `1px solid ${border}` }}><option>English</option><option>日本語</option><option>한국어</option><option>繁體中文</option><option>Français</option><option>Deutsch</option><option>Español</option></select><DarkButton variant="primary" onClick={onTranslate} disabled={translating}>{translating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}开始翻译</DarkButton></div>{translation && <div className="mb-4 rounded-lg p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{translation}</div>}<div className="max-h-[500px] overflow-y-auto divide-y" style={{ borderColor: border }}>{formatted.map((line, i) => <div key={i} className="flex items-start gap-4 px-4 py-3"><span className="w-24 shrink-0 font-mono text-xs tabular-nums" style={{ color: muted }}>[{subtitleTimestamp(line.from)}]</span><span className="min-w-0 flex-1 text-sm leading-relaxed" style={{ color: fg }}>{line.text}</span></div>)}</div></Panel>;
 }
 
 function MindNodeView({ node, expanded, setExpanded, depth = 0 }: any) {
@@ -578,11 +702,23 @@ function MindNodeView({ node, expanded, setExpanded, depth = 0 }: any) {
 
 function MindMapTab({ node, expanded, setExpanded, full, setFull }: any) {
   const collect = (n: MindNode): string[] => [n.label, ...(n.children || []).flatMap(collect)];
-  const box = <Panel title="思维导图"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => setExpanded(new Set(collect(node)))}>全部展开</DarkButton><DarkButton onClick={() => setExpanded(new Set())}>全部收起</DarkButton><DarkButton onClick={() => copyText(outlineText(node))}>复制大纲</DarkButton><DarkButton variant="primary" onClick={() => setFull(!full)}><Fullscreen className="w-4 h-4" />{full ? '退出全屏' : '全屏'}</DarkButton></div><MindNodeView node={node} expanded={expanded} setExpanded={setExpanded} /></Panel>;
+  const markdown = mindNodeToMarkdown(node);
+  const box = (
+    <Panel title="思维导图">
+      <div className="mb-4 flex flex-wrap gap-2">
+        <DarkButton onClick={() => setExpanded(new Set(collect(node)))}>全部展开</DarkButton>
+        <DarkButton onClick={() => setExpanded(new Set())}>全部收起</DarkButton>
+        <DarkButton onClick={() => copyText(outlineText(node))}>复制大纲</DarkButton>
+        <DarkButton onClick={() => downloadText('mindmap.md', markdown, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton>
+        <DarkButton variant="primary" onClick={() => setFull(!full)}><Fullscreen className="w-4 h-4" />{full ? '退出全屏' : '全屏'}</DarkButton>
+      </div>
+      <MarkmapMindMap node={node} height={full ? 760 : 560} />
+    </Panel>
+  );
   return full ? <div className="fixed inset-4 z-50 overflow-y-auto rounded-lg" style={{ background: pageBg }}>{box}</div> : box;
 }
 
 function ChatTab({ messages, streaming, input, setInput, send }: any) {
   const suggestions = ['这个视频的核心观点是什么？', '能帮我总结一下关键要点', '视频中提到了哪些具体案例？', '有什么值得进一步学习的资源？'];
-  return <Panel title="对话"><div className="min-h-[420px] space-y-4">{messages.length === 0 && !streaming ? <div className="py-10 text-center"><div className="mx-auto mb-4 size-16 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary}33,${accent}33)` }}><Bot className="w-8 h-8" /></div><div className="grid gap-2 sm:grid-cols-2">{suggestions.map((q) => <button key={q} onClick={() => send(q)} className="rounded-full p-3 text-left text-sm" style={darkSubtleStyle}>{q}</button>)}</div></div> : null}{messages.map((m: ChatMessage, i: number) => <div key={i} className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>{m.role === 'ai' && <Bot className="mt-1 w-6 h-6" />}<div className="max-w-[80%] rounded-lg px-4 py-2 text-sm" style={m.role === 'user' ? { background: primary, color: fg, borderBottomRightRadius: 6 } : { background: 'rgba(255,255,255,.62)', color: fg, borderBottomLeftRadius: 6 }}>{m.content}</div>{m.role === 'user' && <User className="mt-1 w-6 h-6" />}</div>)}{streaming && <div className="flex gap-2"><Sparkles className="mt-1 w-6 h-6 animate-pulse" /><div className="max-w-[80%] rounded-lg px-4 py-2 text-sm" style={darkSubtleStyle}>{streaming}<span className="animate-pulse">|</span></div></div>}</div><div className="mt-4 flex gap-2"><textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} className="min-h-10 max-h-32 flex-1 resize-none rounded-full px-3 py-2 text-sm outline-none" style={{ background: 'rgba(255,255,255,.62)', color: fg, border: `1px solid ${border}` }} /><button onClick={() => send()} className="size-10 rounded-full flex items-center justify-center" style={{ background: `var(--primary)` }}><Send className="w-4 h-4 text-white" /></button></div></Panel>;
+  return <Panel title="对话"><div className="min-h-[420px] space-y-4">{messages.length === 0 && !streaming ? <div className="py-10 text-center"><div className="mx-auto mb-4 size-16 rounded-lg flex items-center justify-center" style={{ background: 'var(--surface)', border: '1px solid var(--hairline)' }}><Bot className="w-8 h-8" /></div><div className="grid gap-2 sm:grid-cols-2">{suggestions.map((q) => <button key={q} onClick={() => send(q)} className="rounded-full p-3 text-left text-sm" style={darkSubtleStyle}>{q}</button>)}</div></div> : null}{messages.map((m: ChatMessage, i: number) => <div key={i} className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>{m.role === 'ai' && <Bot className="mt-1 w-6 h-6" />}<div className="max-w-[80%] rounded-lg px-4 py-2 text-sm" style={m.role === 'user' ? { background: 'var(--surface)', color: fg, border: '1px solid var(--hairline)', borderBottomRightRadius: 6 } : { background: 'var(--canvas)', color: fg, border: '1px solid var(--hairline)', borderBottomLeftRadius: 6 }}>{m.content}</div>{m.role === 'user' && <User className="mt-1 w-6 h-6" />}</div>)}{streaming && <div className="flex gap-2"><Sparkles className="mt-1 w-6 h-6 animate-pulse" /><div className="max-w-[80%] rounded-lg px-4 py-2 text-sm" style={darkSubtleStyle}>{streaming}<span className="animate-pulse">|</span></div></div>}</div><div className="mt-4 flex gap-2"><textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} className="min-h-10 max-h-32 flex-1 resize-none rounded-full px-3 py-2 text-sm outline-none" style={{ background: 'var(--canvas)', color: fg, border: `1px solid ${border}` }} /><button onClick={() => send()} className="size-10 rounded-full flex items-center justify-center" style={{ background: 'var(--canvas)', color: 'var(--ink)', border: '1px solid var(--hairline)' }}><Send className="w-4 h-4" /></button></div></Panel>;
 }

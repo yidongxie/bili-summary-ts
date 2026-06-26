@@ -353,17 +353,10 @@ export function FavoritesPage({
       const params: string[] = [];
       if (vault) params.push('vault=' + encodeURIComponent(vault));
       params.push('name=' + encodeURIComponent(filePath));
+      params.push('content=' + encodeURIComponent(md));
       const uri = 'obsidian://new?' + params.join('&');
 
-      if (!copied) {
-        setObsidianModal({ md, uri, filePath, copied: false });
-        return;
-      }
-
-      // Show a persistent modal *first*, then nudge Obsidian. The modal
-      // doubles as a fallback if the OS scheme handler is missing, and
-      // shows the markdown so the user can re-copy if needed.
-      setObsidianModal({ md, uri, filePath, copied: true });
+      setObsidianModal({ md, uri, filePath, copied });
       window.location.href = uri;
     } catch (err: any) {
       onShowToast('唤起 Obsidian 失败：' + (err.message || ''), 'error');
@@ -1006,16 +999,16 @@ function ObsidianExportModal({
               color: 'var(--primary)',
             }}
           >
-            <div className="font-semibold mb-1">✓ 笔记内容已复制到剪贴板</div>
+            <div className="font-semibold mb-1">✓ 已尝试把完整 Markdown 写入 Obsidian，并已复制到剪贴板</div>
             <div className="leading-relaxed">
-              Obsidian 应该已经创建了一个空笔记。在 Obsidian 里按{' '}
+              如果 Obsidian 只创建了标题或空笔记，请在 Obsidian 里按{' '}
               <kbd
                 className="px-1.5 py-0.5 rounded text-xs font-mono"
                 style={{ background: 'rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.10)' }}
               >
                 Ctrl+V
               </kbd>{' '}
-              粘贴即可。
+              粘贴剪贴板里的完整内容。
             </div>
           </div>
         ) : (

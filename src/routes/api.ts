@@ -152,11 +152,11 @@ function obsidianTags(tags: string[], category: string): string[] {
 
 function itemToMarkdown(item: any): string {
   const tags = obsidianTags(item.tags || [], item.category || "");
-   const parts = [
-     "---",
-     `title: ${yamlString(item.title)}`,
-     `source: ${yamlString(item.link || "")}`,
-     `author: ${yamlString(item.author)}`,
+  const parts = [
+    "---",
+    `title: ${yamlString(item.title)}`,
+    `source: ${yamlString(item.link || "")}`,
+    `author: ${yamlString(item.author)}`,
     `site: ${yamlString("Bilibili")}`,
     `bvid: ${yamlString(item.bvid)}`,
     `duration: ${yamlString(formatDuration(item.duration))}`,
@@ -165,21 +165,10 @@ function itemToMarkdown(item: any): string {
     `subtitle_count: ${Number(item.subtitle_count || 0)}`,
     `created: ${yamlString(item.created_at)}`,
     `updated: ${yamlString(item.updated_at)}`,
-     `tags:${yamlList(tags)}`,
+    `tags:${yamlList(tags)}`,
     "---",
-   "",
-   `# ${item.title}`,
-   "",
-  "> [!info] Source",
-  `> - UP主: ${item.author || ""}`,
-  `> - 原视频: ${item.link || ""}`,
-  `> - 时长: ${formatDuration(item.duration)}`,
-  `> - 分类: ${item.category || ""}`,
-  `> - 字幕条数: ${item.subtitle_count || 0}`,
-   "",
-   `![](https://player.bilibili.com/player.html?bvid=${item.bvid}&autoplay=0)`,
-   "",
-  "## AI 总结",
+    "",
+    `# ${item.title}`,
     "",
     item.summary,
   ];
