@@ -59,20 +59,18 @@ const PROCESS_STEPS = [
   '即将完成...',
 ];
 
-const pageBg = 'transparent';
-const cardBg = 'rgba(255,255,255,0.72)';
-const mutedBg = 'rgba(255,255,255,0.55)';
-const border = 'rgba(14,165,233,0.16)';
-const fg = '#0d2d45';
-const muted = '#5b8fae';
-const primary = '#0ea5e9';
-const accent = '#38bdf8';
+const pageBg = 'var(--canvas)';
+const cardBg = 'var(--canvas)';
+const mutedBg = 'var(--surface)';
+const border = 'var(--hairline)';
+const fg = 'var(--ink)';
+const muted = 'var(--steel)';
+const primary = 'var(--primary)';
+const accent = 'var(--brand-green)';
 
 const darkCardStyle: CSSProperties = {
   background: cardBg,
   border: `1px solid ${border}`,
-  backdropFilter: 'blur(16px)',
-  boxShadow: '0 8px 36px rgba(14,165,233,.12), inset 0 1px 0 rgba(255,255,255,.88)',
 };
 const darkSubtleStyle: CSSProperties = { background: mutedBg, border: `1px solid ${border}` };
 
@@ -231,7 +229,7 @@ function highlightText(text: string, query: string) {
   const escaped = q.replace(new RegExp('[-/\^$*+?.()|[\]{}]', 'g'), '\$&');
   return text.split(new RegExp(`(${escaped})`, 'gi')).map((part, i) =>
     part.toLowerCase() === q.toLowerCase()
-      ? <mark key={i} className="rounded px-0.5" style={{ background: '#fef08a', color: '#713f12' }}>{part}</mark>
+      ? <mark key={i} className="rounded px-0.5" style={{ background: 'rgba(0,212,164,0.18)', color: 'var(--ink)' }}>{part}</mark>
       : part
   );
 }
@@ -249,8 +247,8 @@ function DarkButton({ children, onClick, variant = 'ghost', disabled }: { childr
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition hover:scale-[1.02] disabled:opacity-50"
-      style={variant === 'primary' ? { background: `linear-gradient(135deg,${primary},${accent})`, color: fg } : { ...darkSubtleStyle, color: fg }}
+      className="inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition  disabled:opacity-50"
+      style={variant === 'primary' ? { background: `var(--primary)`, color: fg } : { ...darkSubtleStyle, color: fg }}
     >
       {children}
     </button>
@@ -449,18 +447,18 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
   return (
     <main className="min-h-full overflow-y-auto px-4 sm:px-6 py-5" style={{ background: pageBg, color: fg }}>
       <div className="mx-auto max-w-7xl space-y-5">
-        <div className="flex items-center gap-3 rounded-2xl px-4 py-3 backdrop-blur" style={darkCardStyle}>
+        <div className="flex items-center gap-3 rounded-lg px-4 py-3 " style={darkCardStyle}>
           <DarkButton onClick={onBack}><ArrowLeft className="w-4 h-4" />返回</DarkButton>
           <div className="min-w-0 flex-1"><div className="truncate text-lg font-semibold">{meta.title || '视频总结'}</div></div>
-          <span className="rounded-full px-2 py-1 text-xs" style={{ background: mutedBg, color: 'hsl(250 70% 75%)' }}>{getPlatformLabel(result)}</span>
-          {meta.link && <a href={meta.link} target="_blank" rel="noreferrer" className="hidden sm:inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm" style={darkSubtleStyle}><ExternalLink className="w-4 h-4" />查看原视频</a>}
+          <span className="rounded-full px-2 py-1 text-xs" style={{ background: mutedBg, color: 'var(--ink)' }}>{getPlatformLabel(result)}</span>
+          {meta.link && <a href={meta.link} target="_blank" rel="noreferrer" className="hidden sm:inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm" style={darkSubtleStyle}><ExternalLink className="w-4 h-4" />查看原视频</a>}
         </div>
 
         <div className="grid gap-6 lg:grid-cols-5">
           <aside className="lg:col-span-2">
             <div className="lg:sticky lg:top-20 space-y-4">
-              <div className="rounded-2xl overflow-hidden" style={darkCardStyle}>
-                <div className="aspect-video overflow-hidden flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary}22,rgba(255,255,255,.35),${accent}22)` }}>
+              <div className="rounded-lg overflow-hidden" style={darkCardStyle}>
+                <div className="aspect-video overflow-hidden flex items-center justify-center" style={{ background: `var(--surface)` }}>
                   {result.video?.bvid && result.type === 'bilibili' && !result.video.bvid.startsWith('http') ? (
                     <iframe
                       src={`https://player.bilibili.com/player.html?bvid=${result.video.bvid}&autoplay=0&high_quality=1`}
@@ -480,12 +478,12 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
                     />
                   ) : result.video?.bvid?.startsWith('http') || result.podcast?.audioUrl ? (
                     <div className="w-full p-5 flex flex-col items-center gap-4">
-                      {(result.video?.pic || result.podcast?.cover) && <img src={result.video?.pic || result.podcast?.cover} alt="封面" className="w-36 h-36 object-cover rounded-2xl shadow-lg" />}
+                      {(result.video?.pic || result.podcast?.cover) && <img src={result.video?.pic || result.podcast?.cover} alt="封面" className="w-36 h-36 object-cover rounded-lg shadow-lg" />}
                       <audio controls className="w-full max-w-sm" src={`/api/proxy/audio?url=${encodeURIComponent(result.video?.bvid || result.podcast?.audioUrl || '')}`} />
                     </div>
                   ) : (
                     <div className="text-center">
-                      <div className="mx-auto mb-3 size-16 rounded-2xl flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary},${accent})` }}><Sparkles className="w-8 h-8 text-white" /></div>
+                      <div className="mx-auto mb-3 size-16 rounded-lg flex items-center justify-center" style={{ background: `var(--primary)` }}><Sparkles className="w-8 h-8 text-white" /></div>
                       <div className="text-sm" style={{ color: muted }}>视频预览区域</div>
                     </div>
                   )}
@@ -495,7 +493,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
                   <div className="text-xs" style={{ color: muted }}>{getHost(meta.link)} · {formatDuration(meta.duration || 0)}</div>
                   <div className="flex flex-wrap gap-2">
                     <span className="rounded-full px-2 py-1 text-xs" style={{ background: 'rgba(5,150,105,.12)', color: '#047857' }}>✅ 已完成</span>
-                    <span className="rounded-full px-2 py-1 text-xs" style={{ background: mutedBg, color: 'hsl(220 15% 70%)' }}>{chapters.length} 个章节</span>
+                    <span className="rounded-full px-2 py-1 text-xs" style={{ background: mutedBg, color: 'var(--steel)' }}>{chapters.length} 个章节</span>
                   </div>
                 </div>
               </div>
@@ -522,13 +520,13 @@ function LoadingState({ progress, onBack }: { progress: string; onBack: () => vo
     <main className="min-h-full flex items-center justify-center p-6" style={{ background: pageBg, color: fg }}>
       <div className="w-full max-w-md rounded-3xl p-8 text-center" style={darkCardStyle}>
         <div className="relative mx-auto mb-6 size-20 rounded-full border-4 animate-spin" style={{ borderColor: `${primary}33`, borderTopColor: primary }} />
-        <Sparkles className="w-8 h-8 mx-auto -mt-16 mb-8" style={{ color: 'hsl(250 70% 75%)' }} />
+        <Sparkles className="w-8 h-8 mx-auto -mt-16 mb-8" style={{ color: 'var(--ink)' }} />
         <h2 className="text-lg font-semibold">正在处理您的视频</h2>
         <p className="mt-2 text-sm" style={{ color: muted }}>{progress}</p>
         <div className="mt-6 space-y-3 text-left">
           {PROCESS_STEPS.map((s, i) => (
             <div key={s} className="flex items-center gap-3 text-sm" style={{ color: i <= current ? fg : muted }}>
-              {i < current ? <Check className="w-4 h-4" style={{ color: 'hsl(150 55% 48%)' }} /> : i === current ? <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'hsl(250 70% 75%)' }} /> : <Circle className="w-4 h-4 opacity-50" />}
+              {i < current ? <Check className="w-4 h-4" style={{ color: 'hsl(150 55% 48%)' }} /> : i === current ? <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--ink)' }} /> : <Circle className="w-4 h-4 opacity-50" />}
               {s}
             </div>
           ))}
@@ -551,35 +549,35 @@ function TabBar({ active, onChange }: { active: TabKey; onChange: (t: TabKey) =>
   const tabs = [
     ['summary', FileText, '总结'], ['subtitles', Subtitles, '字幕'], ['mindmap', GitBranch, '思维导图'], ['chat', MessageCircle, '对话'],
   ] as const;
-  return <div className="grid grid-cols-4 rounded-2xl p-1" style={darkSubtleStyle}>{tabs.map(([key, Icon, label]) => <button key={key} onClick={() => onChange(key)} className="flex items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-sm" style={{ background: active === key ? `${primary}2e` : 'transparent', color: active === key ? 'hsl(250 70% 75%)' : muted }}><Icon className="w-4 h-4" /><span className="hidden sm:inline">{label}</span></button>)}</div>;
+  return <div className="grid grid-cols-4 rounded-lg p-1" style={darkSubtleStyle}>{tabs.map(([key, Icon, label]) => <button key={key} onClick={() => onChange(key)} className="flex items-center justify-center gap-1.5 rounded-full px-2 py-2 text-sm" style={{ background: active === key ? `${primary}2e` : 'transparent', color: active === key ? 'var(--ink)' : muted }}><Icon className="w-4 h-4" /><span className="hidden sm:inline">{label}</span></button>)}</div>;
 }
 
-function Panel({ title, children }: { title: string; children: ReactNode }) { return <div className="rounded-2xl p-5" style={darkCardStyle}><h3 className="mb-4 text-base font-semibold">{title}</h3>{children}</div>; }
+function Panel({ title, children }: { title: string; children: ReactNode }) { return <div className="rounded-lg p-5" style={darkCardStyle}><h3 className="mb-4 text-base font-semibold">{title}</h3>{children}</div>; }
 
 function SummaryTab({ keyPoints, chapters, notes, copied, setCopied, rewritePlatform, setRewritePlatform, rewriteText, onRewrite }: any) {
   async function copyNotes() { await copyText(notes); setCopied(true); setTimeout(() => setCopied(false), 2000); }
-  return <div className="space-y-6"><Panel title="视频要点"><div className="space-y-3">{keyPoints.map((p: string, i: number) => <div key={i} className="flex gap-3 text-sm" style={{ color: fg }}><span className="size-5 shrink-0 rounded-full text-center text-xs leading-5" style={{ background: `${primary}1f`, color: 'hsl(250 70% 75%)' }}>{i + 1}</span>{p}</div>)}</div></Panel><Panel title="章节划分"><div className="space-y-2">{chapters.map((c: any) => <div key={c.timestamp + c.title} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,.58)' }}><span className="rounded px-2 py-0.5 font-mono text-xs" style={{ background: `${primary}1f`, color: 'hsl(250 70% 75%)' }}>{c.timestamp}</span><span className="text-sm">{c.title}</span></div>)}</div></Panel><Panel title="结构化笔记"><div className="summary rounded-lg p-4 text-sm" style={{ background: 'rgba(255,255,255,.62)' }} dangerouslySetInnerHTML={{ __html: markdownToHtml(notes) }} /><div className="mt-4 flex flex-wrap items-center gap-2"><DarkButton onClick={copyNotes}>{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{copied ? '已复制' : '复制笔记'}</DarkButton><DarkButton onClick={() => downloadText('summary.md', notes, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><div className="ml-auto flex gap-2"><select value={rewritePlatform} onChange={(e) => setRewritePlatform(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'rgba(255,255,255,.62)', color: fg, border: `1px solid ${border}` }}><option>公众号</option><option>小红书</option><option>微博</option><option>博客</option></select><DarkButton variant="primary" onClick={onRewrite}>改写</DarkButton></div></div>{rewriteText && <div className="mt-4 rounded-xl p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{rewriteText}</div>}</Panel></div>;
+  return <div className="space-y-6"><Panel title="视频要点"><div className="space-y-3">{keyPoints.map((p: string, i: number) => <div key={i} className="flex gap-3 text-sm" style={{ color: fg }}><span className="size-5 shrink-0 rounded-full text-center text-xs leading-5" style={{ background: `${primary}1f`, color: 'var(--ink)' }}>{i + 1}</span>{p}</div>)}</div></Panel><Panel title="章节划分"><div className="space-y-2">{chapters.map((c: any) => <div key={c.timestamp + c.title} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,.58)' }}><span className="rounded px-2 py-0.5 font-mono text-xs" style={{ background: `${primary}1f`, color: 'var(--ink)' }}>{c.timestamp}</span><span className="text-sm">{c.title}</span></div>)}</div></Panel><Panel title="结构化笔记"><div className="summary rounded-lg p-4 text-sm" style={{ background: 'rgba(255,255,255,.62)' }} dangerouslySetInnerHTML={{ __html: markdownToHtml(notes) }} /><div className="mt-4 flex flex-wrap items-center gap-2"><DarkButton onClick={copyNotes}>{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{copied ? '已复制' : '复制笔记'}</DarkButton><DarkButton onClick={() => downloadText('summary.md', notes, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><div className="ml-auto flex gap-2"><select value={rewritePlatform} onChange={(e) => setRewritePlatform(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'rgba(255,255,255,.62)', color: fg, border: `1px solid ${border}` }}><option>公众号</option><option>小红书</option><option>微博</option><option>博客</option></select><DarkButton variant="primary" onClick={onRewrite}>改写</DarkButton></div></div>{rewriteText && <div className="mt-4 rounded-full p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{rewriteText}</div>}</Panel></div>;
 }
 
 function SubtitlesTab({ segments, language, setLanguage, translating, translation, onTranslate }: any) {
   const txt = segments.map((s: SubtitleSegment) => `${formatTimelineTime(s.from)} ${s.content}`).join('\n');
-  return <Panel title="字幕"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => copyText(txt)}><Copy className="w-4 h-4" />复制全部</DarkButton><DarkButton onClick={() => downloadText('subtitles.srt', buildSrt(segments))}><Download className="w-4 h-4" />导出 SRT</DarkButton><DarkButton onClick={() => downloadText('subtitles.txt', txt)}><Download className="w-4 h-4" />导出 TXT</DarkButton><select value={language} onChange={(e) => setLanguage(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'rgba(255,255,255,.62)', color: fg, border: `1px solid ${border}` }}><option>English</option><option>日本語</option><option>한국어</option><option>繁體中文</option><option>Français</option><option>Deutsch</option><option>Español</option></select><DarkButton variant="primary" onClick={onTranslate} disabled={translating}>{translating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}开始翻译</DarkButton></div>{translation && <div className="mb-4 rounded-xl p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{translation}</div>}<div className="max-h-[500px] overflow-y-auto divide-y" style={{ borderColor: border }}>{segments.map((s: SubtitleSegment, i: number) => <div key={i} className="flex items-start gap-4 px-4 py-3 hover:bg-white/5"><span className="w-20 shrink-0 font-mono text-xs tabular-nums" style={{ color: muted }}>{formatTimelineTime(s.from)}</span><span className="min-w-0 flex-1 text-sm leading-relaxed" style={{ color: fg }}>{s.content}</span></div>)}</div></Panel>;
+  return <Panel title="字幕"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => copyText(txt)}><Copy className="w-4 h-4" />复制全部</DarkButton><DarkButton onClick={() => downloadText('subtitles.srt', buildSrt(segments))}><Download className="w-4 h-4" />导出 SRT</DarkButton><DarkButton onClick={() => downloadText('subtitles.txt', txt)}><Download className="w-4 h-4" />导出 TXT</DarkButton><select value={language} onChange={(e) => setLanguage(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'rgba(255,255,255,.62)', color: fg, border: `1px solid ${border}` }}><option>English</option><option>日本語</option><option>한국어</option><option>繁體中文</option><option>Français</option><option>Deutsch</option><option>Español</option></select><DarkButton variant="primary" onClick={onTranslate} disabled={translating}>{translating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}开始翻译</DarkButton></div>{translation && <div className="mb-4 rounded-full p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{translation}</div>}<div className="max-h-[500px] overflow-y-auto divide-y" style={{ borderColor: border }}>{segments.map((s: SubtitleSegment, i: number) => <div key={i} className="flex items-start gap-4 px-4 py-3 hover:bg-white/5"><span className="w-20 shrink-0 font-mono text-xs tabular-nums" style={{ color: muted }}>{formatTimelineTime(s.from)}</span><span className="min-w-0 flex-1 text-sm leading-relaxed" style={{ color: fg }}>{s.content}</span></div>)}</div></Panel>;
 }
 
 function MindNodeView({ node, expanded, setExpanded, depth = 0 }: any) {
   const has = node.children?.length;
   const open = expanded.has(node.label);
-  const style = depth === 0 ? { background: `linear-gradient(90deg,${primary}26,${accent}18)`, border: `1px solid ${primary}33`, fontWeight: 700 } : depth === 1 ? { background: `${primary}0d`, fontWeight: 600 } : {};
+  const style = depth === 0 ? { background: `var(--surface)`, border: `1px solid ${primary}33`, fontWeight: 700 } : depth === 1 ? { background: `${primary}0d`, fontWeight: 600 } : {};
   return <div className={depth ? "ml-5 border-l-2 pl-3" : ''} style={{ borderColor: `${primary}26` }}><button onClick={() => has && setExpanded((s: Set<string>) => { const n = new Set(s); open ? n.delete(node.label) : n.add(node.label); return n; })} className="my-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left" style={style}>{has ? (open ? '▼' : '▶') : '●'}<span className={depth === 0 ? 'text-base' : depth === 1 ? 'text-sm' : 'text-xs'}>{node.label}</span>{has && <span className="ml-auto rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: 'rgba(255,255,255,.62)' }}>{node.children.length}</span>}</button>{has && open && <div>{node.children.map((c: MindNode) => <MindNodeView key={c.label} node={c} expanded={expanded} setExpanded={setExpanded} depth={depth + 1} />)}</div>}</div>;
 }
 
 function MindMapTab({ node, expanded, setExpanded, full, setFull }: any) {
   const collect = (n: MindNode): string[] => [n.label, ...(n.children || []).flatMap(collect)];
   const box = <Panel title="思维导图"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => setExpanded(new Set(collect(node)))}>全部展开</DarkButton><DarkButton onClick={() => setExpanded(new Set())}>全部收起</DarkButton><DarkButton onClick={() => copyText(outlineText(node))}>复制大纲</DarkButton><DarkButton variant="primary" onClick={() => setFull(!full)}><Fullscreen className="w-4 h-4" />{full ? '退出全屏' : '全屏'}</DarkButton></div><MindNodeView node={node} expanded={expanded} setExpanded={setExpanded} /></Panel>;
-  return full ? <div className="fixed inset-4 z-50 overflow-y-auto rounded-2xl" style={{ background: pageBg }}>{box}</div> : box;
+  return full ? <div className="fixed inset-4 z-50 overflow-y-auto rounded-lg" style={{ background: pageBg }}>{box}</div> : box;
 }
 
 function ChatTab({ messages, streaming, input, setInput, send }: any) {
   const suggestions = ['这个视频的核心观点是什么？', '能帮我总结一下关键要点', '视频中提到了哪些具体案例？', '有什么值得进一步学习的资源？'];
-  return <Panel title="对话"><div className="min-h-[420px] space-y-4">{messages.length === 0 && !streaming ? <div className="py-10 text-center"><div className="mx-auto mb-4 size-16 rounded-2xl flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary}33,${accent}33)` }}><Bot className="w-8 h-8" /></div><div className="grid gap-2 sm:grid-cols-2">{suggestions.map((q) => <button key={q} onClick={() => send(q)} className="rounded-xl p-3 text-left text-sm" style={darkSubtleStyle}>{q}</button>)}</div></div> : null}{messages.map((m: ChatMessage, i: number) => <div key={i} className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>{m.role === 'ai' && <Bot className="mt-1 w-6 h-6" />}<div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm" style={m.role === 'user' ? { background: primary, color: fg, borderBottomRightRadius: 6 } : { background: 'rgba(255,255,255,.62)', color: fg, borderBottomLeftRadius: 6 }}>{m.content}</div>{m.role === 'user' && <User className="mt-1 w-6 h-6" />}</div>)}{streaming && <div className="flex gap-2"><Sparkles className="mt-1 w-6 h-6 animate-pulse" /><div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm" style={darkSubtleStyle}>{streaming}<span className="animate-pulse">|</span></div></div>}</div><div className="mt-4 flex gap-2"><textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} className="min-h-10 max-h-32 flex-1 resize-none rounded-xl px-3 py-2 text-sm outline-none" style={{ background: 'rgba(255,255,255,.62)', color: fg, border: `1px solid ${border}` }} /><button onClick={() => send()} className="size-10 rounded-xl flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary},${accent})` }}><Send className="w-4 h-4 text-white" /></button></div></Panel>;
+  return <Panel title="对话"><div className="min-h-[420px] space-y-4">{messages.length === 0 && !streaming ? <div className="py-10 text-center"><div className="mx-auto mb-4 size-16 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg,${primary}33,${accent}33)` }}><Bot className="w-8 h-8" /></div><div className="grid gap-2 sm:grid-cols-2">{suggestions.map((q) => <button key={q} onClick={() => send(q)} className="rounded-full p-3 text-left text-sm" style={darkSubtleStyle}>{q}</button>)}</div></div> : null}{messages.map((m: ChatMessage, i: number) => <div key={i} className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>{m.role === 'ai' && <Bot className="mt-1 w-6 h-6" />}<div className="max-w-[80%] rounded-lg px-4 py-2 text-sm" style={m.role === 'user' ? { background: primary, color: fg, borderBottomRightRadius: 6 } : { background: 'rgba(255,255,255,.62)', color: fg, borderBottomLeftRadius: 6 }}>{m.content}</div>{m.role === 'user' && <User className="mt-1 w-6 h-6" />}</div>)}{streaming && <div className="flex gap-2"><Sparkles className="mt-1 w-6 h-6 animate-pulse" /><div className="max-w-[80%] rounded-lg px-4 py-2 text-sm" style={darkSubtleStyle}>{streaming}<span className="animate-pulse">|</span></div></div>}</div><div className="mt-4 flex gap-2"><textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} className="min-h-10 max-h-32 flex-1 resize-none rounded-full px-3 py-2 text-sm outline-none" style={{ background: 'rgba(255,255,255,.62)', color: fg, border: `1px solid ${border}` }} /><button onClick={() => send()} className="size-10 rounded-full flex items-center justify-center" style={{ background: `var(--primary)` }}><Send className="w-4 h-4 text-white" /></button></div></Panel>;
 }

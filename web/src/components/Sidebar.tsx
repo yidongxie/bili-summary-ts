@@ -7,10 +7,10 @@ export type NavKey = 'home' | 'library' | 'learning' | 'admin' | 'settings';
 const ADMIN_EMAIL = '444925817@qq.com';
 
 const BASE_ITEMS: Array<{ key: NavKey; icon: typeof Library; label: string; sub?: string }> = [
-  { key: 'home', icon: Library, label: '知', sub: '总结' },
-  { key: 'library', icon: FileText, label: '行', sub: '收藏' },
-  { key: 'learning', icon: GraduationCap, label: '学', sub: '复习' },
-  { key: 'settings', icon: Settings, label: '设置' },
+  { key: 'home', icon: Library, label: '总结', sub: 'Home' },
+  { key: 'library', icon: FileText, label: '收藏库', sub: 'Library' },
+  { key: 'learning', icon: GraduationCap, label: '学习中心', sub: 'Learn' },
+  { key: 'settings', icon: Settings, label: '设置', sub: 'Settings' },
 ];
 
 interface SidebarProps {
@@ -25,28 +25,30 @@ export function Sidebar({ active, onChange, user, onUserClick }: SidebarProps) {
   const items = isAdmin
     ? [
         ...BASE_ITEMS.slice(0, 3),
-        { key: 'admin' as NavKey, icon: Settings, label: '管理', sub: '后台' },
+        { key: 'admin' as NavKey, icon: Settings, label: '管理后台', sub: 'Admin' },
         BASE_ITEMS[3],
       ]
     : BASE_ITEMS;
   return (
     <aside
-      className="flex flex-col items-center py-5 gap-1 border-r shrink-0"
+      className="flex flex-col py-5 px-3 gap-1 border-r shrink-0"
       style={{
-        width: 100,
-        background: 'rgba(255,255,255,0.35)',
-        backdropFilter: 'blur(20px)',
-        borderColor: 'rgba(14,165,233,0.15)',
-        boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.6)',
+        width: 224,
+        background: 'var(--canvas)',
+        borderColor: 'var(--hairline)',
       }}
     >
       <button
         type="button"
-        className="mb-4 flex flex-col items-center"
+        className="mb-5 flex items-center gap-3 px-2 text-left"
         onClick={() => onChange('home')}
         title="BiliStudy"
       >
-        <LogoMark />
+        <LogoMark size={38} />
+        <div>
+          <div className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>BiliStudy</div>
+          <div className="text-xs font-mono" style={{ color: 'var(--stone)' }}>AI learning docs</div>
+        </div>
       </button>
 
       {items.map((item) => {
@@ -57,39 +59,18 @@ export function Sidebar({ active, onChange, user, onUserClick }: SidebarProps) {
             key={item.key}
             type="button"
             onClick={() => onChange(item.key)}
-            className="flex flex-col items-center gap-1.5 w-20 py-3 rounded-2xl transition-all duration-200"
+            className="relative flex items-center gap-3 w-full px-3 py-2 rounded-md transition-colors duration-150 text-left"
             style={{
-              background: isActive ? 'rgba(14,165,233,0.15)' : 'transparent',
-              boxShadow: isActive
-                ? 'inset 0 1px 0 rgba(255,255,255,0.5), 0 2px 8px rgba(14,165,233,0.10)'
-                : 'none',
+              background: isActive ? 'var(--surface)' : 'transparent',
+              border: `1px solid ${isActive ? 'var(--hairline)' : 'transparent'}`,
             }}
           >
-            <Icon
-              className="w-6 h-6 transition-colors"
-              style={{
-                color: isActive ? 'var(--sidebar-primary)' : 'var(--muted-foreground)',
-              }}
-            />
-            <span
-              className="text-sm font-semibold leading-tight"
-              style={{
-                color: isActive ? 'var(--sidebar-primary)' : 'var(--muted-foreground)',
-              }}
-            >
-              {item.label}
+            {isActive && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full" style={{ background: 'var(--brand-green)' }} />}
+            <Icon className="w-4 h-4 shrink-0" style={{ color: isActive ? 'var(--ink)' : 'var(--steel)' }} />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium leading-tight" style={{ color: isActive ? 'var(--ink)' : 'var(--steel)' }}>{item.label}</span>
+              {item.sub && <span className="block text-[11px] font-mono leading-tight" style={{ color: 'var(--stone)' }}>{item.sub}</span>}
             </span>
-            {item.sub && (
-              <span
-                className="text-xs leading-tight"
-                style={{
-                  color: isActive ? 'var(--primary)' : 'var(--muted-foreground)',
-                  opacity: 0.8,
-                }}
-              >
-                {item.sub}
-              </span>
-            )}
           </button>
         );
       })}
@@ -99,26 +80,20 @@ export function Sidebar({ active, onChange, user, onUserClick }: SidebarProps) {
       <button
         type="button"
         onClick={onUserClick}
-        className="w-9 h-9 rounded-full flex items-center justify-center"
+        className="flex items-center gap-3 rounded-md px-3 py-2 text-left"
         title={user ? user.display_name || user.email : '登录'}
-        style={{
-          background:
-            'linear-gradient(135deg, rgba(255,255,255,0.8), rgba(186,230,255,0.5))',
-          border: '1px solid var(--border)',
-          boxShadow: '0 2px 8px rgba(14,165,233,0.12)',
-        }}
+        style={{ background: 'var(--surface)', border: '1px solid var(--hairline)' }}
       >
-        {user ? (
-          <span style={{ color: 'var(--primary)', fontWeight: 700, fontSize: 12 }}>
-            {(user.display_name || user.email).slice(0, 1).toUpperCase()}
-          </span>
-        ) : (
-          <User className="w-4 h-4" style={{ color: 'var(--primary)' }} />
-        )}
+        <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'var(--canvas)', border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
+          {user ? <span className="text-xs font-semibold">{(user.display_name || user.email).slice(0, 1).toUpperCase()}</span> : <User className="w-4 h-4" />}
+        </div>
+        <div className="min-w-0">
+          <div className="text-xs font-medium truncate" style={{ color: 'var(--ink)' }}>{user ? user.display_name || user.email : '注册 / 登录'}</div>
+          <div className="text-[11px]" style={{ color: 'var(--stone)' }}>{user ? '点击退出' : '点击登录'}</div>
+        </div>
       </button>
     </aside>
   );
 }
 
-// Re-export for convenience
 export { Zap };

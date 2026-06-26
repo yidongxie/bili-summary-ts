@@ -7,15 +7,16 @@ type TextInputProps = InputHTMLAttributes<HTMLInputElement> & {
 type TextAreaProps = TextareaHTMLAttributes<HTMLTextAreaElement>;
 
 const inputStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.70)',
-  border: '1px solid rgba(14,165,233,0.18)',
-  color: '#0d2d45',
-  borderRadius: '0.625rem',
-  padding: '0.55rem 0.75rem',
-  fontSize: 13,
+  background: 'var(--canvas)',
+  border: '1px solid var(--hairline)',
+  color: 'var(--ink)',
+  borderRadius: 8,
+  padding: '0.7rem 0.875rem',
+  fontSize: 14,
+  lineHeight: 1.5,
   width: '100%',
   outline: 'none',
-  minHeight: 42,
+  minHeight: 40,
 };
 
 export function TextInput({ rightSlot, style, className = '', ...props }: TextInputProps) {

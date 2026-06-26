@@ -149,9 +149,8 @@ export default function App() {
     <div
       className="size-full flex flex-col overflow-hidden h-full"
       style={{
-        background:
-          'linear-gradient(135deg, #c8e8f8 0%, #ddf4ff 40%, #e8f5fe 70%, #cce8f7 100%)',
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
+        background: 'var(--canvas)',
+        fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       }}
     >
       <AmbientBackdrop />
@@ -233,7 +232,7 @@ export default function App() {
             />
           )}
 
-          <footer className="relative z-10 px-6 py-4 text-center text-xs" style={{ color: '#5b8fae' }}>
+          <footer className="relative z-10 px-6 py-4 text-center text-xs" style={{ color: 'var(--stone)' }}>
             <a
               href="https://beian.miit.gov.cn/"
               target="_blank"
@@ -247,12 +246,10 @@ export default function App() {
       </div>
 
       <nav
-        className="md:hidden fixed bottom-3 left-3 right-3 z-40 grid grid-cols-4 gap-1 rounded-2xl p-1"
+        className="md:hidden fixed bottom-3 left-3 right-3 z-40 grid grid-cols-4 gap-1 rounded-lg p-1"
         style={{
-          background: 'rgba(255,255,255,0.78)',
-          border: '1px solid rgba(14,165,233,0.18)',
-          backdropFilter: 'blur(18px)',
-          boxShadow: '0 8px 30px rgba(14,165,233,0.18), inset 0 1px 0 rgba(255,255,255,0.9)',
+          background: 'var(--canvas)',
+          border: '1px solid var(--hairline)',
         }}
       >
         {[
@@ -270,7 +267,7 @@ export default function App() {
               type="button"
               onClick={() => item.key === 'admin' ? setView({ kind: 'admin' }) : navTo(item.key)}
               className="flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11px] font-semibold"
-              style={{ color: active ? '#0284c7' : '#5b8fae', background: active ? 'rgba(14,165,233,0.12)' : 'transparent' }}
+              style={{ color: active ? 'var(--ink)' : 'var(--steel)', background: active ? 'var(--surface)' : 'transparent' }}
             >
               <Icon className="w-4 h-4" />
               {item.label}
@@ -281,7 +278,7 @@ export default function App() {
           type="button"
           onClick={() => (user ? handleLogout() : setLoginOpen(true))}
           className="flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11px] font-semibold"
-          style={{ color: user ? '#0284c7' : '#5b8fae' }}
+          style={{ color: user ? 'var(--ink)' : 'var(--steel)' }}
         >
           <User className="w-4 h-4" />
           {user ? '我的' : '登录'}

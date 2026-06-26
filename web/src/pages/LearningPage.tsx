@@ -21,10 +21,8 @@ interface LearningPageProps {
 }
 
 const cardStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.58)',
-  border: '1px solid rgba(14,165,233,0.14)',
-  backdropFilter: 'blur(16px)',
-  boxShadow: '0 4px 24px rgba(14,165,233,0.07), inset 0 1px 0 rgba(255,255,255,0.85)',
+  background: 'var(--canvas)',
+  border: '1px solid var(--hairline)',
 };
 
 export function LearningPage({ isLoggedIn, onShowToast }: LearningPageProps) {
@@ -113,14 +111,14 @@ export function LearningPage({ isLoggedIn, onShowToast }: LearningPageProps) {
   }
 
   if (!isLoggedIn) {
-    return <div className="px-8 py-10" style={{ color: '#5b8fae' }}>请先登录后使用学习中心。</div>;
+    return <div className="px-8 py-10" style={{ color: 'var(--steel)' }}>请先登录后使用学习中心。</div>;
   }
 
   return (
     <div className="flex flex-col h-full overflow-y-auto px-4 sm:px-8 py-6 sm:py-8">
       <div className="mb-6">
-        <h2 className="text-xl font-bold" style={{ color: '#0d2d45' }}>学习中心</h2>
-        <p className="text-sm mt-0.5" style={{ color: '#7db8d4' }}>把收藏内容组织成路径、复习卡和测验。</p>
+        <h2 className="text-xl font-bold" style={{ color: 'var(--ink)' }}>学习中心</h2>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--stone)' }}>把收藏内容组织成路径、复习卡和测验。</p>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
@@ -129,7 +127,7 @@ export function LearningPage({ isLoggedIn, onShowToast }: LearningPageProps) {
           ['review', `今日复习 ${reviews.length}`, Brain],
           ['quiz', '测验', HelpCircle],
         ].map(([key, label, Icon]: any) => (
-          <button key={key} type="button" onClick={() => setTab(key)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold" style={{ background: tab === key ? 'rgba(14,165,233,0.16)' : 'rgba(255,255,255,0.55)', color: tab === key ? '#0369a1' : '#5b8fae', border: '1px solid rgba(14,165,233,0.16)' }}>
+          <button key={key} type="button" onClick={() => setTab(key)} className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium" style={{ background: tab === key ? 'var(--hairline)' : 'var(--canvas)', color: tab === key ? 'var(--brand-tag)' : 'var(--steel)', border: '1px solid var(--hairline)' }}>
             <Icon className="w-4 h-4" /> {label}
           </button>
         ))}
@@ -138,20 +136,20 @@ export function LearningPage({ isLoggedIn, onShowToast }: LearningPageProps) {
       {tab === 'paths' && (
         <div className="max-w-5xl flex flex-col gap-4">
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={createPath} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold" style={{ background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', color: '#fff' }}><Plus className="w-4 h-4" /> 创建路径</button>
-            <select value={selectedPath} onChange={(e) => setSelectedPath(e.target.value)} className="rounded-xl px-3 py-2 text-sm" style={cardStyle}>{paths.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select>
-            <select value={selectedItem} onChange={(e) => setSelectedItem(e.target.value)} className="rounded-xl px-3 py-2 text-sm" style={cardStyle}>{library.map((i) => <option key={i.id} value={i.id}>{i.title}</option>)}</select>
-            <button type="button" onClick={addItem} className="px-3 py-2 rounded-xl text-sm font-semibold" style={{ background: 'rgba(255,255,255,0.65)', color: '#0369a1', border: '1px solid rgba(14,165,233,0.16)' }}>加入路径</button>
+            <button type="button" onClick={createPath} className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium" style={{ background: 'var(--primary)', color: 'var(--on-primary)' }}><Plus className="w-4 h-4" /> 创建路径</button>
+            <select value={selectedPath} onChange={(e) => setSelectedPath(e.target.value)} className="rounded-md px-3 py-2 text-sm" style={cardStyle}>{paths.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select>
+            <select value={selectedItem} onChange={(e) => setSelectedItem(e.target.value)} className="rounded-md px-3 py-2 text-sm" style={cardStyle}>{library.map((i) => <option key={i.id} value={i.id}>{i.title}</option>)}</select>
+            <button type="button" onClick={addItem} className="px-3 py-2 rounded-full text-sm font-medium" style={{ background: 'var(--canvas)', color: 'var(--brand-tag)', border: '1px solid var(--hairline)' }}>加入路径</button>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {paths.map((path) => (
-              <div key={path.id} className="rounded-2xl p-4" style={cardStyle}>
-                <h3 className="font-bold" style={{ color: '#0d2d45' }}>{path.title}</h3>
-                <div className="text-xs mt-1" style={{ color: '#7db8d4' }}>进度 {path.completed || 0}/{path.total || 0}</div>
+              <div key={path.id} className="rounded-lg p-4" style={cardStyle}>
+                <h3 className="font-bold" style={{ color: 'var(--ink)' }}>{path.title}</h3>
+                <div className="text-xs mt-1" style={{ color: 'var(--stone)' }}>进度 {path.completed || 0}/{path.total || 0}</div>
                 <div className="mt-3 flex flex-col gap-2">
                   {(path.items || []).map((item) => {
                     const done = !!item.completed_at;
-                    return <button key={item.library_item_id} type="button" onClick={() => toggleComplete(path.id, item.library_item_id, done)} className="flex items-center gap-2 text-left rounded-xl px-3 py-2" style={{ background: done ? 'rgba(5,150,105,0.08)' : 'rgba(255,255,255,0.45)', color: '#0d2d45' }}><CheckCircle2 className="w-4 h-4" style={{ color: done ? '#059669' : '#9ca3af' }} /> <span className="text-sm line-clamp-1">{item.title}</span></button>;
+                    return <button key={item.library_item_id} type="button" onClick={() => toggleComplete(path.id, item.library_item_id, done)} className="flex items-center gap-2 text-left rounded-md px-3 py-2" style={{ background: done ? 'rgba(5,150,105,0.08)' : 'var(--surface)', color: 'var(--ink)' }}><CheckCircle2 className="w-4 h-4" style={{ color: done ? 'var(--brand-green-deep)' : 'var(--muted)' }} /> <span className="text-sm line-clamp-1">{item.title}</span></button>;
                   })}
                 </div>
               </div>
@@ -163,25 +161,25 @@ export function LearningPage({ isLoggedIn, onShowToast }: LearningPageProps) {
       {tab === 'review' && (
         <div className="max-w-3xl flex flex-col gap-3">
           {reviews.length ? reviews.map((item) => (
-            <div key={item.id} className="rounded-2xl p-4" style={cardStyle}>
-              <div className="text-xs mb-2" style={{ color: '#7db8d4' }}>{item.item_title || '复习卡'}</div>
-              <h3 className="font-bold" style={{ color: '#0d2d45' }}>{item.front}</h3>
-              <p className="text-sm mt-2" style={{ color: '#5b8fae' }}>{item.back}</p>
+            <div key={item.id} className="rounded-lg p-4" style={cardStyle}>
+              <div className="text-xs mb-2" style={{ color: 'var(--stone)' }}>{item.item_title || '复习卡'}</div>
+              <h3 className="font-bold" style={{ color: 'var(--ink)' }}>{item.front}</h3>
+              <p className="text-sm mt-2" style={{ color: 'var(--steel)' }}>{item.back}</p>
               <div className="flex flex-wrap gap-2 mt-3 text-xs">
-                {[['忘记', 1], ['模糊', 3], ['记得', 4], ['熟练', 5]].map(([label, q]: any) => <button key={label} type="button" onClick={() => gradeReview(item.id, q)} className="px-3 py-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.65)', color: '#0369a1', border: '1px solid rgba(14,165,233,0.16)' }}>{label}</button>)}
+                {[['忘记', 1], ['模糊', 3], ['记得', 4], ['熟练', 5]].map(([label, q]: any) => <button key={label} type="button" onClick={() => gradeReview(item.id, q)} className="px-3 py-1.5 rounded-lg" style={{ background: 'var(--canvas)', color: 'var(--brand-tag)', border: '1px solid var(--hairline)' }}>{label}</button>)}
               </div>
             </div>
-          )) : <div className="rounded-2xl p-8 text-center" style={{ ...cardStyle, color: '#5b8fae' }}>今天没有待复习内容。</div>}
+          )) : <div className="rounded-lg p-8 text-center" style={{ ...cardStyle, color: 'var(--steel)' }}>今天没有待复习内容。</div>}
         </div>
       )}
 
       {tab === 'quiz' && (
         <div className="max-w-3xl flex flex-col gap-3">
           <div className="flex flex-wrap gap-2">
-            <select value={selectedItem} onChange={(e) => setSelectedItem(e.target.value)} className="rounded-xl px-3 py-2 text-sm flex-1" style={cardStyle}>{library.map((i) => <option key={i.id} value={i.id}>{i.title}</option>)}</select>
-            <button type="button" disabled={loading} onClick={makeQuiz} className="px-3 py-2 rounded-xl text-sm font-semibold" style={{ background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', color: '#fff' }}>{loading ? '生成中…' : '生成测验'}</button>
+            <select value={selectedItem} onChange={(e) => setSelectedItem(e.target.value)} className="rounded-md px-3 py-2 text-sm flex-1" style={cardStyle}>{library.map((i) => <option key={i.id} value={i.id}>{i.title}</option>)}</select>
+            <button type="button" disabled={loading} onClick={makeQuiz} className="px-3 py-2 rounded-full text-sm font-medium" style={{ background: 'var(--primary)', color: 'var(--on-primary)' }}>{loading ? '生成中…' : '生成测验'}</button>
           </div>
-          {quiz && <div className="rounded-2xl p-4" style={cardStyle}>{(quiz.questions || []).map((q, idx) => <div key={idx} className="mb-4"><div className="font-bold" style={{ color: '#0d2d45' }}>{idx + 1}. {q.question}</div>{q.options?.length ? <ul className="text-sm mt-2" style={{ color: '#5b8fae' }}>{q.options.map((o) => <li key={o}>- {o}</li>)}</ul> : null}<details className="text-sm mt-2" style={{ color: '#0369a1' }}><summary>查看参考答案</summary><p style={{ color: '#5b8fae' }}>{q.answer} {q.explanation}</p></details></div>)}</div>}
+          {quiz && <div className="rounded-lg p-4" style={cardStyle}>{(quiz.questions || []).map((q, idx) => <div key={idx} className="mb-4"><div className="font-bold" style={{ color: 'var(--ink)' }}>{idx + 1}. {q.question}</div>{q.options?.length ? <ul className="text-sm mt-2" style={{ color: 'var(--steel)' }}>{q.options.map((o) => <li key={o}>- {o}</li>)}</ul> : null}<details className="text-sm mt-2" style={{ color: 'var(--brand-tag)' }}><summary>查看参考答案</summary><p style={{ color: 'var(--steel)' }}>{q.answer} {q.explanation}</p></details></div>)}</div>}
         </div>
       )}
     </div>

@@ -9,20 +9,18 @@ interface LoginOverlayProps {
   onSuccess: () => void;
 }
 
-const overlayCard = {
-  background: 'rgba(255,255,255,0.85)',
-  border: '1px solid rgba(14,165,233,0.25)',
-  boxShadow:
-    '0 24px 64px rgba(14,165,233,0.18), inset 0 1px 0 rgba(255,255,255,0.95)',
-  backdropFilter: 'blur(24px)',
+const overlayCard: React.CSSProperties = {
+  background: 'var(--canvas)',
+  border: '1px solid var(--hairline)',
+  boxShadow: 'rgba(0,0,0,0.12) 0px 24px 48px -8px',
 };
 
 const inputStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.85)',
-  border: '1px solid rgba(14,165,233,0.18)',
-  color: '#0d2d45',
-  borderRadius: '0.75rem',
-  padding: '0.6rem 0.85rem',
+  background: 'var(--canvas)',
+  border: '1px solid var(--hairline)',
+  color: 'var(--ink)',
+  borderRadius: 8,
+  padding: '0.7rem 0.875rem',
   fontSize: 14,
   width: '100%',
   outline: 'none',
@@ -51,10 +49,7 @@ export function LoginOverlay({ open, onClose, onSuccess }: LoginOverlayProps) {
     }
     setSubmitting(true);
     try {
-      const data =
-        mode === 'login'
-          ? await apiLogin(email, password)
-          : await apiRegister(email, password, displayName.trim() || undefined);
+      const data = mode === 'login' ? await apiLogin(email, password) : await apiRegister(email, password, displayName.trim() || undefined);
       if (!data.success) throw new Error(data.error || (mode === 'login' ? '登录失败' : '注册失败'));
       onSuccess();
     } catch (err: any) {
@@ -65,117 +60,38 @@ export function LoginOverlay({ open, onClose, onSuccess }: LoginOverlayProps) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center px-4"
-      style={{ background: 'rgba(13,45,69,0.45)', backdropFilter: 'blur(8px)' }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-sm rounded-2xl p-7"
-        onClick={(e) => e.stopPropagation()}
-        style={overlayCard}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(10,10,10,0.42)' }} onClick={onClose}>
+      <div className="w-full max-w-sm rounded-lg p-7" onClick={(e) => e.stopPropagation()} style={overlayCard}>
         <div className="flex justify-end -mt-2 -mr-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="opacity-50 hover:opacity-100"
-            title="关闭"
-          >
-            <CloseIcon className="w-4 h-4" style={{ color: '#0d2d45' }} />
-          </button>
+          <button type="button" onClick={onClose} title="关闭"><CloseIcon className="w-4 h-4" style={{ color: 'var(--steel)' }} /></button>
         </div>
-
         <div className="text-center mb-6">
           <div className="inline-flex"><LogoMark size={48} /></div>
-          <h2 className="mt-3 text-lg font-bold" style={{ color: '#0d2d45' }}>
-            BiliStudy
-          </h2>
-          <p className="text-xs mt-1" style={{ color: '#7db8d4' }}>
-            {mode === 'login' ? '登录以使用视频总结与学习库' : '注册一个新账号'}
-          </p>
+          <h2 className="mt-3 text-lg font-semibold" style={{ color: 'var(--ink)' }}>BiliStudy</h2>
+          <p className="text-xs mt-1" style={{ color: 'var(--steel)' }}>{mode === 'login' ? '登录以使用视频总结与学习库' : '注册一个新账号'}</p>
         </div>
-
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div>
-            <label className="block text-xs mb-1.5" style={{ color: '#5b8fae' }}>
-              邮箱
-            </label>
-            <input
-              autoFocus
-              type="email"
-              style={inputStyle}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="your@email.com"
-            />
+            <label className="block text-xs mb-1.5" style={{ color: 'var(--steel)' }}>邮箱</label>
+            <input autoFocus type="email" style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" />
           </div>
-
           {mode === 'register' && (
             <div>
-              <label className="block text-xs mb-1.5" style={{ color: '#5b8fae' }}>
-                显示名称（可选）
-              </label>
-              <input
-                type="text"
-                style={inputStyle}
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="默认使用邮箱前缀"
-              />
+              <label className="block text-xs mb-1.5" style={{ color: 'var(--steel)' }}>显示名称（可选）</label>
+              <input type="text" style={inputStyle} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="默认使用邮箱前缀" />
             </div>
           )}
-
           <div>
-            <label className="block text-xs mb-1.5" style={{ color: '#5b8fae' }}>
-              密码
-            </label>
-            <input
-              type="password"
-              style={inputStyle}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={mode === 'register' ? '至少 6 位' : ''}
-            />
+            <label className="block text-xs mb-1.5" style={{ color: 'var(--steel)' }}>密码</label>
+            <input type="password" style={inputStyle} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === 'register' ? '至少 6 位' : ''} />
           </div>
-
-          {error && (
-            <div
-              className="text-sm px-3 py-2 rounded-lg"
-              style={{
-                background: 'rgba(239,68,68,0.08)',
-                border: '1px solid rgba(239,68,68,0.25)',
-                color: '#b91c1c',
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="mt-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-[1.02] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
-            style={{
-              background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-              color: '#fff',
-              boxShadow:
-                '0 4px 16px rgba(14,165,233,0.35), inset 0 1px 0 rgba(255,255,255,0.25)',
-            }}
-          >
+          {error && <div className="text-sm px-3 py-2 rounded-md" style={{ background: 'rgba(212,86,86,0.08)', border: '1px solid rgba(212,86,86,0.28)', color: 'var(--brand-error)' }}>{error}</div>}
+          <button type="submit" disabled={submitting} className="mt-2 px-5 py-2.5 rounded-full text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed" style={{ background: 'var(--primary)', color: 'var(--on-primary)', border: '1px solid var(--primary)' }}>
             {submitting ? '提交中…' : mode === 'login' ? '登录' : '注册'}
           </button>
-
-          <p className="text-center text-xs mt-1" style={{ color: '#7db8d4' }}>
+          <p className="text-center text-xs mt-1" style={{ color: 'var(--steel)' }}>
             {mode === 'login' ? '还没有账号？' : '已有账号？'}{' '}
-            <button
-              type="button"
-              onClick={() => {
-                setMode(mode === 'login' ? 'register' : 'login');
-                setError('');
-              }}
-              style={{ color: '#0284c7', fontWeight: 700 }}
-            >
+            <button type="button" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }} style={{ color: 'var(--ink)', fontWeight: 600 }}>
               {mode === 'login' ? '注册' : '登录'}
             </button>
           </p>

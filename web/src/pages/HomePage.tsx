@@ -132,11 +132,11 @@ export function HomePage({
       <div className="text-center space-y-2">
         <h1
           className="text-2xl sm:text-4xl tracking-tight"
-          style={{ color: '#0d2d45', fontWeight: 700, letterSpacing: '-0.02em' }}
+          style={{ color: 'var(--ink)', fontWeight: 700, letterSpacing: '-0.02em' }}
         >
           <span
             style={{
-              background: 'linear-gradient(90deg, #0284c7, #38bdf8, #06b6d4)',
+              background: 'linear-gradient(90deg, var(--ink), var(--brand-green), #06b6d4)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
             }}
@@ -145,7 +145,7 @@ export function HomePage({
           </span>{' '}
           把视频变成可复习的学习笔记
         </h1>
-        <p className="text-sm" style={{ color: '#5b8fae' }}>
+        <p className="text-sm" style={{ color: 'var(--steel)' }}>
           粘贴 B 站视频或小宇宙播客链接，一键生成可复习、可导出的学习笔记
         </p>
       </div>
@@ -160,14 +160,12 @@ export function HomePage({
             onClick={() => {
               if (!p.enabled) setHint(`${p.name} 接入即将上线，目前仅支持 Bilibili 链接`);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 hover:scale-105 disabled:hover:scale-100 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200  disabled:hover:scale-100 disabled:opacity-60 disabled:cursor-not-allowed"
             style={{
-              background: `linear-gradient(135deg, rgba(255,255,255,0.70), ${p.bg})`,
+              background: `linear-gradient(135deg, var(--canvas), ${p.bg})`,
               color: p.color,
               border: `1px solid ${p.border}`,
-              boxShadow:
-                '0 2px 8px rgba(14,165,233,0.08), inset 0 1px 0 rgba(255,255,255,0.8)',
-              backdropFilter: 'blur(8px)',
+              
             }}
           >
             <span>{p.icon}</span>
@@ -179,31 +177,31 @@ export function HomePage({
       {/* Main input card */}
       <div className="w-full max-w-3xl">
         <div
-          className="relative rounded-2xl transition-all duration-300"
+          className="relative rounded-lg transition-all duration-300"
           style={{
-            background: isFocused ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.55)',
+            background: isFocused ? 'var(--canvas)' : 'var(--canvas)',
             border: `1px solid ${
-              isFocused ? 'rgba(14,165,233,0.50)' : 'rgba(14,165,233,0.18)'
+              isFocused ? 'var(--brand-green)' : 'var(--hairline)'
             }`,
             boxShadow: isFocused
-              ? '0 0 0 4px rgba(14,165,233,0.12), 0 8px 40px rgba(14,165,233,0.18), inset 0 1px 0 rgba(255,255,255,0.9)'
-              : '0 4px 24px rgba(14,165,233,0.10), inset 0 1px 0 rgba(255,255,255,0.9)',
-            backdropFilter: 'blur(24px)',
+              ? '0 0 0 4px var(--hairline-soft), 0 8px 40px var(--hairline), inset 0 1px 0 rgba(255,255,255,0.9)'
+              : '0 4px 24px rgba(55,114,207,0.15), inset 0 1px 0 rgba(255,255,255,0.9)',
+            
           }}
         >
           <div className="flex items-center gap-3 px-4 py-3">
             <div
-              className="shrink-0 w-8 h-8 rounded-xl flex items-center justify-center"
+              className="shrink-0 w-8 h-8 rounded-md flex items-center justify-center"
               style={{
                 background: isFocused
-                  ? 'linear-gradient(135deg, rgba(14,165,233,0.20), rgba(56,189,248,0.15))'
-                  : 'rgba(14,165,233,0.08)',
-                border: '1px solid rgba(14,165,233,0.18)',
+                  ? 'linear-gradient(135deg, var(--hairline), rgba(56,189,248,0.15))'
+                  : 'var(--surface)',
+                border: '1px solid var(--hairline)',
               }}
             >
               <Sparkles
                 className="w-4 h-4 transition-colors"
-                style={{ color: isFocused ? '#0284c7' : '#7db8d4' }}
+                style={{ color: isFocused ? 'var(--ink)' : 'var(--stone)' }}
               />
             </div>
 
@@ -221,7 +219,7 @@ export function HomePage({
               }}
               placeholder="快速体验：粘贴 B 站视频或小宇宙播客链接..."
               className="flex-1 bg-transparent outline-none text-sm"
-              style={{ color: '#0d2d45', caretColor: '#0ea5e9' }}
+              style={{ color: 'var(--ink)', caretColor: 'var(--primary)' }}
             />
 
             {query && (
@@ -231,19 +229,17 @@ export function HomePage({
                 className="shrink-0 opacity-40 hover:opacity-70 transition-opacity"
                 title="清空"
               >
-                <X className="w-4 h-4" style={{ color: '#0d2d45' }} />
+                <X className="w-4 h-4" style={{ color: 'var(--ink)' }} />
               </button>
             )}
 
             <button
               type="button"
               onClick={handleSubmit}
-              className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-105 active:scale-95"
+              className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200  "
               style={{
-                background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-                color: '#fff',
-                boxShadow:
-                  '0 4px 16px rgba(14,165,233,0.35), inset 0 1px 0 rgba(255,255,255,0.25)',
+                background: 'var(--primary)',
+                color: 'var(--on-primary)',
               }}
             >
               <Zap className="w-4 h-4" />
@@ -254,12 +250,12 @@ export function HomePage({
 
         {hint && (
           <div
-            className="mt-2 px-3 py-2 rounded-xl text-xs"
+            className="mt-2 px-3 py-2 rounded-md text-xs"
             style={{
               background: 'rgba(255,237,213,0.7)',
               border: '1px solid rgba(251,146,60,0.35)',
               color: '#9a3412',
-              backdropFilter: 'blur(8px)',
+              
             }}
           >
             {hint}
@@ -268,7 +264,7 @@ export function HomePage({
 
         {/* Quick tags */}
         <div className="flex items-center gap-2 mt-3 px-1 flex-wrap">
-          <span style={{ color: '#7db8d4', fontSize: 12 }}>快捷：</span>
+          <span style={{ color: 'var(--stone)', fontSize: 12 }}>快捷：</span>
           {QUICK_TAGS.map((tag) => (
             <button
               key={tag.label}
@@ -284,13 +280,11 @@ export function HomePage({
                   );
                 }
               }}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-150 hover:scale-105"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-150 "
               style={{
-                background: 'rgba(255,255,255,0.55)',
-                color: '#5b8fae',
-                border: '1px solid rgba(14,165,233,0.15)',
-                backdropFilter: 'blur(8px)',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8)',
+                background: 'var(--canvas)',
+                color: 'var(--steel)',
+                border: '1px solid var(--hairline)',
               }}
             >
               {tag.label}
@@ -300,7 +294,7 @@ export function HomePage({
 
         {/* Summary mode picker */}
         <div className="flex items-center gap-2 mt-2 px-1 flex-wrap">
-          <span style={{ color: '#7db8d4', fontSize: 12 }}>模式：</span>
+          <span style={{ color: 'var(--stone)', fontSize: 12 }}>模式：</span>
           {SUMMARY_MODES.map((m) => {
             const active = m.value === mode;
             return (
@@ -308,24 +302,22 @@ export function HomePage({
                 key={m.value}
                 type="button"
                 onClick={() => setMode(m.value)}
-                className="px-2.5 py-1 rounded-lg text-xs transition-all duration-150 hover:scale-105"
+                className="px-2.5 py-1 rounded-lg text-xs transition-all duration-150 "
                 style={
                   active
                     ? {
                         background:
-                          'linear-gradient(135deg, rgba(14,165,233,0.18), rgba(56,189,248,0.14))',
-                        color: '#0369a1',
-                        border: '1px solid rgba(14,165,233,0.45)',
+                          'linear-gradient(135deg, var(--hairline), rgba(56,189,248,0.14))',
+                        color: 'var(--brand-tag)',
+                        border: '1px solid var(--primary)',
                         fontWeight: 700,
                         boxShadow:
-                          'inset 0 1px 0 rgba(255,255,255,0.85), 0 2px 8px rgba(14,165,233,0.12)',
+                          'inset 0 1px 0 var(--canvas), 0 2px 8px var(--hairline-soft)',
                       }
                     : {
-                        background: 'rgba(255,255,255,0.55)',
-                        color: '#5b8fae',
-                        border: '1px solid rgba(14,165,233,0.15)',
-                        backdropFilter: 'blur(8px)',
-                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8)',
+                        background: 'var(--canvas)',
+                        color: 'var(--steel)',
+                        border: '1px solid var(--hairline)',
                       }
                 }
               >
@@ -340,8 +332,8 @@ export function HomePage({
       {recent.length > 0 && (
         <div className="w-full max-w-2xl">
           <div className="flex items-center gap-2 mb-3">
-            <Clock className="w-3.5 h-3.5" style={{ color: '#7db8d4' }} />
-            <span style={{ color: '#7db8d4', fontSize: 12 }}>最近总结</span>
+            <Clock className="w-3.5 h-3.5" style={{ color: 'var(--stone)' }} />
+            <span style={{ color: 'var(--stone)', fontSize: 12 }}>最近总结</span>
           </div>
           <div className="flex flex-col gap-2">
             {recent.map((s) => (
@@ -349,26 +341,24 @@ export function HomePage({
                 key={s.id}
                 type="button"
                 onClick={() => onOpenItem(s)}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 group text-left"
+                className="flex items-center gap-3 px-4 py-3 rounded-md cursor-pointer transition-all duration-200 group text-left"
                 style={{
-                  background: 'rgba(255,255,255,0.50)',
-                  border: '1px solid rgba(14,165,233,0.12)',
-                  backdropFilter: 'blur(12px)',
-                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8)',
+                  background: 'var(--canvas)',
+                  border: '1px solid var(--hairline-soft)',
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLButtonElement).style.background =
-                    'rgba(255,255,255,0.75)';
+                    'var(--canvas)';
                   (e.currentTarget as HTMLButtonElement).style.borderColor =
-                    'rgba(14,165,233,0.30)';
+                    'var(--hairline)';
                   (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                    '0 4px 16px rgba(14,165,233,0.10), inset 0 1px 0 rgba(255,255,255,0.9)';
+                    '0 4px 16px rgba(55,114,207,0.15), inset 0 1px 0 rgba(255,255,255,0.9)';
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLButtonElement).style.background =
-                    'rgba(255,255,255,0.50)';
+                    'var(--canvas)';
                   (e.currentTarget as HTMLButtonElement).style.borderColor =
-                    'rgba(14,165,233,0.12)';
+                    'var(--hairline-soft)';
                   (e.currentTarget as HTMLButtonElement).style.boxShadow =
                     'inset 0 1px 0 rgba(255,255,255,0.8)';
                 }}
@@ -379,26 +369,26 @@ export function HomePage({
                 />
                 <span
                   className="flex-1 text-sm truncate"
-                  style={{ color: '#0d2d45' }}
+                  style={{ color: 'var(--ink)' }}
                 >
                   {s.title}
                 </span>
                 <span
                   className="text-xs px-2 py-0.5 rounded-full shrink-0"
                   style={{
-                    background: 'rgba(14,165,233,0.10)',
-                    color: '#0369a1',
-                    border: '1px solid rgba(14,165,233,0.15)',
+                    background: 'rgba(55,114,207,0.15)',
+                    color: 'var(--brand-tag)',
+                    border: '1px solid var(--hairline)',
                   }}
                 >
                   {s.category || 'B站'}
                 </span>
-                <span className="text-xs shrink-0" style={{ color: '#7db8d4' }}>
+                <span className="text-xs shrink-0" style={{ color: 'var(--stone)' }}>
                   {relativeTime(s.created_at)}
                 </span>
                 <ChevronRight
                   className="w-3.5 h-3.5 opacity-0 group-hover:opacity-50 transition-opacity"
-                  style={{ color: '#0ea5e9' }}
+                  style={{ color: 'var(--primary)' }}
                 />
               </button>
             ))}

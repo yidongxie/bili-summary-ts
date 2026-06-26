@@ -8,10 +8,10 @@ interface ChipProps extends PropsWithChildren, ButtonHTMLAttributes<HTMLButtonEl
 }
 
 const tones: Record<ChipTone, { color: string; bg: string; border: string; activeBg: string; activeBorder: string }> = {
-  blue: { color: '#0369a1', bg: 'rgba(255,255,255,0.45)', border: 'rgba(14,165,233,0.14)', activeBg: 'rgba(14,165,233,0.16)', activeBorder: 'rgba(14,165,233,0.38)' },
-  green: { color: '#047857', bg: 'rgba(255,255,255,0.45)', border: 'rgba(5,150,105,0.16)', activeBg: 'rgba(5,150,105,0.13)', activeBorder: 'rgba(5,150,105,0.32)' },
-  red: { color: '#b91c1c', bg: 'rgba(255,255,255,0.45)', border: 'rgba(239,68,68,0.16)', activeBg: 'rgba(239,68,68,0.10)', activeBorder: 'rgba(239,68,68,0.28)' },
-  gray: { color: '#5b8fae', bg: 'rgba(255,255,255,0.45)', border: 'rgba(14,165,233,0.12)', activeBg: 'rgba(255,255,255,0.70)', activeBorder: 'rgba(14,165,233,0.20)' },
+  blue: { color: 'var(--brand-tag)', bg: 'rgba(55,114,207,0.15)', border: 'rgba(55,114,207,0.18)', activeBg: 'var(--primary)', activeBorder: 'var(--primary)' },
+  green: { color: 'var(--primary)', bg: 'var(--brand-green)', border: 'var(--brand-green)', activeBg: 'var(--brand-green)', activeBorder: 'var(--brand-green)' },
+  red: { color: 'var(--brand-error)', bg: 'rgba(212,86,86,0.08)', border: 'rgba(212,86,86,0.24)', activeBg: 'var(--brand-error)', activeBorder: 'var(--brand-error)' },
+  gray: { color: 'var(--steel)', bg: 'var(--surface)', border: 'var(--hairline)', activeBg: 'var(--primary)', activeBorder: 'var(--primary)' },
 };
 
 export function Chip({ children, active = false, tone = 'blue', className = '', style, ...props }: ChipProps) {
@@ -19,12 +19,12 @@ export function Chip({ children, active = false, tone = 'blue', className = '', 
   return (
     <button
       type="button"
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-all hover:scale-105 disabled:hover:scale-100 ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs transition-colors disabled:opacity-60 ${className}`}
       style={{
         background: active ? t.activeBg : t.bg,
-        color: t.color,
+        color: active ? 'var(--on-primary)' : t.color,
         border: `1px solid ${active ? t.activeBorder : t.border}`,
-        fontWeight: active ? 700 : 500,
+        fontWeight: active ? 600 : 500,
         ...style,
       }}
       {...props}

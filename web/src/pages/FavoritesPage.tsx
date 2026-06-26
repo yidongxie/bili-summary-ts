@@ -33,19 +33,19 @@ interface FavoritesPageProps {
 }
 
 const inputBoxStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.60)',
-  border: '1px solid rgba(14,165,233,0.18)',
-  backdropFilter: 'blur(12px)',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.85)',
+  background: 'var(--canvas)',
+  border: '1px solid var(--hairline)',
+  
+  boxShadow: 'inset 0 1px 0 var(--canvas)',
 };
 
 const selectStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.60)',
-  border: '1px solid rgba(14,165,233,0.18)',
+  background: 'var(--canvas)',
+  border: '1px solid var(--hairline)',
   borderRadius: '0.625rem',
   padding: '0.5rem 2rem 0.5rem 0.75rem',
   fontSize: 13,
-  color: '#0d2d45',
+  color: 'var(--ink)',
   outline: 'none',
   appearance: 'none',
   backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235b8fae' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
@@ -55,11 +55,8 @@ const selectStyle: React.CSSProperties = {
 };
 
 const cardStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.55)',
-  border: '1px solid rgba(14,165,233,0.14)',
-  backdropFilter: 'blur(16px)',
-  boxShadow:
-    '0 4px 24px rgba(14,165,233,0.07), inset 0 1px 0 rgba(255,255,255,0.85)',
+  background: 'var(--canvas)',
+  border: '1px solid var(--hairline)',
 };
 
 function normalizeCoverUrl(pic?: string): string {
@@ -80,21 +77,21 @@ function CoverFallback({ item }: { item: LibraryItem }) {
       className="w-full h-full flex flex-col justify-between p-3"
       style={{
         background:
-          'linear-gradient(135deg, rgba(14,165,233,0.18), rgba(56,189,248,0.08) 45%, rgba(255,255,255,0.65))',
+          'var(--surface)',
       }}
     >
       <div className="flex items-center gap-2">
         <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-black"
-          style={{ background: 'rgba(255,255,255,0.70)', color: '#0284c7' }}
+          className="w-9 h-9 rounded-md flex items-center justify-center text-base font-black"
+          style={{ background: 'var(--canvas)', color: 'var(--ink)' }}
         >
           {titleInitial(item.title)}
         </div>
-        <div className="text-[11px] font-semibold" style={{ color: '#5b8fae' }}>
+        <div className="text-[11px] font-semibold" style={{ color: 'var(--steel)' }}>
           {item.category || '视频封面'}
         </div>
       </div>
-      <div className="text-sm font-bold line-clamp-2" style={{ color: '#0d2d45', textShadow: '0 1px 0 rgba(255,255,255,0.75)' }}>
+      <div className="text-sm font-bold line-clamp-2" style={{ color: 'var(--ink)', textShadow: '0 1px 0 var(--canvas)' }}>
         {item.title || '未命名内容'}
       </div>
     </div>
@@ -376,10 +373,10 @@ export function FavoritesPage({
   return (
     <div className="flex flex-col h-full overflow-y-auto px-4 sm:px-8 py-6 sm:py-8">
       <div className="mb-6">
-        <h2 className="text-xl font-bold" style={{ color: '#0d2d45' }}>
+        <h2 className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
           收藏库
         </h2>
-        <p className="text-sm mt-0.5" style={{ color: '#7db8d4' }}>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--stone)' }}>
           搜索、筛选、打开和导出你的学习资料。
         </p>
       </div>
@@ -387,10 +384,10 @@ export function FavoritesPage({
       {/* Search + filters */}
       <div className="flex items-center gap-3 max-w-5xl flex-wrap">
         <div
-          className="flex-1 min-w-[260px] flex items-center gap-2 px-4 py-2.5 rounded-xl"
+          className="flex-1 min-w-[260px] flex items-center gap-2 px-4 py-2.5 rounded-md"
           style={inputBoxStyle}
         >
-          <Search className="w-4 h-4 shrink-0" style={{ color: '#7db8d4' }} />
+          <Search className="w-4 h-4 shrink-0" style={{ color: 'var(--stone)' }} />
           <input
             type="text"
             placeholder="搜索标题、UP主、总结、标签"
@@ -400,7 +397,7 @@ export function FavoritesPage({
               if (e.key === 'Enter') handleSearch();
             }}
             className="flex-1 bg-transparent outline-none text-sm"
-            style={{ color: '#0d2d45' }}
+            style={{ color: 'var(--ink)' }}
           />
         </div>
 
@@ -418,12 +415,10 @@ export function FavoritesPage({
         <button
           type="button"
           onClick={handleSearch}
-          className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-105 active:scale-95"
+          className="px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-200  "
           style={{
-            background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-            color: '#fff',
-            boxShadow:
-              '0 4px 16px rgba(14,165,233,0.30), inset 0 1px 0 rgba(255,255,255,0.25)',
+            background: 'var(--primary)',
+            color: 'var(--on-primary)',
           }}
         >
           搜索
@@ -433,17 +428,17 @@ export function FavoritesPage({
       <div className="max-w-5xl mt-3 flex flex-col gap-2">
         {categories.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs" style={{ color: '#7db8d4' }}>分类</span>
+            <span className="text-xs" style={{ color: 'var(--stone)' }}>分类</span>
             {categories.map((c) => (
               <button
                 key={c}
                 type="button"
                 onClick={() => applyFilter(category === c ? '' : c, tag, sort)}
-                className="text-xs px-2.5 py-1 rounded-full transition-all hover:scale-105"
+                className="text-xs px-2.5 py-1 rounded-full transition-all "
                 style={{
-                  background: category === c ? 'rgba(14,165,233,0.16)' : 'rgba(255,255,255,0.45)',
-                  color: category === c ? '#0369a1' : '#5b8fae',
-                  border: `1px solid ${category === c ? 'rgba(14,165,233,0.38)' : 'rgba(14,165,233,0.14)'}`,
+                  background: category === c ? 'var(--hairline)' : 'var(--surface)',
+                  color: category === c ? 'var(--brand-tag)' : 'var(--steel)',
+                  border: `1px solid ${category === c ? 'var(--primary)' : 'var(--hairline)'}`,
                   fontWeight: category === c ? 700 : 500,
                 }}
               >
@@ -454,17 +449,17 @@ export function FavoritesPage({
         )}
         {tags.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs" style={{ color: '#7db8d4' }}>标签</span>
+            <span className="text-xs" style={{ color: 'var(--stone)' }}>标签</span>
             {tags.slice(0, 18).map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => applyFilter(category, tag === t ? '' : t, sort)}
-                className="text-xs px-2.5 py-1 rounded-full transition-all hover:scale-105"
+                className="text-xs px-2.5 py-1 rounded-full transition-all "
                 style={{
-                  background: tag === t ? 'rgba(14,165,233,0.16)' : 'rgba(255,255,255,0.45)',
-                  color: tag === t ? '#0369a1' : '#5b8fae',
-                  border: `1px solid ${tag === t ? 'rgba(14,165,233,0.38)' : 'rgba(14,165,233,0.14)'}`,
+                  background: tag === t ? 'var(--hairline)' : 'var(--surface)',
+                  color: tag === t ? 'var(--brand-tag)' : 'var(--steel)',
+                  border: `1px solid ${tag === t ? 'var(--primary)' : 'var(--hairline)'}`,
                   fontWeight: tag === t ? 700 : 500,
                 }}
               >
@@ -472,7 +467,7 @@ export function FavoritesPage({
               </button>
             ))}
             {(query || category || tag || sort !== 'updated_desc') && (
-              <button type="button" onClick={resetFilters} className="text-xs px-2.5 py-1 rounded-full" style={{ color: '#b91c1c', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.18)' }}>
+              <button type="button" onClick={resetFilters} className="text-xs px-2.5 py-1 rounded-full" style={{ color: 'var(--brand-error)', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.18)' }}>
                 重置筛选
               </button>
             )}
@@ -482,14 +477,14 @@ export function FavoritesPage({
 
       {isLoggedIn && (
         <div className="max-w-5xl mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <button type="button" onClick={handleReindex} className="flex items-center gap-1 px-2.5 py-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.55)', color: '#0369a1', border: '1px solid rgba(14,165,233,0.16)' }}>
+          <button type="button" onClick={handleReindex} className="flex items-center gap-1 px-2.5 py-1 rounded-lg" style={{ background: 'var(--canvas)', color: 'var(--brand-tag)', border: '1px solid var(--hairline)' }}>
             <RefreshCw className="w-3 h-3" /> 重建索引
           </button>
-          <button type="button" onClick={() => setTagManagerOpen(true)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.55)', color: '#0369a1', border: '1px solid rgba(14,165,233,0.16)' }}>
+          <button type="button" onClick={() => setTagManagerOpen(true)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg" style={{ background: 'var(--canvas)', color: 'var(--brand-tag)', border: '1px solid var(--hairline)' }}>
             <Tags className="w-3 h-3" /> 标签管理
           </button>
           {selectedIds.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-xl" style={{ background: 'rgba(14,165,233,0.10)', border: '1px solid rgba(14,165,233,0.22)', color: '#0369a1' }}>
+            <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-md" style={{ background: 'rgba(55,114,207,0.15)', border: '1px solid var(--hairline)', color: 'var(--brand-tag)' }}>
               <span className="font-bold">已选择 {selectedIds.length} 条</span>
               <button type="button" onClick={selectCurrentPage} className="underline">全选本页</button>
               <button type="button" onClick={() => setSelectedIds([])} className="underline">清空</button>
@@ -498,7 +493,7 @@ export function FavoritesPage({
               <button type="button" onClick={handleBulkCategory}>改分类</button>
               <button type="button" onClick={() => handleBulkExport('markdown')}>导出 MD</button>
               <button type="button" onClick={() => handleBulkExport('json')}>导出 JSON</button>
-              <button type="button" onClick={handleBulkDelete} style={{ color: '#b91c1c' }}>删除</button>
+              <button type="button" onClick={handleBulkDelete} style={{ color: 'var(--brand-error)' }}>删除</button>
             </div>
           )}
         </div>
@@ -508,36 +503,36 @@ export function FavoritesPage({
       <div className="max-w-5xl mt-4">
         {!isLoggedIn ? (
           <div
-            className="flex flex-col items-center justify-center py-16 rounded-2xl"
+            className="flex flex-col items-center justify-center py-16 rounded-lg"
             style={{
-              border: '1.5px dashed rgba(14,165,233,0.25)',
-              background: 'rgba(255,255,255,0.30)',
-              backdropFilter: 'blur(8px)',
+              border: '1.5px dashed var(--hairline)',
+              background: 'var(--surface)',
+              
             }}
           >
-            <BookOpen className="w-10 h-10 mb-3" style={{ color: '#b0d8f0' }} />
-            <p className="text-sm text-center leading-relaxed" style={{ color: '#7db8d4' }}>
+            <BookOpen className="w-10 h-10 mb-3" style={{ color: 'var(--muted)' }} />
+            <p className="text-sm text-center leading-relaxed" style={{ color: 'var(--stone)' }}>
               请先登录后查看你的收藏。
             </p>
           </div>
         ) : loading ? (
           <div
-            className="flex items-center justify-center py-16 rounded-2xl"
+            className="flex items-center justify-center py-16 rounded-lg"
             style={cardStyle}
           >
             <div className="bs-spinner" />
           </div>
         ) : !items.length ? (
           <div
-            className="flex flex-col items-center justify-center py-16 rounded-2xl"
+            className="flex flex-col items-center justify-center py-16 rounded-lg"
             style={{
-              border: '1.5px dashed rgba(14,165,233,0.25)',
-              background: 'rgba(255,255,255,0.30)',
-              backdropFilter: 'blur(8px)',
+              border: '1.5px dashed var(--hairline)',
+              background: 'var(--surface)',
+              
             }}
           >
-            <BookOpen className="w-10 h-10 mb-3" style={{ color: '#b0d8f0' }} />
-            <p className="text-sm text-center leading-relaxed" style={{ color: '#7db8d4' }}>
+            <BookOpen className="w-10 h-10 mb-3" style={{ color: 'var(--muted)' }} />
+            <p className="text-sm text-center leading-relaxed" style={{ color: 'var(--stone)' }}>
               还没有收藏。先总结一个视频，然后
               <br />
               保存到收藏库。
@@ -548,19 +543,19 @@ export function FavoritesPage({
             {items.map((item) => (
               <article
                 key={item.id}
-                className="rounded-2xl p-4 flex flex-col gap-3 relative"
+                className="rounded-lg p-4 flex flex-col gap-3 relative"
                 style={cardStyle}
               >
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); toggleSelect(item.id); }}
                   className="absolute top-3 right-3 p-1 rounded-lg z-10"
-                  style={{ background: selectedIds.includes(item.id) ? 'rgba(14,165,233,0.18)' : 'rgba(255,255,255,0.65)', color: '#0369a1', border: '1px solid rgba(14,165,233,0.16)' }}
+                  style={{ background: selectedIds.includes(item.id) ? 'var(--hairline)' : 'var(--canvas)', color: 'var(--brand-tag)', border: '1px solid var(--hairline)' }}
                   title="选择"
                 >
                   {selectedIds.includes(item.id) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                 </button>
-                <div className="w-full h-28 rounded-xl overflow-hidden relative" style={{ background: '#e0f2fe' }}>
+                <div className="w-full h-28 rounded-md overflow-hidden relative" style={{ background: 'var(--surface)' }}>
                   <CoverFallback item={item} />
                   {normalizeCoverUrl(item.pic) ? (
                     <img
@@ -577,11 +572,11 @@ export function FavoritesPage({
                 </div>
                 <h3
                   className="text-sm font-bold leading-snug line-clamp-2"
-                  style={{ color: '#0d2d45' }}
+                  style={{ color: 'var(--ink)' }}
                 >
                   {item.title}
                 </h3>
-                <div className="flex flex-wrap gap-2 text-xs" style={{ color: '#7db8d4' }}>
+                <div className="flex flex-wrap gap-2 text-xs" style={{ color: 'var(--stone)' }}>
                   <span>{item.author}</span>
                   <span>·</span>
                   <span>{item.category || '待整理'}</span>
@@ -595,9 +590,9 @@ export function FavoritesPage({
                         key={t}
                         className="text-xs px-2 py-0.5 rounded-full"
                         style={{
-                          background: 'rgba(14,165,233,0.10)',
-                          color: '#0369a1',
-                          border: '1px solid rgba(14,165,233,0.15)',
+                          background: 'rgba(55,114,207,0.15)',
+                          color: 'var(--brand-tag)',
+                          border: '1px solid var(--hairline)',
                         }}
                       >
                         #{t}
@@ -606,7 +601,7 @@ export function FavoritesPage({
                   </div>
                 )}
                 {(item.snippet || item.summary) && (
-                  <p className="text-xs line-clamp-2" style={{ color: '#5b8fae', lineHeight: 1.55 }}>
+                  <p className="text-xs line-clamp-2" style={{ color: 'var(--steel)', lineHeight: 1.55 }}>
                     {(item.snippet || item.summary).replace(/<\/?mark>/g, '').replace(/[#>*`_\-]/g, '').slice(0, 140)}...
                   </p>
                 )}
@@ -614,11 +609,11 @@ export function FavoritesPage({
                   <button
                     type="button"
                     onClick={() => handleOpen(item.id)}
-                    className="text-xs px-2.5 py-1 rounded-lg font-semibold transition-all hover:scale-105"
+                    className="text-xs px-2.5 py-1 rounded-full font-medium transition-all "
                     style={{
                       background: 'rgba(255,255,255,0.7)',
-                      color: '#0369a1',
-                      border: '1px solid rgba(14,165,233,0.20)',
+                      color: 'var(--brand-tag)',
+                      border: '1px solid var(--hairline)',
                     }}
                   >
                     打开
@@ -626,11 +621,11 @@ export function FavoritesPage({
                   <button
                     type="button"
                     onClick={() => fetchAndDownload('/api/export/' + item.id + '.pdf')}
-                    className="text-xs px-2.5 py-1 rounded-lg transition-all hover:scale-105"
+                    className="text-xs px-2.5 py-1 rounded-lg transition-all "
                     style={{
                       background: 'rgba(255,255,255,0.5)',
-                      color: '#5b8fae',
-                      border: '1px solid rgba(14,165,233,0.15)',
+                      color: 'var(--steel)',
+                      border: '1px solid var(--hairline)',
                     }}
                   >
                     PDF
@@ -638,11 +633,11 @@ export function FavoritesPage({
                   <button
                     type="button"
                     onClick={() => fetchAndDownload('/api/export/' + item.id + '.md')}
-                    className="text-xs px-2.5 py-1 rounded-lg transition-all hover:scale-105"
+                    className="text-xs px-2.5 py-1 rounded-lg transition-all "
                     style={{
                       background: 'rgba(255,255,255,0.5)',
-                      color: '#5b8fae',
-                      border: '1px solid rgba(14,165,233,0.15)',
+                      color: 'var(--steel)',
+                      border: '1px solid var(--hairline)',
                     }}
                   >
                     Markdown
@@ -650,10 +645,10 @@ export function FavoritesPage({
                   <button
                     type="button"
                     onClick={() => handleObsidian(item.id)}
-                    className="text-xs px-2.5 py-1 rounded-lg font-semibold transition-all hover:scale-105"
+                    className="text-xs px-2.5 py-1 rounded-full font-medium transition-all "
                     style={{
-                      background: 'linear-gradient(135deg,#a855f7,#7c3aed)',
-                      color: '#fff',
+                      background: 'var(--primary)',
+                      color: 'var(--on-primary)',
                       boxShadow: '0 2px 8px rgba(124,58,237,0.25)',
                     }}
                   >
@@ -662,10 +657,10 @@ export function FavoritesPage({
                   <button
                     type="button"
                     onClick={() => handleDelete(item.id)}
-                    className="text-xs px-2 py-1 rounded-lg transition-all hover:scale-105 ml-auto"
+                    className="text-xs px-2 py-1 rounded-lg transition-all  ml-auto"
                     style={{
                       background: 'rgba(239,68,68,0.06)',
-                      color: '#b91c1c',
+                      color: 'var(--brand-error)',
                       border: '1px solid rgba(239,68,68,0.20)',
                     }}
                     title="删除"
@@ -680,13 +675,13 @@ export function FavoritesPage({
       </div>
 
       {isLoggedIn && total > pageSize && (
-        <div className="max-w-5xl mt-4 flex items-center justify-center gap-3 text-xs" style={{ color: '#5b8fae' }}>
+        <div className="max-w-5xl mt-4 flex items-center justify-center gap-3 text-xs" style={{ color: 'var(--steel)' }}>
           <button
             type="button"
             disabled={page <= 1 || loading}
             onClick={() => handlePage(page - 1)}
-            className="px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50"
-            style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(14,165,233,0.18)' }}
+            className="px-3 py-1.5 rounded-full font-medium disabled:opacity-50"
+            style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid var(--hairline)' }}
           >
             上一页
           </button>
@@ -697,8 +692,8 @@ export function FavoritesPage({
             type="button"
             disabled={page >= Math.ceil(total / pageSize) || loading}
             onClick={() => handlePage(page + 1)}
-            className="px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50"
-            style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(14,165,233,0.18)' }}
+            className="px-3 py-1.5 rounded-full font-medium disabled:opacity-50"
+            style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid var(--hairline)' }}
           >
             下一页
           </button>
@@ -709,15 +704,15 @@ export function FavoritesPage({
       {openItem && (
         <div
           id="library-detail"
-          className="max-w-5xl mt-6 rounded-2xl p-6 flex flex-col gap-4"
+          className="max-w-5xl mt-6 rounded-lg p-6 flex flex-col gap-4"
           style={cardStyle}
         >
           <div className="flex items-start gap-3 justify-between flex-wrap">
             <div className="flex-1 min-w-0">
-              <h3 className="text-lg font-bold" style={{ color: '#0d2d45' }}>
+              <h3 className="text-lg font-bold" style={{ color: 'var(--ink)' }}>
                 {openItem.title}
               </h3>
-              <div className="text-xs mt-1" style={{ color: '#7db8d4' }}>
+              <div className="text-xs mt-1" style={{ color: 'var(--stone)' }}>
                 {openItem.author} · {openItem.category || '待整理'} ·{' '}
                 {formatDate(openItem.created_at)}
               </div>
@@ -728,11 +723,11 @@ export function FavoritesPage({
                   href={openItem.link}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-semibold transition-all hover:scale-105"
+                  className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition-all "
                   style={{
                     background: 'rgba(255,255,255,0.7)',
-                    color: '#0369a1',
-                    border: '1px solid rgba(14,165,233,0.20)',
+                    color: 'var(--brand-tag)',
+                    border: '1px solid var(--hairline)',
                   }}
                 >
                   <ExternalLink className="w-3 h-3" />
@@ -742,11 +737,11 @@ export function FavoritesPage({
               <button
                 type="button"
                 onClick={() => fetchAndDownload('/api/export/' + openItem.id + '.pdf')}
-                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg transition-all hover:scale-105"
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg transition-all "
                 style={{
                   background: 'rgba(255,255,255,0.5)',
-                  color: '#5b8fae',
-                  border: '1px solid rgba(14,165,233,0.15)',
+                  color: 'var(--steel)',
+                  border: '1px solid var(--hairline)',
                 }}
               >
                 <FileText className="w-3 h-3" />
@@ -755,11 +750,11 @@ export function FavoritesPage({
               <button
                 type="button"
                 onClick={() => fetchAndDownload('/api/export/' + openItem.id + '.md')}
-                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg transition-all hover:scale-105"
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg transition-all "
                 style={{
                   background: 'rgba(255,255,255,0.5)',
-                  color: '#5b8fae',
-                  border: '1px solid rgba(14,165,233,0.15)',
+                  color: 'var(--steel)',
+                  border: '1px solid var(--hairline)',
                 }}
               >
                 <FileDown className="w-3 h-3" />
@@ -768,10 +763,10 @@ export function FavoritesPage({
               <button
                 type="button"
                 onClick={() => handleObsidian(openItem.id)}
-                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-semibold transition-all hover:scale-105"
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition-all "
                 style={{
-                  background: 'linear-gradient(135deg,#a855f7,#7c3aed)',
-                  color: '#fff',
+                  background: 'var(--primary)',
+                  color: 'var(--on-primary)',
                   boxShadow: '0 2px 8px rgba(124,58,237,0.25)',
                 }}
               >
@@ -788,9 +783,9 @@ export function FavoritesPage({
                   key={t}
                   className="text-xs px-2 py-0.5 rounded-full"
                   style={{
-                    background: 'rgba(14,165,233,0.10)',
-                    color: '#0369a1',
-                    border: '1px solid rgba(14,165,233,0.15)',
+                    background: 'rgba(55,114,207,0.15)',
+                    color: 'var(--brand-tag)',
+                    border: '1px solid var(--hairline)',
                   }}
                 >
                   #{t}
@@ -801,7 +796,7 @@ export function FavoritesPage({
 
           {openItem.bvid && !openItem.bvid.startsWith('http') && (
             <div
-              className="relative w-full rounded-xl overflow-hidden"
+              className="relative w-full rounded-md overflow-hidden"
               style={{ paddingBottom: '56.25%', background: '#05070d' }}
             >
               <iframe
@@ -814,11 +809,11 @@ export function FavoritesPage({
           )}
           {/* Podcast cover and audio player (for Xiaoyuzhou podcasts) */}
           {openItem.bvid && openItem.bvid.startsWith('http') && openItem.pic && (
-            <div className="flex flex-col items-center gap-4 p-6 rounded-xl" style={{ background: 'linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%)' }}>
+            <div className="flex flex-col items-center gap-4 p-6 rounded-md" style={{ background: 'linear-gradient(180deg, #f0f9ff 0%, var(--surface) 100%)' }}>
               <img
                 src={openItem.pic}
                 alt="播客封面"
-                className="w-40 h-40 object-cover rounded-xl shadow-lg"
+                className="w-40 h-40 object-cover rounded-md shadow-lg"
               />
               <audio
                 controls
@@ -838,7 +833,7 @@ export function FavoritesPage({
 
           {openItem.notes && (
             <div>
-              <h4 className="text-sm font-bold mb-2" style={{ color: '#0d2d45' }}>
+              <h4 className="text-sm font-bold mb-2" style={{ color: 'var(--ink)' }}>
                 我的笔记
               </h4>
               <div
@@ -922,22 +917,22 @@ function TagManagerModal({ tags, onClose, onRefresh, onShowToast }: TagManagerMo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(13,45,69,0.45)', backdropFilter: 'blur(8px)' }} onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl p-6 flex flex-col gap-4" onClick={(e) => e.stopPropagation()} style={{ background: 'rgba(255,255,255,0.95)', border: '1px solid rgba(14,165,233,0.25)', boxShadow: '0 24px 64px rgba(14,165,233,0.18)' }}>
+      <div className="w-full max-w-lg rounded-lg p-6 flex flex-col gap-4" onClick={(e) => e.stopPropagation()} style={{ background: 'var(--canvas)', border: '1px solid var(--hairline)', boxShadow: '0 24px 64px var(--hairline)' }}>
         <div>
-          <h3 className="text-base font-bold" style={{ color: '#0d2d45' }}>标签管理</h3>
-          <p className="text-xs mt-1" style={{ color: '#7db8d4' }}>可重命名、合并或从所有收藏移除标签。</p>
+          <h3 className="text-base font-bold" style={{ color: 'var(--ink)' }}>标签管理</h3>
+          <p className="text-xs mt-1" style={{ color: 'var(--stone)' }}>可重命名、合并或从所有收藏移除标签。</p>
         </div>
         <div className="max-h-80 overflow-y-auto flex flex-col gap-2">
           {tags.length ? tags.map((name) => (
-            <div key={name} className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.12)' }}>
-              <span className="text-sm font-semibold flex-1" style={{ color: '#0369a1' }}>#{name}</span>
-              <button type="button" onClick={() => renameOne(name)} className="text-xs underline" style={{ color: '#0369a1' }}>重命名</button>
-              <button type="button" onClick={() => mergeOne(name)} className="text-xs underline" style={{ color: '#0369a1' }}>合并</button>
-              <button type="button" onClick={() => deleteOne(name)} className="text-xs underline" style={{ color: '#b91c1c' }}>删除</button>
+            <div key={name} className="flex items-center gap-2 rounded-md px-3 py-2" style={{ background: 'var(--surface)', border: '1px solid var(--hairline-soft)' }}>
+              <span className="text-sm font-semibold flex-1" style={{ color: 'var(--brand-tag)' }}>#{name}</span>
+              <button type="button" onClick={() => renameOne(name)} className="text-xs underline" style={{ color: 'var(--brand-tag)' }}>重命名</button>
+              <button type="button" onClick={() => mergeOne(name)} className="text-xs underline" style={{ color: 'var(--brand-tag)' }}>合并</button>
+              <button type="button" onClick={() => deleteOne(name)} className="text-xs underline" style={{ color: 'var(--brand-error)' }}>删除</button>
             </div>
           )) : <EmptyState title="暂无标签" description="收藏内容添加标签后会出现在这里。" />}
         </div>
-        <button type="button" onClick={onClose} className="self-end text-sm px-3 py-1.5 rounded-xl" style={{ background: 'rgba(255,255,255,0.7)', color: '#0369a1', border: '1px solid rgba(14,165,233,0.20)' }}>完成</button>
+        <button type="button" onClick={onClose} className="self-end text-sm px-3 py-1.5 rounded-md" style={{ background: 'rgba(255,255,255,0.7)', color: 'var(--brand-tag)', border: '1px solid var(--hairline)' }}>完成</button>
       </div>
     </div>
   );
@@ -983,32 +978,32 @@ function ObsidianExportModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-2xl p-6 flex flex-col gap-4"
+        className="w-full max-w-lg rounded-lg p-6 flex flex-col gap-4"
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: 'rgba(255,255,255,0.95)',
-          border: '1px solid rgba(14,165,233,0.25)',
+          background: 'var(--canvas)',
+          border: '1px solid var(--hairline)',
           boxShadow:
-            '0 24px 64px rgba(14,165,233,0.18), inset 0 1px 0 rgba(255,255,255,0.95)',
-          backdropFilter: 'blur(24px)',
+            '0 24px 64px var(--hairline), inset 0 1px 0 var(--canvas)',
+          
         }}
       >
         <div>
-          <h3 className="text-base font-bold" style={{ color: '#0d2d45' }}>
+          <h3 className="text-base font-bold" style={{ color: 'var(--ink)' }}>
             发送到 Obsidian
           </h3>
-          <p className="text-xs mt-1" style={{ color: '#7db8d4' }}>
+          <p className="text-xs mt-1" style={{ color: 'var(--stone)' }}>
             目标笔记：<code className="font-mono">{state.filePath}.md</code>
           </p>
         </div>
 
         {state.copied ? (
           <div
-            className="rounded-xl px-3 py-3 text-sm"
+            className="rounded-md px-3 py-3 text-sm"
             style={{
               background: 'rgba(5,150,105,0.08)',
               border: '1px solid rgba(5,150,105,0.25)',
-              color: '#047857',
+              color: 'var(--primary)',
             }}
           >
             <div className="font-semibold mb-1">✓ 笔记内容已复制到剪贴板</div>
@@ -1025,7 +1020,7 @@ function ObsidianExportModal({
           </div>
         ) : (
           <div
-            className="rounded-xl px-3 py-3 text-sm"
+            className="rounded-md px-3 py-3 text-sm"
             style={{
               background: 'rgba(245,158,11,0.08)',
               border: '1px solid rgba(245,158,11,0.30)',
@@ -1043,21 +1038,21 @@ function ObsidianExportModal({
           <button
             type="button"
             onClick={copyAgain}
-            className="text-sm px-3 py-1.5 rounded-xl font-semibold transition-all hover:scale-105"
+            className="text-sm px-3 py-1.5 rounded-full font-medium transition-all "
             style={{
               background: 'rgba(255,255,255,0.7)',
-              color: '#0369a1',
-              border: '1px solid rgba(14,165,233,0.20)',
+              color: 'var(--brand-tag)',
+              border: '1px solid var(--hairline)',
             }}
           >
             再次复制
           </button>
           <a
             href={state.uri}
-            className="text-sm px-3 py-1.5 rounded-xl font-semibold transition-all hover:scale-105"
+            className="text-sm px-3 py-1.5 rounded-full font-medium transition-all "
             style={{
-              background: 'linear-gradient(135deg,#a855f7,#7c3aed)',
-              color: '#fff',
+              background: 'var(--primary)',
+              color: 'var(--on-primary)',
               boxShadow: '0 4px 12px rgba(124,58,237,0.30)',
             }}
           >
@@ -1066,11 +1061,11 @@ function ObsidianExportModal({
           <button
             type="button"
             onClick={onClose}
-            className="ml-auto text-sm px-3 py-1.5 rounded-xl transition-all hover:scale-105"
+            className="ml-auto text-sm px-3 py-1.5 rounded-md transition-all "
             style={{
               background: 'rgba(255,255,255,0.5)',
-              color: '#5b8fae',
-              border: '1px solid rgba(14,165,233,0.15)',
+              color: 'var(--steel)',
+              border: '1px solid var(--hairline)',
             }}
           >
             完成
@@ -1079,7 +1074,7 @@ function ObsidianExportModal({
 
         <details
           className="text-xs"
-          style={{ color: '#5b8fae' }}
+          style={{ color: 'var(--steel)' }}
         >
           <summary className="cursor-pointer select-none">手动复制（点开查看完整 Markdown）</summary>
           <textarea
@@ -1088,8 +1083,8 @@ function ObsidianExportModal({
             className="mt-2 w-full font-mono text-xs outline-none"
             style={{
               background: 'rgba(255,255,255,0.7)',
-              border: '1px solid rgba(14,165,233,0.18)',
-              color: '#0d2d45',
+              border: '1px solid var(--hairline)',
+              color: 'var(--ink)',
               borderRadius: '0.625rem',
               padding: '0.5rem 0.75rem',
               minHeight: 160,

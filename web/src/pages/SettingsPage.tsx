@@ -15,17 +15,14 @@ interface SettingsPageProps {
 }
 
 const cardStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.55)',
-  border: '1px solid rgba(14,165,233,0.14)',
-  backdropFilter: 'blur(16px)',
-  boxShadow:
-    '0 4px 24px rgba(14,165,233,0.07), inset 0 1px 0 rgba(255,255,255,0.85)',
+  background: 'var(--canvas)',
+  border: '1px solid var(--hairline)',
 };
 
 const inputStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.70)',
-  border: '1px solid rgba(14,165,233,0.18)',
-  color: '#0d2d45',
+  background: 'var(--canvas)',
+  border: '1px solid var(--hairline)',
+  color: 'var(--ink)',
   borderRadius: '0.625rem',
   padding: '0.5rem 0.75rem',
   fontSize: 13,
@@ -35,7 +32,7 @@ const inputStyle: React.CSSProperties = {
 
 const labelStyle: React.CSSProperties = {
   fontSize: 12,
-  color: '#5b8fae',
+  color: 'var(--steel)',
   marginBottom: 4,
   display: 'block',
 };
@@ -43,7 +40,7 @@ const labelStyle: React.CSSProperties = {
 function LogoIcon({ letter, gradient }: { letter: string; gradient: string }) {
   return (
     <div
-      className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+      className="w-9 h-9 rounded-md flex items-center justify-center shrink-0"
       style={{ background: gradient, boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
     >
       <span className="text-white font-bold text-sm">{letter}</span>
@@ -54,10 +51,10 @@ function LogoIcon({ letter, gradient }: { letter: string; gradient: string }) {
 function SectionTitle({ title, desc }: { title: string; desc: string }) {
   return (
     <div className="flex flex-col gap-0.5 flex-1">
-      <span className="font-semibold text-sm" style={{ color: '#0d2d45' }}>
+      <span className="font-semibold text-sm" style={{ color: 'var(--ink)' }}>
         {title}
       </span>
-      <span className="text-xs" style={{ color: '#7db8d4' }}>
+      <span className="text-xs" style={{ color: 'var(--stone)' }}>
         {desc}
       </span>
     </div>
@@ -69,14 +66,14 @@ function KeyStatus({ configured }: { configured: boolean | undefined }) {
     return (
       <span
         className="inline-flex items-center gap-1 text-xs"
-        style={{ color: '#059669' }}
+        style={{ color: 'var(--brand-green-deep)' }}
       >
         <Check className="w-3 h-3" /> 已配置
       </span>
     );
   }
   return (
-    <span className="text-xs" style={{ color: '#9ca3af' }}>
+    <span className="text-xs" style={{ color: 'var(--muted)' }}>
       未配置
     </span>
   );
@@ -241,17 +238,17 @@ export function SettingsPage({
   return (
     <div className="flex flex-col h-full overflow-y-auto px-8 py-8">
       <div className="mb-6">
-        <h2 className="text-xl font-bold" style={{ color: '#0d2d45' }}>
+        <h2 className="text-xl font-bold" style={{ color: 'var(--ink)' }}>
           设置
         </h2>
-        <p className="text-sm mt-0.5" style={{ color: '#7db8d4' }}>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--stone)' }}>
           配置 API Key、Whisper 和 Obsidian 集成。
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-4xl">
         {/* DeepSeek */}
-        <div className="rounded-2xl p-5 flex flex-col gap-4" style={cardStyle}>
+        <div className="rounded-lg p-5 flex flex-col gap-4" style={cardStyle}>
           <div className="flex items-center gap-3">
             <LogoIcon letter="DS" gradient="linear-gradient(135deg,#4f8ef7,#6366f1)" />
             <SectionTitle title="DeepSeek API" desc="用于生成视频总结，兼容 OpenAI 协议。" />
@@ -271,7 +268,7 @@ export function SettingsPage({
                 type="button"
                 onClick={() => setShowDeepseekKey((v) => !v)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md"
-                style={{ color: '#7db8d4' }}
+                style={{ color: 'var(--stone)' }}
               >
                 {showDeepseekKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -282,8 +279,8 @@ export function SettingsPage({
                 type="button"
                 onClick={handleTestDeepseek}
                 disabled={testingDeepseek}
-                className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-semibold transition-all hover:scale-105 disabled:opacity-60"
-                style={{ background: 'rgba(14,165,233,0.10)', color: '#0369a1', border: '1px solid rgba(14,165,233,0.18)' }}
+                className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition-all  disabled:opacity-60"
+                style={{ background: 'rgba(55,114,207,0.15)', color: 'var(--brand-tag)', border: '1px solid var(--hairline)' }}
               >
                 {testingDeepseek ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
                 {testingDeepseek ? '测试中…' : '测试连接'}
@@ -291,7 +288,7 @@ export function SettingsPage({
             </div>
           </div>
 
-          <div className="border-t pt-3" style={{ borderColor: 'rgba(14,165,233,0.10)' }}>
+          <div className="border-t pt-3" style={{ borderColor: 'rgba(55,114,207,0.15)' }}>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label style={labelStyle}>模型</label>
@@ -316,9 +313,9 @@ export function SettingsPage({
         </div>
 
         {/* Whisper */}
-        <div className="rounded-2xl p-5 flex flex-col gap-4" style={cardStyle}>
+        <div className="rounded-lg p-5 flex flex-col gap-4" style={cardStyle}>
           <div className="flex items-center gap-3">
-            <LogoIcon letter="W" gradient="linear-gradient(135deg,#0ea5e9,#38bdf8)" />
+            <LogoIcon letter="W" gradient="linear-gradient(135deg,var(--primary),var(--brand-green))" />
             <SectionTitle
               title="Whisper API"
               desc="把没有字幕的视频转写成文本，推荐硅基流动 / OpenAI。"
@@ -339,7 +336,7 @@ export function SettingsPage({
                 type="button"
                 onClick={() => setShowWhisperKey((v) => !v)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md"
-                style={{ color: '#7db8d4' }}
+                style={{ color: 'var(--stone)' }}
               >
                 {showWhisperKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -350,8 +347,8 @@ export function SettingsPage({
                 type="button"
                 onClick={handleTestWhisper}
                 disabled={testingWhisper}
-                className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-semibold transition-all hover:scale-105 disabled:opacity-60"
-                style={{ background: 'rgba(14,165,233,0.10)', color: '#0369a1', border: '1px solid rgba(14,165,233,0.18)' }}
+                className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition-all  disabled:opacity-60"
+                style={{ background: 'rgba(55,114,207,0.15)', color: 'var(--brand-tag)', border: '1px solid var(--hairline)' }}
               >
                 {testingWhisper ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
                 {testingWhisper ? '测试中…' : '测试连接'}
@@ -359,7 +356,7 @@ export function SettingsPage({
             </div>
           </div>
 
-          <div className="border-t pt-3" style={{ borderColor: 'rgba(14,165,233,0.10)' }}>
+          <div className="border-t pt-3" style={{ borderColor: 'rgba(55,114,207,0.15)' }}>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label style={labelStyle}>API 地址</label>
@@ -384,7 +381,7 @@ export function SettingsPage({
         </div>
 
         {/* General */}
-        <div className="rounded-2xl p-5 flex flex-col gap-4" style={cardStyle}>
+        <div className="rounded-lg p-5 flex flex-col gap-4" style={cardStyle}>
           <div className="flex items-center gap-3">
             <LogoIcon letter="G" gradient="linear-gradient(135deg,#34d399,#06b6d4)" />
             <SectionTitle title="通用偏好" desc="控制新总结被创建后使用的保存分类与平台 Cookies。" />
@@ -400,25 +397,25 @@ export function SettingsPage({
             />
           </div>
 
-          <div className="border-t pt-3" style={{ borderColor: 'rgba(14,165,233,0.10)' }}>
+          <div className="border-t pt-3" style={{ borderColor: 'rgba(55,114,207,0.15)' }}>
             <label style={labelStyle}>yt-dlp Cookies（抖音/小红书等平台）</label>
             <textarea
-              style={{ ...inputStyle, minHeight: 120, resize: 'vertical', fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}
+              style={{ ...inputStyle, minHeight: 120, resize: 'vertical', fontFamily: '"Geist Mono", "SF Mono", Menlo, Consolas, monospace', fontSize: 12 }}
               placeholder={ytDlpCookiesSet ? '已保存，留空则不修改；粘贴新内容后保存可更新' : '粘贴 Netscape cookies.txt 内容，例如从浏览器导出的 douyin.com cookies'}
               value={ytDlpCookies}
               onChange={(e) => setYtDlpCookies(e.target.value)}
             />
             <div className="mt-1.5 flex items-center justify-between gap-2 flex-wrap">
               <KeyStatus configured={ytDlpCookiesSet} />
-              <span className="text-xs" style={{ color: '#7db8d4' }}>
+              <span className="text-xs" style={{ color: 'var(--stone)' }}>
                 Cookies 会加密保存；留空保存不会修改现有 Cookies。
               </span>
               {ytDlpCookiesSet && (
                 <button
                   type="button"
                   onClick={handleClearYtDlpCookies}
-                  className="text-xs px-2 py-1 rounded-lg font-semibold"
-                  style={{ color: '#b91c1c', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.20)' }}
+                  className="text-xs px-2 py-1 rounded-full font-medium"
+                  style={{ color: 'var(--brand-error)', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.20)' }}
                 >
                   清空 Cookies
                 </button>
@@ -428,9 +425,9 @@ export function SettingsPage({
         </div>
 
         {/* Obsidian */}
-        <div className="rounded-2xl p-5 flex flex-col gap-4" style={cardStyle}>
+        <div className="rounded-lg p-5 flex flex-col gap-4" style={cardStyle}>
           <div className="flex items-center gap-3">
-            <LogoIcon letter="O" gradient="linear-gradient(135deg,#a855f7,#7c3aed)" />
+            <LogoIcon letter="O" gradient="var(--primary)" />
             <SectionTitle
               title="Obsidian Vault"
               desc="通过浏览器拉起本机 Obsidian 客户端接收笔记。"
@@ -446,7 +443,7 @@ export function SettingsPage({
               value={obsidianVault}
               onChange={(e) => setObsidianVault(e.target.value)}
             />
-            <p className="text-xs mt-1.5" style={{ color: '#7db8d4' }}>
+            <p className="text-xs mt-1.5" style={{ color: 'var(--stone)' }}>
               就是 Obsidian 侧栏顶部显示的 vault 名；留空则由 Obsidian 默认 vault 接收。
             </p>
           </div>
@@ -473,19 +470,19 @@ export function SettingsPage({
                   ? 'rgba(5,150,105,0.10)'
                   : status.type === 'error'
                     ? 'rgba(239,68,68,0.10)'
-                    : 'rgba(14,165,233,0.10)',
+                    : 'rgba(55,114,207,0.15)',
               color:
                 status.type === 'ok'
-                  ? '#047857'
+                  ? 'var(--primary)'
                   : status.type === 'error'
-                    ? '#b91c1c'
-                    : '#0369a1',
+                    ? 'var(--brand-error)'
+                    : 'var(--brand-tag)',
               border: `1px solid ${
                 status.type === 'ok'
                   ? 'rgba(5,150,105,0.25)'
                   : status.type === 'error'
                     ? 'rgba(239,68,68,0.25)'
-                    : 'rgba(14,165,233,0.25)'
+                    : 'var(--hairline)'
               }`,
             }}
           >
@@ -496,12 +493,10 @@ export function SettingsPage({
           type="button"
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
+          className="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-medium transition-all duration-200   disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
           style={{
-            background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-            color: '#fff',
-            boxShadow:
-              '0 4px 16px rgba(14,165,233,0.35), inset 0 1px 0 rgba(255,255,255,0.25)',
+            background: 'var(--primary)',
+            color: 'var(--on-primary)',
           }}
         >
           <Save className="w-4 h-4" />

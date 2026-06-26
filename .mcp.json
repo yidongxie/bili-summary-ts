@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "flowus": {
+      "type": "sse",
+      "url": "https://mcp.flowus.cn/message"
+    }
+  }
+}

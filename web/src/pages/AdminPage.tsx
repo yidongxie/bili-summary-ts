@@ -7,10 +7,8 @@ interface AdminPageProps {
 }
 
 const cardStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.58)',
-  border: '1px solid rgba(14,165,233,0.14)',
-  backdropFilter: 'blur(16px)',
-  boxShadow: '0 4px 24px rgba(14,165,233,0.07), inset 0 1px 0 rgba(255,255,255,0.85)',
+  background: 'var(--canvas)',
+  border: '1px solid var(--hairline)',
 };
 
 export function AdminPage({ onShowToast }: AdminPageProps) {
@@ -36,8 +34,8 @@ export function AdminPage({ onShowToast }: AdminPageProps) {
   return (
     <div className="flex flex-col h-full overflow-y-auto px-4 sm:px-8 py-6 sm:py-8">
       <div className="mb-6">
-        <h2 className="text-xl font-bold" style={{ color: '#0d2d45' }}>管理后台</h2>
-        <p className="text-sm mt-0.5" style={{ color: '#7db8d4' }}>用户、任务、失败和成本概览。</p>
+        <h2 className="text-xl font-bold" style={{ color: 'var(--ink)' }}>管理后台</h2>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--stone)' }}>用户、任务、失败和成本概览。</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 max-w-6xl">
         <Stat icon={Users} label="用户" value={stats?.users || 0} />
@@ -61,13 +59,13 @@ export function AdminPage({ onShowToast }: AdminPageProps) {
 }
 
 function Stat({ icon: Icon, label, value }: { icon: any; label: string; value: any }) {
-  return <div className="rounded-2xl p-4" style={cardStyle}><Icon className="w-5 h-5 mb-2" style={{ color: '#0ea5e9' }} /><div className="text-xs" style={{ color: '#7db8d4' }}>{label}</div><div className="text-2xl font-bold" style={{ color: '#0d2d45' }}>{value}</div></div>;
+  return <div className="rounded-lg p-4" style={cardStyle}><Icon className="w-5 h-5 mb-2" style={{ color: 'var(--primary)' }} /><div className="text-xs" style={{ color: 'var(--stone)' }}>{label}</div><div className="text-2xl font-bold" style={{ color: 'var(--ink)' }}>{value}</div></div>;
 }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return <div className="rounded-2xl p-4" style={cardStyle}><h3 className="font-bold mb-3" style={{ color: '#0d2d45' }}>{title}</h3><div className="flex flex-col gap-2 text-sm">{children}</div></div>;
+  return <div className="rounded-lg p-4" style={cardStyle}><h3 className="font-bold mb-3" style={{ color: 'var(--ink)' }}>{title}</h3><div className="flex flex-col gap-2 text-sm">{children}</div></div>;
 }
 
 function Row({ left, right }: { left: any; right: any }) {
-  return <div className="flex gap-3 justify-between rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.45)', color: '#5b8fae' }}><span className="truncate">{left}</span><span className="shrink-0 text-xs">{right}</span></div>;
+  return <div className="flex gap-3 justify-between rounded-md px-3 py-2" style={{ background: 'var(--surface)', color: 'var(--steel)' }}><span className="truncate">{left}</span><span className="shrink-0 text-xs">{right}</span></div>;
 }

@@ -12,7 +12,6 @@ interface ToastProps {
   onClose: () => void;
 }
 
-// Single ephemeral toast, top-right. Replaces the legacy `.status` div.
 export function Toast({ toast, onClose }: ToastProps) {
   useEffect(() => {
     if (!toast) return;
@@ -23,29 +22,24 @@ export function Toast({ toast, onClose }: ToastProps) {
   if (!toast) return null;
   const tone =
     toast.type === 'ok'
-      ? { bg: 'rgba(5,150,105,0.10)', color: '#047857', border: 'rgba(5,150,105,0.30)' }
+      ? { color: 'var(--primary)', border: 'var(--brand-green)', marker: 'var(--brand-green)' }
       : toast.type === 'error'
-        ? { bg: 'rgba(239,68,68,0.10)', color: '#b91c1c', border: 'rgba(239,68,68,0.30)' }
-        : { bg: 'rgba(14,165,233,0.12)', color: '#0369a1', border: 'rgba(14,165,233,0.30)' };
+        ? { color: 'var(--brand-error)', border: 'rgba(212,86,86,0.35)', marker: 'var(--brand-error)' }
+        : { color: 'var(--ink)', border: 'var(--hairline)', marker: 'var(--brand-tag)' };
 
   return (
     <div
-      className="fixed top-5 right-5 z-50 max-w-sm rounded-xl px-4 py-3 text-sm font-medium shadow-lg"
-      style={{
-        background: tone.bg,
-        color: tone.color,
-        border: `1px solid ${tone.border}`,
-        backdropFilter: 'blur(16px)',
-        boxShadow: '0 8px 32px rgba(14,165,233,0.15)',
-      }}
+      className="fixed top-5 right-5 z-50 max-w-sm rounded-lg px-4 py-3 text-sm font-medium"
+      style={{ background: 'var(--canvas)', color: tone.color, border: `1px solid ${tone.border}`, boxShadow: 'rgba(0,0,0,0.08) 0px 4px 12px' }}
       onClick={onClose}
       role="status"
     >
+      <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ background: tone.marker }} />
       <span>{toast.msg}</span>
       {toast.action && (
         <button
           type="button"
-          className="ml-3 underline underline-offset-2 font-bold"
+          className="ml-3 underline underline-offset-2 font-semibold"
           onClick={(e) => {
             e.stopPropagation();
             toast.action?.onClick();

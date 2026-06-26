@@ -13,37 +13,27 @@ export function TopNav({ onNewSummary, onOpenSearch, user, onLogin, onLogout }: 
   return (
     <nav
       className="flex items-center px-3 sm:px-6 py-3 border-b shrink-0"
-      style={{
-        background: 'rgba(255,255,255,0.40)',
-        backdropFilter: 'blur(20px)',
-        borderColor: 'rgba(14,165,233,0.12)',
-        boxShadow:
-          '0 1px 0 rgba(255,255,255,0.6), 0 2px 16px rgba(14,165,233,0.06)',
-      }}
+      style={{ background: 'var(--canvas)', borderColor: 'var(--hairline)' }}
     >
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={onNewSummary}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm cursor-pointer transition-all duration-150 hover:bg-white/40"
-          style={{ color: '#0d2d45' }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm cursor-pointer transition-colors"
+          style={{ color: 'var(--ink)', border: '1px solid var(--hairline)', background: 'transparent' }}
         >
-          <Plus className="w-4 h-4" style={{ color: '#0ea5e9' }} />
-          <span className="font-semibold hidden sm:inline">新总结</span>
+          <Plus className="w-4 h-4" style={{ color: 'var(--ink)' }} />
+          <span className="font-medium hidden sm:inline">新总结</span>
         </button>
-        <div className="w-px h-4" style={{ background: 'rgba(14,165,233,0.2)' }} />
         <button
           type="button"
           onClick={onOpenSearch}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm cursor-pointer transition-all duration-150 hover:bg-white/40"
-          style={{ color: '#5b8fae' }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors"
+          style={{ color: 'var(--steel)', background: 'var(--surface)', border: '1px solid var(--hairline)' }}
         >
           <Search className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">全局搜索</span>
-          <span
-            className="px-1.5 py-0.5 rounded-lg text-[10px] font-mono"
-            style={{ background: 'rgba(14,165,233,0.10)', color: '#0ea5e9' }}
-          >
+          <span className="px-1.5 py-0.5 rounded-xs text-[10px] font-mono" style={{ background: 'var(--canvas)', color: 'var(--stone)', border: '1px solid var(--hairline)' }}>
             ⌘K
           </span>
         </button>
@@ -53,45 +43,17 @@ export function TopNav({ onNewSummary, onOpenSearch, user, onLogin, onLogout }: 
 
       {user ? (
         <div className="flex items-center gap-2">
-          <span
-            className="text-sm font-semibold px-3 py-1 rounded-xl"
-            style={{ color: '#0369a1', background: 'rgba(255,255,255,0.55)' }}
-          >
+          <span className="text-sm font-medium px-3 py-1 rounded-full" style={{ color: 'var(--ink)', background: 'var(--surface)', border: '1px solid var(--hairline)' }}>
             <span className="hidden sm:inline">{user.display_name || user.email}</span>
             <span className="sm:hidden">{(user.display_name || user.email).slice(0, 1).toUpperCase()}</span>
           </span>
-          <button
-            type="button"
-            onClick={onLogout}
-            title="退出登录"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-105"
-            style={{
-              background:
-                'linear-gradient(135deg, rgba(255,255,255,0.80), rgba(186,230,255,0.60))',
-              color: '#0369a1',
-              border: '1px solid rgba(14,165,233,0.25)',
-              boxShadow:
-                '0 2px 12px rgba(14,165,233,0.15), inset 0 1px 0 rgba(255,255,255,0.9)',
-            }}
-          >
+          <button type="button" onClick={onLogout} title="退出登录" className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors" style={{ background: 'transparent', color: 'var(--ink)', border: '1px solid var(--hairline)' }}>
             <LogOut className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">退出</span>
           </button>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={onLogin}
-          className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-105"
-          style={{
-            background:
-              'linear-gradient(135deg, rgba(255,255,255,0.80), rgba(186,230,255,0.60))',
-            color: '#0369a1',
-            border: '1px solid rgba(14,165,233,0.25)',
-            boxShadow:
-              '0 2px 12px rgba(14,165,233,0.15), inset 0 1px 0 rgba(255,255,255,0.9)',
-          }}
-        >
+        <button type="button" onClick={onLogin} className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition-colors" style={{ background: 'var(--primary)', color: 'var(--on-primary)', border: '1px solid var(--primary)' }}>
           <User className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">注册 / 登录</span>
           <span className="sm:hidden">登录</span>
