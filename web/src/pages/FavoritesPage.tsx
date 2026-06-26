@@ -62,6 +62,45 @@ const cardStyle: React.CSSProperties = {
     '0 4px 24px rgba(14,165,233,0.07), inset 0 1px 0 rgba(255,255,255,0.85)',
 };
 
+function normalizeCoverUrl(pic?: string): string {
+  const raw = String(pic || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('//')) return 'https:' + raw;
+  if (raw.startsWith('http://')) return 'https://' + raw.slice('http://'.length);
+  return raw;
+}
+
+function titleInitial(title?: string): string {
+  return String(title || '学').trim().slice(0, 1).toUpperCase() || '学';
+}
+
+function CoverFallback({ item }: { item: LibraryItem }) {
+  return (
+    <div
+      className="w-full h-full flex flex-col justify-between p-3"
+      style={{
+        background:
+          'linear-gradient(135deg, rgba(14,165,233,0.18), rgba(56,189,248,0.08) 45%, rgba(255,255,255,0.65))',
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-black"
+          style={{ background: 'rgba(255,255,255,0.70)', color: '#0284c7' }}
+        >
+          {titleInitial(item.title)}
+        </div>
+        <div className="text-[11px] font-semibold" style={{ color: '#5b8fae' }}>
+          {item.category || '视频封面'}
+        </div>
+      </div>
+      <div className="text-sm font-bold line-clamp-2" style={{ color: '#0d2d45', textShadow: '0 1px 0 rgba(255,255,255,0.75)' }}>
+        {item.title || '未命名内容'}
+      </div>
+    </div>
+  );
+}
+
 export function FavoritesPage({
   isLoggedIn,
   config,
@@ -521,11 +560,21 @@ export function FavoritesPage({
                 >
                   {selectedIds.includes(item.id) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                 </button>
-                {item.pic && (
-                  <div className="w-full h-28 rounded-xl overflow-hidden" style={{ background: '#e0f2fe' }}>
-                    <img src={item.pic} alt="" loading="lazy" className="w-full h-full object-cover" />
-                  </div>
-                )}
+                <div className="w-full h-28 rounded-xl overflow-hidden relative" style={{ background: '#e0f2fe' }}>
+                  <CoverFallback item={item} />
+                  {normalizeCoverUrl(item.pic) ? (
+                    <img
+                      src={normalizeCoverUrl(item.pic)}
+                      alt=""
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      className="absolute inset-0 w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ) : null}
+                </div>
                 <h3
                   className="text-sm font-bold leading-snug line-clamp-2"
                   style={{ color: '#0d2d45' }}
