@@ -242,13 +242,18 @@ function getHost(link?: string) {
 }
 
 function DarkButton({ children, onClick, variant = 'ghost', disabled }: { children: ReactNode; onClick?: () => void; variant?: 'ghost' | 'primary'; disabled?: boolean }) {
+  const isPrimary = variant === 'primary';
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition  disabled:opacity-50"
-      style={variant === 'primary' ? { background: `var(--primary)`, color: fg } : { ...darkSubtleStyle, color: fg }}
+      className="inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition disabled:opacity-50"
+      style={
+        isPrimary
+          ? { background: disabled ? 'var(--surface)' : 'var(--primary)', color: disabled ? 'var(--steel)' : 'var(--on-primary)', border: '1px solid var(--hairline)' }
+          : { background: 'transparent', border: '1px solid var(--hairline)', color: 'var(--ink)' }
+      }
     >
       {children}
     </button>
