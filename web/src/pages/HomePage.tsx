@@ -129,7 +129,8 @@ export function HomePage({
       style={{ justifyContent: 'safe center' }}
     >
       {/* Headline */}
-      <div className="text-center space-y-2">
+      <div className="text-center space-y-3">
+        <img src="/brand-icon.svg" alt="BiliStudy" className="mx-auto h-20 w-20 rounded-2xl" />
         <h1
           className="text-2xl sm:text-4xl tracking-tight"
           style={{ color: 'var(--ink)', fontWeight: 700, letterSpacing: '-0.02em' }}
@@ -145,6 +146,9 @@ export function HomePage({
           </span>{' '}
           把视频变成可复习的学习笔记
         </h1>
+        <p className="text-base font-medium" style={{ color: 'var(--ink)' }}>
+          把每一次观看，沉淀成长期学习。
+        </p>
         <p className="text-sm" style={{ color: 'var(--steel)' }}>
           粘贴 B 站视频或小宇宙播客链接，一键生成可复习、可导出的学习笔记
         </p>

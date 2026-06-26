@@ -1,0 +1,32 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">BiliStudy App Icon</title>
+  <desc id="desc">A Mintlify-style icon showing video and podcast content becoming AI learning notes.</desc>
+  <rect width="1024" height="1024" rx="224" fill="#FFFFFF"/>
+  <rect x="96" y="96" width="832" height="832" rx="188" fill="#F7F7F7" stroke="#E5E5E5" stroke-width="8"/>
+
+  <!-- Learning note card -->
+  <rect x="250" y="286" width="524" height="426" rx="52" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="26"/>
+  <path d="M333 390H572" stroke="#0A0A0A" stroke-width="30" stroke-linecap="round"/>
+  <path d="M333 486H656" stroke="#A8A8AA" stroke-width="24" stroke-linecap="round"/>
+  <path d="M333 572H598" stroke="#A8A8AA" stroke-width="24" stroke-linecap="round"/>
+
+  <!-- Video play tile -->
+  <rect x="178" y="206" width="314" height="214" rx="52" fill="#0A0A0A"/>
+  <path d="M312 270L410 313C428 321 428 347 410 355L312 398C294 406 274 393 274 373V295C274 275 294 262 312 270Z" fill="#FFFFFF"/>
+
+  <!-- Podcast/audio wave -->
+  <path d="M780 304C828 352 858 418 858 491C858 564 828 630 780 678" stroke="#00D4A4" stroke-width="34" stroke-linecap="round"/>
+  <path d="M727 366C758 398 777 442 777 491C777 540 758 584 727 616" stroke="#00D4A4" stroke-width="28" stroke-linecap="round"/>
+  <path d="M681 426C698 443 708 466 708 491C708 516 698 539 681 556" stroke="#00D4A4" stroke-width="24" stroke-linecap="round"/>
+
+  <!-- AI learning path nodes -->
+  <circle cx="346" cy="774" r="38" fill="#00D4A4"/>
+  <circle cx="512" cy="802" r="30" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="18"/>
+  <circle cx="678" cy="750" r="38" fill="#00D4A4"/>
+  <path d="M384 779C421 792 461 800 482 801" stroke="#0A0A0A" stroke-width="18" stroke-linecap="round"/>
+  <path d="M542 794C582 781 620 768 640 760" stroke="#0A0A0A" stroke-width="18" stroke-linecap="round"/>
+
+  <!-- AI sparkle -->
+  <path d="M632 200L650 247L697 265L650 283L632 330L614 283L567 265L614 247L632 200Z" fill="#00D4A4"/>
+  <path d="M218 604L230 635L261 647L230 659L218 690L206 659L175 647L206 635L218 604Z" fill="#00D4A4"/>
+</svg>
