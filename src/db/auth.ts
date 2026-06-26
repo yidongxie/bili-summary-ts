@@ -95,7 +95,7 @@ export function createAuthRouter(db: Database.Database): Router {
 
       createSession(db, req, res, userId, () => {
         const user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?").get(userId) as any;
-        res.json({ success: true, user: { id: user.id, email: user.email, display_name: user.display_name } });
+        res.json({ success: true, user: { id: user.id, email: user.email, display_name: user.display_name, created_at: user.created_at } });
       });
     } catch (err: any) {
       console.error("[register]", err);
@@ -142,7 +142,7 @@ export function createAuthRouter(db: Database.Database): Router {
       createSession(db, req, res, user.id, () => {
         res.json({
           success: true,
-          user: { id: user.id, email: user.email, display_name: user.display_name },
+          user: { id: user.id, email: user.email, display_name: user.display_name, created_at: user.created_at },
         });
       });
     } catch (err: any) {

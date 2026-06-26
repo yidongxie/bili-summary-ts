@@ -86,6 +86,7 @@ export default function App() {
     if (key === 'home') setView({ kind: 'home' });
     else if (key === 'library') setView({ kind: 'library' });
     else if (key === 'learning') setView({ kind: 'learning' });
+    else if (key === 'admin') setView({ kind: 'admin' });
     else if (key === 'settings') setView({ kind: 'settings' });
     else if (key === 'summarizer') setView({ kind: 'summarizer' });
   }
@@ -95,9 +96,11 @@ export default function App() {
       ? 'library'
       : view.kind === 'learning'
         ? 'learning'
-        : view.kind === 'settings'
-          ? 'settings'
-          : 'home';
+        : view.kind === 'admin'
+          ? 'admin'
+          : view.kind === 'settings'
+            ? 'settings'
+            : 'home';
 
   function handleSubmitSummary(url: string, mode: SummaryMode) {
     if (!user) {

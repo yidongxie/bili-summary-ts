@@ -2,9 +2,11 @@ import { Library, FileText, Settings, User, Zap, GraduationCap } from 'lucide-re
 import type { CurrentUser } from '@/lib/api';
 import { LogoMark } from './AmbientBackdrop';
 
-export type NavKey = 'home' | 'library' | 'learning' | 'settings';
+export type NavKey = 'home' | 'library' | 'learning' | 'admin' | 'settings';
 
-const ITEMS: Array<{ key: NavKey; icon: typeof Library; label: string; sub?: string }> = [
+const ADMIN_EMAIL = '444925817@qq.com';
+
+const BASE_ITEMS: Array<{ key: NavKey; icon: typeof Library; label: string; sub?: string }> = [
   { key: 'home', icon: Library, label: '知', sub: '总结' },
   { key: 'library', icon: FileText, label: '行', sub: '收藏' },
   { key: 'learning', icon: GraduationCap, label: '学', sub: '复习' },
@@ -19,6 +21,14 @@ interface SidebarProps {
 }
 
 export function Sidebar({ active, onChange, user, onUserClick }: SidebarProps) {
+  const isAdmin = (user?.email || '').trim().toLowerCase() === ADMIN_EMAIL;
+  const items = isAdmin
+    ? [
+        ...BASE_ITEMS.slice(0, 3),
+        { key: 'admin' as NavKey, icon: Settings, label: '管理', sub: '后台' },
+        BASE_ITEMS[3],
+      ]
+    : BASE_ITEMS;
   return (
     <aside
       className="flex flex-col items-center py-5 gap-1 border-r shrink-0"
@@ -39,7 +49,7 @@ export function Sidebar({ active, onChange, user, onUserClick }: SidebarProps) {
         <LogoMark />
       </button>
 
-      {ITEMS.map((item) => {
+      {items.map((item) => {
         const Icon = item.icon;
         const isActive = active === item.key;
         return (
