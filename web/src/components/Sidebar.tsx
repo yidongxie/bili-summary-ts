@@ -1,12 +1,13 @@
-import { Library, FileText, Settings, User, Zap } from 'lucide-react';
+import { Library, FileText, Settings, User, Zap, GraduationCap } from 'lucide-react';
 import type { CurrentUser } from '@/lib/api';
 import { LogoMark } from './AmbientBackdrop';
 
-export type NavKey = 'home' | 'library' | 'settings';
+export type NavKey = 'home' | 'library' | 'learning' | 'settings';
 
 const ITEMS: Array<{ key: NavKey; icon: typeof Library; label: string; sub?: string }> = [
   { key: 'home', icon: Library, label: '知', sub: '总结' },
   { key: 'library', icon: FileText, label: '行', sub: '收藏' },
+  { key: 'learning', icon: GraduationCap, label: '学', sub: '复习' },
   { key: 'settings', icon: Settings, label: '设置' },
 ];
 

@@ -18,8 +18,49 @@ import {
   findLibraryItemByBvid,
   saveLibraryItem,
   deleteLibraryItem,
+  reindexLibraryFts,
+  listTags,
+  updateTagMetadata,
+  renameTag,
+  mergeTags,
+  deleteTag,
+  bulkAddTags,
+  bulkRemoveTags,
+  bulkSetCategory,
+  bulkDeleteItems,
+  listSnippets,
+  createSnippet,
+  updateSnippet,
+  deleteSnippet,
 } from "../db/libraryStore";
+import {
+  listPaths,
+  createPath,
+  updatePath,
+  deletePath,
+  addPathItem,
+  removePathItem,
+  markPathItemComplete,
+  reorderPathItems,
+  listDueReviews,
+  createReviewItem,
+  answerReviewItem,
+  deleteReviewItem,
+  saveQuiz,
+  getQuiz,
+  submitQuiz,
+} from "../db/learningStore";
 import { chatCompletion, suggestTags } from "../llm/summarize";
+import {
+  recordApiUsage,
+  getAdminStats,
+  listAdminUsers,
+  listAdminTasks,
+  listAdminUsage,
+  getOrCreateChatThread,
+  listChatMessages,
+  appendChatMessage,
+} from "../db/usageStore";
 import { enforceRateLimit } from "../common/rateLimit";
 
 function nowIso(): string {
@@ -214,6 +255,17 @@ export function createApiRouter(db: Database.Database): Router {
     return user.id;
   }
 
+  const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "444925817@qq.com").trim().toLowerCase();
+
+  function requireAdmin(req: Request, res: Response): boolean {
+    const user = (req as any).user;
+    if (!user || String(user.email || "").trim().toLowerCase() !== ADMIN_EMAIL) {
+      res.status(403).json({ success: false, error: "无管理员权限" });
+      return false;
+    }
+    return true;
+  }
+
   // ── Config (public only) ────────────────────────────────────────────
   router.get("/api/config", (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
@@ -333,6 +385,7 @@ export function createApiRouter(db: Database.Database): Router {
         ],
         900,
       );
+      recordApiUsage(db, userId, { provider: "deepseek", model: config.deepseek_model, endpoint: "/api/llm/chat", tokens_input: Math.ceil((summary.length + transcript.length + question.length) / 4), tokens_output: Math.ceil(answer.length / 4) });
       res.json({ success: true, answer, citations });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message || "问答失败" });
@@ -364,6 +417,7 @@ export function createApiRouter(db: Database.Database): Router {
         ],
         1600,
       );
+      recordApiUsage(db, userId, { provider: "deepseek", model: config.deepseek_model, endpoint: "/api/llm/rewrite", tokens_input: Math.ceil(summary.length / 4), tokens_output: Math.ceil(text.length / 4) });
       res.json({ success: true, text });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message || "改写失败" });
@@ -449,6 +503,141 @@ export function createApiRouter(db: Database.Database): Router {
       page: result.page,
       page_size: result.pageSize,
     });
+  });
+
+  router.post("/api/library/reindex", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const indexed = reindexLibraryFts(db, userId);
+    res.json({ success: true, indexed });
+  });
+
+  router.get("/api/tags", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    res.json({ success: true, tags: listTags(db, userId) });
+  });
+
+  router.post("/api/tags/metadata", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    updateTagMetadata(db, userId, String(req.body.name || ""), String(req.body.color || "#0ea5e9"), String(req.body.description || ""));
+    res.json({ success: true, tags: listTags(db, userId) });
+  });
+
+  router.post("/api/tags/rename", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const changed = renameTag(db, userId, String(req.body.from || ""), String(req.body.to || ""));
+    res.json({ success: true, changed, tags: listTags(db, userId) });
+  });
+
+  router.post("/api/tags/merge", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const changed = mergeTags(db, userId, String(req.body.from || ""), String(req.body.to || ""));
+    res.json({ success: true, changed, tags: listTags(db, userId) });
+  });
+
+  router.post("/api/tags/delete", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const changed = deleteTag(db, userId, String(req.body.name || ""));
+    res.json({ success: true, changed, tags: listTags(db, userId) });
+  });
+
+  router.post("/api/library/bulk/tags/add", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const changed = bulkAddTags(db, userId, req.body.ids || [], req.body.tags || []);
+    res.json({ success: true, changed });
+  });
+
+  router.post("/api/library/bulk/tags/remove", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const changed = bulkRemoveTags(db, userId, req.body.ids || [], req.body.tags || []);
+    res.json({ success: true, changed });
+  });
+
+  router.post("/api/library/bulk/category", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const changed = bulkSetCategory(db, userId, req.body.ids || [], String(req.body.category || "待整理"));
+    res.json({ success: true, changed });
+  });
+
+  router.post("/api/library/bulk/delete", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const changed = bulkDeleteItems(db, userId, req.body.ids || []);
+    res.json({ success: true, changed });
+  });
+
+  router.get("/api/snippets", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const libraryItemId = String(req.query.library_item_id || "").trim() || undefined;
+    res.json({ success: true, snippets: listSnippets(db, userId, libraryItemId) });
+  });
+
+  router.post("/api/snippets", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const libraryItemId = String(req.body.library_item_id || "").trim();
+    if (!libraryItemId || !findLibraryItem(db, userId, libraryItemId)) {
+      res.status(404).json({ success: false, error: "未找到收藏" });
+      return;
+    }
+    const snippet = createSnippet(db, userId, {
+      library_item_id: libraryItemId,
+      content: String(req.body.content || "").trim(),
+      source_text: String(req.body.source_text || "").trim(),
+      timestamp_sec: req.body.timestamp_sec === undefined ? null : Number(req.body.timestamp_sec),
+      tags: Array.isArray(req.body.tags) ? req.body.tags : [],
+    });
+    res.json({ success: true, snippet });
+  });
+
+  router.post("/api/snippets/:id", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const snippet = updateSnippet(db, userId, req.params.id, {
+      content: String(req.body.content || "").trim(),
+      source_text: String(req.body.source_text || "").trim(),
+      timestamp_sec: req.body.timestamp_sec === undefined ? null : Number(req.body.timestamp_sec),
+      tags: Array.isArray(req.body.tags) ? req.body.tags : [],
+    });
+    if (!snippet) { res.status(404).json({ success: false, error: "未找到片段" }); return; }
+    res.json({ success: true, snippet });
+  });
+
+  router.delete("/api/snippets/:id", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const ok = deleteSnippet(db, userId, req.params.id);
+    res.json({ success: ok, error: ok ? undefined : "未找到片段" });
+  });
+
+  router.post("/api/export/bulk/markdown", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const ids = Array.isArray(req.body.ids) ? req.body.ids.map(String).slice(0, 100) : [];
+    const items = ids.map((id: string) => findLibraryItem(db, userId, id)).filter(Boolean) as any[];
+    const md = items.map(itemToMarkdown).join("\n\n---\n\n");
+    res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+    res.setHeader("Content-Disposition", contentDisposition(`bilistudy-export-${new Date().toISOString().slice(0, 10)}.md`));
+    res.send(md || "# BiliStudy Export\n\n没有选中的条目。\n");
+  });
+
+  router.post("/api/export/bulk/json", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const ids = Array.isArray(req.body.ids) ? req.body.ids.map(String).slice(0, 100) : [];
+    const items = ids.map((id: string) => findLibraryItem(db, userId, id)).filter(Boolean);
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Disposition", contentDisposition(`bilistudy-export-${new Date().toISOString().slice(0, 10)}.json`));
+    res.send(JSON.stringify({ exported_at: new Date().toISOString(), items }, null, 2));
   });
 
   router.get("/api/library/check/:bvid", (req: Request, res: Response) => {
@@ -547,6 +736,178 @@ export function createApiRouter(db: Database.Database): Router {
       vault_name: config.obsidian_vault_name || "",
       markdown: md,
     });
+  });
+
+  // ── Learning paths / review / quizzes ─────────────────────────────────
+  router.get("/api/paths", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    res.json({ success: true, paths: listPaths(db, userId) });
+  });
+
+  router.post("/api/paths", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const path = createPath(db, userId, { title: String(req.body.title || "未命名学习路径"), description: String(req.body.description || "") });
+    res.json({ success: true, path });
+  });
+
+  router.post("/api/paths/:id", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const path = updatePath(db, userId, req.params.id, { title: req.body.title, description: req.body.description });
+    if (!path) { res.status(404).json({ success: false, error: "未找到学习路径" }); return; }
+    res.json({ success: true, path });
+  });
+
+  router.delete("/api/paths/:id", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const ok = deletePath(db, userId, req.params.id);
+    res.json({ success: ok, error: ok ? undefined : "未找到学习路径" });
+  });
+
+  router.post("/api/paths/:id/items", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const ok = addPathItem(db, userId, req.params.id, String(req.body.library_item_id || ""));
+    res.json({ success: ok, paths: listPaths(db, userId), error: ok ? undefined : "添加失败" });
+  });
+
+  router.post("/api/paths/:id/items/reorder", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const ok = reorderPathItems(db, userId, req.params.id, Array.isArray(req.body.ordered_ids) ? req.body.ordered_ids : []);
+    res.json({ success: ok, paths: listPaths(db, userId) });
+  });
+
+  router.post("/api/paths/:id/items/:itemId/complete", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const ok = markPathItemComplete(db, userId, req.params.id, req.params.itemId, !!req.body.completed);
+    res.json({ success: ok, paths: listPaths(db, userId) });
+  });
+
+  router.delete("/api/paths/:id/items/:itemId", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const ok = removePathItem(db, userId, req.params.id, req.params.itemId);
+    res.json({ success: ok, paths: listPaths(db, userId) });
+  });
+
+  router.get("/api/review/due", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    res.json({ success: true, items: listDueReviews(db, userId) });
+  });
+
+  router.post("/api/review/items", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const item = createReviewItem(db, userId, req.body || {});
+    res.json({ success: true, item });
+  });
+
+  router.post("/api/review/:id/answer", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const item = answerReviewItem(db, userId, req.params.id, Number(req.body.quality || 0));
+    if (!item) { res.status(404).json({ success: false, error: "未找到复习卡" }); return; }
+    res.json({ success: true, item });
+  });
+
+  router.delete("/api/review/:id", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const ok = deleteReviewItem(db, userId, req.params.id);
+    res.json({ success: ok });
+  });
+
+  router.post("/api/quizzes/generate", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const item = findLibraryItem(db, userId, String(req.body.library_item_id || ""));
+    if (!item) { res.status(404).json({ success: false, error: "未找到收藏" }); return; }
+    const config = getDecryptedConfig(db, userId);
+    if (!config.api_key) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
+    try {
+      const raw = await chatCompletion(
+        { apiKey: config.api_key, baseUrl: config.deepseek_base_url, model: config.deepseek_model },
+        [
+          { role: "system", content: "你是学习测验出题助手。只返回 JSON 数组，不要 Markdown。每题包含 type, question, options, answer, explanation。" },
+          { role: "user", content: `基于以下内容生成 5 道中文学习测验题，题型混合选择题/判断题/简答题。\n标题：${item.title}\n总结：${item.summary}\n字幕摘录：${(item.transcript || "").slice(0, 4000)}` },
+        ],
+        1400,
+      );
+      const jsonText = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+      let questions: any[] = [];
+      try { questions = JSON.parse(jsonText); } catch { questions = [{ type: "short", question: "请概括这条内容的核心观点", options: [], answer: "参考原总结", explanation: item.summary.slice(0, 300) }]; }
+      recordApiUsage(db, userId, { provider: "deepseek", model: config.deepseek_model, endpoint: "/api/quizzes/generate", tokens_input: Math.ceil((item.summary.length + (item.transcript || "").slice(0, 4000).length) / 4), tokens_output: Math.ceil(raw.length / 4) });
+      const quiz = saveQuiz(db, userId, item.id, Array.isArray(questions) ? questions.slice(0, 8) : []);
+      res.json({ success: true, quiz });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || "生成测验失败" });
+    }
+  });
+
+  router.get("/api/quizzes/:id", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const quiz = getQuiz(db, userId, req.params.id);
+    if (!quiz) { res.status(404).json({ success: false, error: "未找到测验" }); return; }
+    res.json({ success: true, quiz });
+  });
+
+  router.post("/api/quizzes/:id/submit", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const quiz = submitQuiz(db, userId, req.params.id, req.body.answers || {});
+    if (!quiz) { res.status(404).json({ success: false, error: "未找到测验" }); return; }
+    res.json({ success: true, quiz });
+  });
+
+  // ── Admin / chat persistence ─────────────────────────────────────────
+  router.get("/api/admin/stats", (req: Request, res: Response) => {
+    if (!requireAdmin(req, res)) return;
+    res.json({ success: true, stats: getAdminStats(db) });
+  });
+
+  router.get("/api/admin/users", (req: Request, res: Response) => {
+    if (!requireAdmin(req, res)) return;
+    res.json({ success: true, users: listAdminUsers(db) });
+  });
+
+  router.get("/api/admin/tasks", (req: Request, res: Response) => {
+    if (!requireAdmin(req, res)) return;
+    res.json({ success: true, tasks: listAdminTasks(db) });
+  });
+
+  router.get("/api/admin/usage", (req: Request, res: Response) => {
+    if (!requireAdmin(req, res)) return;
+    res.json({ success: true, usage: listAdminUsage(db) });
+  });
+
+  router.get("/api/chat/thread", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const thread = getOrCreateChatThread(db, userId, {
+      library_item_id: String(req.query.library_item_id || "") || undefined,
+      target_key: String(req.query.target_key || "") || undefined,
+      title: String(req.query.title || "学习对话"),
+    });
+    res.json({ success: true, thread, messages: listChatMessages(db, userId, (thread as any).id) });
+  });
+
+  router.post("/api/chat/thread/:id/messages", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const message = appendChatMessage(db, userId, req.params.id, {
+      role: String(req.body.role || "user"),
+      content: String(req.body.content || ""),
+      citations: Array.isArray(req.body.citations) ? req.body.citations : [],
+    });
+    if (!message) { res.status(404).json({ success: false, error: "未找到对话" }); return; }
+    res.json({ success: true, message });
   });
 
   // ── Audio proxy for Xiaoyuzhou podcast (bypasses CORS / Referer restriction) ─

@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, BookOpen, ExternalLink, Trash2, FileDown, FileText, BookMarked } from 'lucide-react';
+import { Search, BookOpen, ExternalLink, Trash2, FileDown, FileText, BookMarked, CheckSquare, Square, RefreshCw, Tags } from 'lucide-react';
 import {
   getLibrary,
   getLibraryItem,
   deleteLibrary,
   fetchAndDownload,
   getObsidianPayload,
+  reindexLibrary,
+  bulkAddTags,
+  bulkRemoveTags,
+  bulkSetCategory,
+  bulkDeleteLibrary,
+  downloadBulkExport,
+  renameTag,
+  mergeTag,
+  deleteTag as deleteTagApi,
   type LibraryItem,
   type AppConfig,
 } from '@/lib/api';
@@ -75,6 +84,8 @@ export function FavoritesPage({
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const pageSize = 20;
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const requestSeq = useRef(0);
   // Obsidian export state — see handleObsidian() for the flow.
   const [obsidianModal, setObsidianModal] = useState<{
@@ -96,6 +107,7 @@ export function FavoritesPage({
         setTags(data.tags || []);
         setTotal(data.total || 0);
         setPage(data.page || nextPage);
+        setSelectedIds((ids) => ids.filter((id) => (data.items || []).some((item) => item.id === id)));
       } catch {
         if (seq !== requestSeq.current) return;
         setItems([]);
@@ -192,6 +204,87 @@ export function FavoritesPage({
       onShowToast('已删除', 'ok');
     } catch (err: any) {
       onShowToast('删除失败：' + (err.message || ''), 'error');
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((ids) => ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+  }
+
+  function selectCurrentPage() {
+    setSelectedIds(items.map((item) => item.id));
+  }
+
+  async function refreshAfterBulk(msg: string) {
+    setSelectedIds([]);
+    await reload(query.trim(), category, tag, page, sort);
+    bumpRefreshKey();
+    onShowToast(msg, 'ok');
+  }
+
+  async function handleReindex() {
+    try {
+      const data = await reindexLibrary();
+      onShowToast(`已重建 ${data.indexed || 0} 条索引`, 'ok');
+    } catch (err: any) {
+      onShowToast('重建索引失败：' + (err.message || ''), 'error');
+    }
+  }
+
+  function parseTagInput(raw: string) {
+    return raw.split(/[,，\s#]+/).map((s) => s.trim()).filter(Boolean);
+  }
+
+  async function handleBulkAddTags() {
+    const raw = window.prompt('输入要添加的标签，多个用空格或逗号分隔');
+    if (!raw) return;
+    try {
+      const data = await bulkAddTags({ ids: selectedIds, tags: parseTagInput(raw) });
+      await refreshAfterBulk(`已更新 ${data.changed || 0} 条收藏`);
+    } catch (err: any) {
+      onShowToast('批量添加标签失败：' + (err.message || ''), 'error');
+    }
+  }
+
+  async function handleBulkRemoveTags() {
+    const raw = window.prompt('输入要移除的标签，多个用空格或逗号分隔');
+    if (!raw) return;
+    try {
+      const data = await bulkRemoveTags({ ids: selectedIds, tags: parseTagInput(raw) });
+      await refreshAfterBulk(`已更新 ${data.changed || 0} 条收藏`);
+    } catch (err: any) {
+      onShowToast('批量移除标签失败：' + (err.message || ''), 'error');
+    }
+  }
+
+  async function handleBulkCategory() {
+    const next = window.prompt('输入新的分类', category || '待整理');
+    if (!next) return;
+    try {
+      const data = await bulkSetCategory({ ids: selectedIds, category: next.trim() || '待整理' });
+      await refreshAfterBulk(`已更新 ${data.changed || 0} 条收藏`);
+    } catch (err: any) {
+      onShowToast('批量修改分类失败：' + (err.message || ''), 'error');
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (!window.confirm(`确定删除选中的 ${selectedIds.length} 条收藏吗？`)) return;
+    try {
+      const data = await bulkDeleteLibrary({ ids: selectedIds });
+      if (openItem && selectedIds.includes(openItem.id)) setOpenItem(null);
+      await refreshAfterBulk(`已删除 ${data.changed || 0} 条收藏`);
+    } catch (err: any) {
+      onShowToast('批量删除失败：' + (err.message || ''), 'error');
+    }
+  }
+
+  async function handleBulkExport(kind: 'markdown' | 'json') {
+    try {
+      await downloadBulkExport(kind, selectedIds);
+      onShowToast('已开始下载', 'ok');
+    } catch (err: any) {
+      onShowToast('批量导出失败：' + (err.message || ''), 'error');
     }
   }
 
@@ -348,6 +441,30 @@ export function FavoritesPage({
         )}
       </div>
 
+      {isLoggedIn && (
+        <div className="max-w-5xl mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <button type="button" onClick={handleReindex} className="flex items-center gap-1 px-2.5 py-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.55)', color: '#0369a1', border: '1px solid rgba(14,165,233,0.16)' }}>
+            <RefreshCw className="w-3 h-3" /> 重建索引
+          </button>
+          <button type="button" onClick={() => setTagManagerOpen(true)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.55)', color: '#0369a1', border: '1px solid rgba(14,165,233,0.16)' }}>
+            <Tags className="w-3 h-3" /> 标签管理
+          </button>
+          {selectedIds.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-xl" style={{ background: 'rgba(14,165,233,0.10)', border: '1px solid rgba(14,165,233,0.22)', color: '#0369a1' }}>
+              <span className="font-bold">已选择 {selectedIds.length} 条</span>
+              <button type="button" onClick={selectCurrentPage} className="underline">全选本页</button>
+              <button type="button" onClick={() => setSelectedIds([])} className="underline">清空</button>
+              <button type="button" onClick={handleBulkAddTags}>加标签</button>
+              <button type="button" onClick={handleBulkRemoveTags}>移除标签</button>
+              <button type="button" onClick={handleBulkCategory}>改分类</button>
+              <button type="button" onClick={() => handleBulkExport('markdown')}>导出 MD</button>
+              <button type="button" onClick={() => handleBulkExport('json')}>导出 JSON</button>
+              <button type="button" onClick={handleBulkDelete} style={{ color: '#b91c1c' }}>删除</button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Cards / empty */}
       <div className="max-w-5xl mt-4">
         {!isLoggedIn ? (
@@ -392,9 +509,18 @@ export function FavoritesPage({
             {items.map((item) => (
               <article
                 key={item.id}
-                className="rounded-2xl p-4 flex flex-col gap-3"
+                className="rounded-2xl p-4 flex flex-col gap-3 relative"
                 style={cardStyle}
               >
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleSelect(item.id); }}
+                  className="absolute top-3 right-3 p-1 rounded-lg z-10"
+                  style={{ background: selectedIds.includes(item.id) ? 'rgba(14,165,233,0.18)' : 'rgba(255,255,255,0.65)', color: '#0369a1', border: '1px solid rgba(14,165,233,0.16)' }}
+                  title="选择"
+                >
+                  {selectedIds.includes(item.id) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                </button>
                 {item.pic && (
                   <div className="w-full h-28 rounded-xl overflow-hidden" style={{ background: '#e0f2fe' }}>
                     <img src={item.pic} alt="" loading="lazy" className="w-full h-full object-cover" />
@@ -430,9 +556,9 @@ export function FavoritesPage({
                     ))}
                   </div>
                 )}
-                {item.summary && (
+                {(item.snippet || item.summary) && (
                   <p className="text-xs line-clamp-2" style={{ color: '#5b8fae', lineHeight: 1.55 }}>
-                    {item.summary.replace(/[#>*`_\-]/g, '').slice(0, 120)}...
+                    {(item.snippet || item.summary).replace(/<\/?mark>/g, '').replace(/[#>*`_\-]/g, '').slice(0, 140)}...
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2 mt-auto pt-2">
@@ -678,6 +804,15 @@ export function FavoritesPage({
       {/* Obsidian export modal — persistent banner so the user can re-copy
           if Obsidian was already open and didn't grab focus, and the URI
           can be re-clicked if the OS scheme handler missed the first time. */}
+      {tagManagerOpen && (
+        <TagManagerModal
+          tags={tags}
+          onClose={() => setTagManagerOpen(false)}
+          onRefresh={() => reload(query.trim(), category, tag, page, sort)}
+          onShowToast={onShowToast}
+        />
+      )}
+
       {obsidianModal && (
         <ObsidianExportModal
           state={obsidianModal}
@@ -685,6 +820,76 @@ export function FavoritesPage({
           onShowToast={onShowToast}
         />
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Tag manager modal
+// ─────────────────────────────────────────────────────────────────────────
+
+interface TagManagerModalProps {
+  tags: string[];
+  onClose: () => void;
+  onRefresh: () => void | Promise<void>;
+  onShowToast: (msg: string, type: 'ok' | 'error' | 'info') => void;
+}
+
+function TagManagerModal({ tags, onClose, onRefresh, onShowToast }: TagManagerModalProps) {
+  async function renameOne(oldName: string) {
+    const next = window.prompt('重命名标签', oldName);
+    if (!next || next === oldName) return;
+    try {
+      const data = await renameTag({ from: oldName, to: next });
+      await onRefresh();
+      onShowToast(`已更新 ${data.changed || 0} 条收藏`, 'ok');
+    } catch (err: any) {
+      onShowToast('重命名失败：' + (err.message || ''), 'error');
+    }
+  }
+
+  async function mergeOne(oldName: string) {
+    const next = window.prompt('合并到哪个标签？', oldName);
+    if (!next || next === oldName) return;
+    try {
+      const data = await mergeTag({ from: oldName, to: next });
+      await onRefresh();
+      onShowToast(`已合并 ${data.changed || 0} 条收藏`, 'ok');
+    } catch (err: any) {
+      onShowToast('合并失败：' + (err.message || ''), 'error');
+    }
+  }
+
+  async function deleteOne(name: string) {
+    if (!window.confirm(`确定从所有收藏中移除 #${name} 吗？`)) return;
+    try {
+      const data = await deleteTagApi({ name });
+      await onRefresh();
+      onShowToast(`已移除 ${data.changed || 0} 条收藏中的标签`, 'ok');
+    } catch (err: any) {
+      onShowToast('删除标签失败：' + (err.message || ''), 'error');
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(13,45,69,0.45)', backdropFilter: 'blur(8px)' }} onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl p-6 flex flex-col gap-4" onClick={(e) => e.stopPropagation()} style={{ background: 'rgba(255,255,255,0.95)', border: '1px solid rgba(14,165,233,0.25)', boxShadow: '0 24px 64px rgba(14,165,233,0.18)' }}>
+        <div>
+          <h3 className="text-base font-bold" style={{ color: '#0d2d45' }}>标签管理</h3>
+          <p className="text-xs mt-1" style={{ color: '#7db8d4' }}>可重命名、合并或从所有收藏移除标签。</p>
+        </div>
+        <div className="max-h-80 overflow-y-auto flex flex-col gap-2">
+          {tags.length ? tags.map((name) => (
+            <div key={name} className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.12)' }}>
+              <span className="text-sm font-semibold flex-1" style={{ color: '#0369a1' }}>#{name}</span>
+              <button type="button" onClick={() => renameOne(name)} className="text-xs underline" style={{ color: '#0369a1' }}>重命名</button>
+              <button type="button" onClick={() => mergeOne(name)} className="text-xs underline" style={{ color: '#0369a1' }}>合并</button>
+              <button type="button" onClick={() => deleteOne(name)} className="text-xs underline" style={{ color: '#b91c1c' }}>删除</button>
+            </div>
+          )) : <EmptyState title="暂无标签" description="收藏内容添加标签后会出现在这里。" />}
+        </div>
+        <button type="button" onClick={onClose} className="self-end text-sm px-3 py-1.5 rounded-xl" style={{ background: 'rgba(255,255,255,0.7)', color: '#0369a1', border: '1px solid rgba(14,165,233,0.20)' }}>完成</button>
+      </div>
     </div>
   );
 }

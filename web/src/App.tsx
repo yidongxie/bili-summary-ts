@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { AmbientBackdrop } from './components/AmbientBackdrop';
-import { Library, FileText, Settings, User } from 'lucide-react';
+import { Library, FileText, Settings, User, GraduationCap } from 'lucide-react';
 import { Sidebar, type NavKey } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { GlobalSearch } from './components/GlobalSearch';
@@ -9,6 +9,8 @@ import { Toast, type ToastState } from './components/Toast';
 import { HomePage, type SummaryMode } from './pages/HomePage';
 import { ResultPage } from './pages/ResultPage';
 import { FavoritesPage } from './pages/FavoritesPage';
+import { LearningPage } from './pages/LearningPage';
+import { AdminPage } from './pages/AdminPage';
 import { SettingsPage } from './pages/SettingsPage';
 import {
   getMe,
@@ -24,6 +26,8 @@ type View =
   | { kind: 'home' }
   | { kind: 'result'; url: string; mode: string; initialResult?: SummaryResult; initialSaved?: boolean }
   | { kind: 'library'; openId?: string }
+  | { kind: 'learning' }
+  | { kind: 'admin' }
   | { kind: 'settings' };
 
 
@@ -81,6 +85,7 @@ export default function App() {
   function navTo(key: NavKey) {
     if (key === 'home') setView({ kind: 'home' });
     else if (key === 'library') setView({ kind: 'library' });
+    else if (key === 'learning') setView({ kind: 'learning' });
     else if (key === 'settings') setView({ kind: 'settings' });
     else if (key === 'summarizer') setView({ kind: 'summarizer' });
   }
@@ -88,10 +93,10 @@ export default function App() {
   const navActive: NavKey =
     view.kind === 'library'
       ? 'library'
-      : view.kind === 'settings'
-        ? 'settings'
-        : view.kind === 'summarizer'
-          ? 'summarizer'
+      : view.kind === 'learning'
+        ? 'learning'
+        : view.kind === 'settings'
+          ? 'settings'
           : 'home';
 
   function handleSubmitSummary(url: string, mode: SummaryMode) {
@@ -206,6 +211,17 @@ export default function App() {
             />
           )}
 
+          {view.kind === 'learning' && (
+            <LearningPage
+              isLoggedIn={!!user}
+              onShowToast={showToast}
+            />
+          )}
+
+          {view.kind === 'admin' && (
+            <AdminPage onShowToast={showToast} />
+          )}
+
           {view.kind === 'settings' && (
             <SettingsPage
               isLoggedIn={!!user}
@@ -239,6 +255,8 @@ export default function App() {
         {[
           { key: 'home' as NavKey, label: '首页', icon: Library },
           { key: 'library' as NavKey, label: '收藏', icon: FileText },
+          { key: 'learning' as NavKey, label: '学习', icon: GraduationCap },
+          ...(user?.email === '444925817@qq.com' ? [{ key: 'admin' as any, label: '管理', icon: Settings }] : []),
           { key: 'settings' as NavKey, label: '设置', icon: Settings },
         ].map((item) => {
           const Icon = item.icon;
@@ -247,7 +265,7 @@ export default function App() {
             <button
               key={item.key}
               type="button"
-              onClick={() => navTo(item.key)}
+              onClick={() => item.key === 'admin' ? setView({ kind: 'admin' }) : navTo(item.key)}
               className="flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11px] font-semibold"
               style={{ color: active ? '#0284c7' : '#5b8fae', background: active ? 'rgba(14,165,233,0.12)' : 'transparent' }}
             >

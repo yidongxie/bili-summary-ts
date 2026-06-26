@@ -84,7 +84,65 @@ export type LibraryItem = {
   notes?: string;
   mode?: string;
   pic?: string;
+  snippet?: string;
+  highlights?: string[];
 };
+
+export type TagInfo = {
+  name: string;
+  count: number;
+  color?: string;
+  description?: string;
+};
+
+export type Snippet = {
+  id: string;
+  library_item_id: string;
+  content: string;
+  source_text?: string;
+  timestamp_sec?: number | null;
+  tags?: string[];
+  created_at: string;
+  updated_at?: string;
+};
+
+export type LearningPath = {
+  id: string;
+  title: string;
+  description?: string;
+  items?: Array<{ library_item_id: string; title?: string; author?: string; completed_at?: string | null }>;
+  total?: number;
+  completed?: number;
+};
+
+export type ReviewItem = {
+  id: string;
+  library_item_id?: string;
+  front: string;
+  back: string;
+  next_review_at?: string;
+  item_title?: string;
+};
+
+
+export type Quiz = {
+  id: string;
+  library_item_id: string;
+  questions?: Array<{ type: string; question: string; options?: string[]; answer?: string; explanation?: string }>;
+  score?: number;
+};
+
+export type BulkResult = { success: boolean; changed?: number; error?: string };
+
+export type AdminStats = {
+  users: number;
+  tasks_today: number;
+  failed_tasks: number;
+  usage_calls_7d: number;
+  estimated_cost_7d: number;
+  library_items: number;
+};
+
 
 export type LibraryListResponse = {
   items: LibraryItem[];
@@ -307,6 +365,121 @@ export function deleteLibrary(id: string) {
   return request('/api/library/' + encodeURIComponent(id), { method: 'DELETE' });
 }
 
+export function reindexLibrary() {
+  return request<{ success: boolean; indexed: number }>('/api/library/reindex', { method: 'POST' });
+}
+
+export function getTags() {
+  return request<{ success: boolean; tags: TagInfo[] }>('/api/tags');
+}
+
+export function updateTagMetadata(payload: { name: string; color?: string; description?: string }) {
+  return request<{ success: boolean; tags: TagInfo[] }>('/api/tags/metadata', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function renameTag(payload: { from: string; to: string }) {
+  return request<{ success: boolean; changed: number; tags: TagInfo[] }>('/api/tags/rename', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function mergeTag(payload: { from: string; to: string }) {
+  return request<{ success: boolean; changed: number; tags: TagInfo[] }>('/api/tags/merge', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function deleteTag(payload: { name: string }) {
+  return request<{ success: boolean; changed: number; tags: TagInfo[] }>('/api/tags/delete', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function bulkAddTags(payload: { ids: string[]; tags: string[] }) {
+  return request<BulkResult>('/api/library/bulk/tags/add', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function bulkRemoveTags(payload: { ids: string[]; tags: string[] }) {
+  return request<BulkResult>('/api/library/bulk/tags/remove', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function bulkSetCategory(payload: { ids: string[]; category: string }) {
+  return request<BulkResult>('/api/library/bulk/category', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function bulkDeleteLibrary(payload: { ids: string[] }) {
+  return request<BulkResult>('/api/library/bulk/delete', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function getSnippets(libraryItemId?: string) {
+  const q = new URLSearchParams();
+  if (libraryItemId) q.set('library_item_id', libraryItemId);
+  const qs = q.toString();
+  return request<{ success: boolean; snippets: Snippet[] }>('/api/snippets' + (qs ? '?' + qs : ''));
+}
+
+export function createSnippet(payload: { library_item_id: string; content: string; source_text?: string; timestamp_sec?: number | null; tags?: string[] }) {
+  return request<{ success: boolean; snippet: Snippet }>('/api/snippets', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function updateSnippet(id: string, payload: { content: string; source_text?: string; timestamp_sec?: number | null; tags?: string[] }) {
+  return request<{ success: boolean; snippet: Snippet }>('/api/snippets/' + encodeURIComponent(id), { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function deleteSnippetApi(id: string) {
+  return request<BulkResult>('/api/snippets/' + encodeURIComponent(id), { method: 'DELETE' });
+}
+
+export function downloadBulkExport(kind: 'markdown' | 'json', ids: string[]) {
+  return fetchAndDownloadPost('/api/export/bulk/' + kind, { ids });
+}
+
+export function getPaths() {
+  return request<{ success: boolean; paths: LearningPath[] }>('/api/paths');
+}
+
+export function createPathApi(payload: { title: string; description?: string }) {
+  return request<{ success: boolean; path: LearningPath }>('/api/paths', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function addPathItem(pathId: string, libraryItemId: string) {
+  return request<{ success: boolean; paths: LearningPath[] }>('/api/paths/' + encodeURIComponent(pathId) + '/items', { method: 'POST', body: JSON.stringify({ library_item_id: libraryItemId }) });
+}
+
+export function completePathItem(pathId: string, itemId: string, completed: boolean) {
+  return request<{ success: boolean; paths: LearningPath[] }>('/api/paths/' + encodeURIComponent(pathId) + '/items/' + encodeURIComponent(itemId) + '/complete', { method: 'POST', body: JSON.stringify({ completed }) });
+}
+
+export function getDueReviews() {
+  return request<{ success: boolean; items: ReviewItem[] }>('/api/review/due');
+}
+
+export function createReview(payload: { library_item_id?: string; front: string; back: string }) {
+  return request<{ success: boolean; item: ReviewItem }>('/api/review/items', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function answerReview(id: string, quality: number) {
+  return request<{ success: boolean; item: ReviewItem }>('/api/review/' + encodeURIComponent(id) + '/answer', { method: 'POST', body: JSON.stringify({ quality }) });
+}
+
+export function generateQuiz(libraryItemId: string) {
+  return request<{ success: boolean; quiz: Quiz }>('/api/quizzes/generate', { method: 'POST', body: JSON.stringify({ library_item_id: libraryItemId }) });
+}
+
+export function submitQuiz(id: string, answers: Record<string, unknown>) {
+  return request<{ success: boolean; quiz: Quiz }>('/api/quizzes/' + encodeURIComponent(id) + '/submit', { method: 'POST', body: JSON.stringify({ answers }) });
+}
+
+export function getAdminStats() {
+  return request<{ success: boolean; stats: AdminStats }>('/api/admin/stats');
+}
+
+export function getAdminUsers() {
+  return request<{ success: boolean; users: any[] }>('/api/admin/users');
+}
+
+export function getAdminTasks() {
+  return request<{ success: boolean; tasks: any[] }>('/api/admin/tasks');
+}
+
+export function getAdminUsage() {
+  return request<{ success: boolean; usage: any[] }>('/api/admin/usage');
+}
+
 // ---- export --------------------------------------------------------------
 
 export function getObsidianPayload(id: string) {
@@ -329,14 +502,21 @@ export function suggestTags(payload: { title: string; author: string; summary: s
   });
 }
 
-// ---- helpers -------------------------------------------------------------
-
-export async function fetchAndDownload(url: string) {
-  const r = await fetch(url, { credentials: 'include' });
+export async function fetchAndDownloadPost(url: string, payload: any) {
+  const r = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
   if (!r.ok) {
     const t = await r.text().catch(() => r.statusText);
     throw new Error(t || r.statusText);
   }
+  await downloadResponse(r);
+}
+
+async function downloadResponse(r: Response) {
   const cd = r.headers.get('Content-Disposition');
   let name = 'download';
   if (cd) {
@@ -365,4 +545,13 @@ export async function fetchAndDownload(url: string) {
     URL.revokeObjectURL(a.href);
     a.remove();
   }, 100);
+}
+
+export async function fetchAndDownload(url: string) {
+  const r = await fetch(url, { credentials: 'include' });
+  if (!r.ok) {
+    const t = await r.text().catch(() => r.statusText);
+    throw new Error(t || r.statusText);
+  }
+  await downloadResponse(r);
 }
