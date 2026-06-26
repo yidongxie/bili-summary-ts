@@ -645,22 +645,60 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
 
 function LoadingState({ progress, onBack }: { progress: string; onBack: () => void }) {
   const current = progressToStep(progress);
+  const totalSteps = PROCESS_STEPS.length;
+  const stepNames = PROCESS_STEPS.map(function pickLabel(raw: string) {
+    return raw.replace(/正在(.*?)\.{3}/, '$1').replace(/。*\.*$/, '');
+  });
+  const colors = ['var(--brand-green)', 'var(--brand-green-deep)', 'var(--brand-tag)', 'var(--brand-warn)', 'var(--brand-green)', 'var(--brand-green-deep)'];
+  function isDone(i: number, cur: number) { return i < cur; }
+  function isActive(i: number, cur: number) { return i === cur; }
+  function stepPercent(cur: number) { return totalSteps ? Math.round(((cur + 0.5) / totalSteps) * 100) : 0; }
   return (
     <main className="min-h-full flex items-center justify-center p-6" style={{ background: pageBg, color: fg }}>
-      <div className="w-full max-w-md rounded-3xl p-8 text-center" style={darkCardStyle}>
-        <div className="relative mx-auto mb-6 size-20 rounded-full border-4 animate-spin" style={{ borderColor: `${primary}33`, borderTopColor: primary }} />
-        <Sparkles className="w-8 h-8 mx-auto -mt-16 mb-8" style={{ color: 'var(--ink)' }} />
+      <div className="w-full max-w-md rounded-lg p-8 text-center" style={darkCardStyle}>
+        <Sparkles className="w-10 h-10 mx-auto mb-4" style={{ color: 'var(--brand-green)' }} />
         <h2 className="text-lg font-semibold">正在处理您的视频</h2>
         <p className="mt-2 text-sm" style={{ color: muted }}>{progress}</p>
-        <div className="mt-6 space-y-3 text-left">
+        <div className="mt-6 mb-1">
+          {/* HeroUI-style progress bar */}
+          <div className="w-full rounded-full overflow-hidden" style={{ height: 10, background: 'var(--surface)', border: '1px solid var(--hairline)' }}>
+            <div
+              className="h-full rounded-full transition-all duration-700 ease-out"
+              style={{
+                width: `${stepPercent(current)}%`,
+                background: `linear-gradient(90deg,${colors[Math.max(0, current)]},${colors[Math.min(totalSteps - 1, current + 1)]})`,
+              }}
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-between text-xs" style={{ color: muted }}>
+          <span>{stepNames[0]}</span>
+          <span className="font-mono">{current + 1} / {totalSteps}</span>
+          <span>{stepNames[totalSteps - 1]}</span>
+        </div>
+        <div className="mt-5 space-y-2 text-left">
           {PROCESS_STEPS.map((s, i) => (
-            <div key={s} className="flex items-center gap-3 text-sm" style={{ color: i <= current ? fg : muted }}>
-              {i < current ? <Check className="w-4 h-4" style={{ color: 'hsl(150 55% 48%)' }} /> : i === current ? <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--ink)' }} /> : <Circle className="w-4 h-4 opacity-50" />}
+            <div
+              key={s}
+              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors duration-300"
+              style={{
+                color: isDone(i, current) ? fg : isActive(i, current) ? fg : muted,
+                background: isDone(i, current) ? 'rgba(0,212,164,0.08)' : isActive(i, current) ? 'var(--surface)' : 'transparent',
+                border: isActive(i, current) ? '1px solid var(--hairline)' : '1px solid transparent',
+              }}
+            >
+              {isDone(i, current) ? (
+                <Check className="w-4 h-4" style={{ color: 'var(--brand-green)' }} />
+              ) : isActive(i, current) ? (
+                <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--ink)' }} />
+              ) : (
+                <Circle className="w-4 h-4 opacity-40" />
+              )}
               {s}
             </div>
           ))}
         </div>
-        <button onClick={onBack} className="mt-6 text-sm" style={{ color: muted }}>取消并返回</button>
+        <button onClick={onBack} className="mt-5 text-sm" style={{ color: muted }}>取消并返回</button>
       </div>
     </main>
   );
