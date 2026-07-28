@@ -1,6 +1,7 @@
 import React from 'react';
-import { Plus, Search, User, LogOut } from 'lucide-react';
+import { Plus, Search, User, LogOut, Sun, Moon } from 'lucide-react';
 import type { CurrentUser } from '@/lib/api';
+import { useTheme } from '@/lib/theme';
 
 interface TopNavProps {
   onNewSummary: () => void;
@@ -11,6 +12,7 @@ interface TopNavProps {
 }
 
 export const TopNav = React.memo(function TopNav({ onNewSummary, onOpenSearch, user, onLogin, onLogout }: TopNavProps) {
+  const { theme, toggle } = useTheme();
   return (
     <nav
       className="flex items-center px-3 sm:px-6 py-3 border-b shrink-0"
@@ -41,6 +43,17 @@ export const TopNav = React.memo(function TopNav({ onNewSummary, onOpenSearch, u
       </div>
 
       <div className="flex-1" />
+
+      <button
+        type="button"
+        onClick={toggle}
+        className="flex items-center justify-center w-8 h-8 rounded-full transition-colors mr-2"
+        style={{ color: 'var(--steel)', background: 'var(--surface)', border: '1px solid var(--hairline)' }}
+        title={theme === 'light' ? '切换暗色模式' : '切换亮色模式'}
+        aria-label="切换主题"
+      >
+        {theme === 'light' ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
+      </button>
 
       {user ? (
         <div className="flex items-center gap-2">

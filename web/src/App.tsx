@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { AmbientBackdrop } from './components/AmbientBackdrop';
-import { Library, FileText, Settings, User, GraduationCap } from 'lucide-react';
+import { Library, FileText, Settings, User, GraduationCap, Sun, Moon } from 'lucide-react';
+import { ThemeProvider, useTheme } from './lib/theme';
 import { Sidebar, type NavKey } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { GlobalSearch } from './components/GlobalSearch';
@@ -189,11 +190,12 @@ export default function App() {
   }, [showToast]);
 
   return (
+    <ThemeProvider>
     <div
       className="size-full flex flex-col overflow-hidden h-full"
       style={{
         background: 'var(--canvas)',
-        fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        fontFamily: "var(--font-sans)",
       }}
     >
       <AmbientBackdrop />
@@ -299,7 +301,6 @@ export default function App() {
           </footer>
         </div>
       </div>
-
       <nav
         className="md:hidden fixed bottom-3 left-3 right-3 z-40 grid grid-cols-4 gap-1 rounded-lg p-1"
         style={{
@@ -354,5 +355,6 @@ export default function App() {
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
+    </ThemeProvider>
   );
 }
