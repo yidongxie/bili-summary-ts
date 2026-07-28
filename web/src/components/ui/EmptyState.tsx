@@ -1,4 +1,4 @@
-import type { PropsWithChildren, ReactNode } from 'react';
+import React, { type PropsWithChildren, type ReactNode } from 'react';
 import { BookOpen } from 'lucide-react';
 
 interface EmptyStateProps extends PropsWithChildren {
