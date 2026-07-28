@@ -56,9 +56,13 @@ async function main() {
   const port = await findFreePort();
   console.log(`端口: ${port}`);
 
-  // Ensure dev defaults for local dev
+  // Generate a random encryption key for local dev.
+  // This key only needs to be stable within a dev session so previously-encrypted
+  // config values stored in SQLite remain readable across restarts.
+  // For production deployments, ENCRYPTION_KEY must be set in the environment.
   if (!process.env.ENCRYPTION_KEY) {
-    process.env.ENCRYPTION_KEY = "dev-key-32-chars-for-local-dev-only!!";
+    process.env.ENCRYPTION_KEY = require("crypto").randomBytes(32).toString("hex");
+    console.warn("[launcher] Auto-generated ENCRYPTION_KEY — will change each run.");
   }
 
   await startServer(HOST, port);

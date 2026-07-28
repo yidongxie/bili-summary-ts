@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, PropsWithChildren } from 'react';
+import React, { type ButtonHTMLAttributes, type PropsWithChildren } from 'react';
 
 type ChipTone = 'blue' | 'green' | 'red' | 'gray';
 
@@ -14,7 +14,7 @@ const tones: Record<ChipTone, { color: string; bg: string; border: string; activ
   gray: { color: 'var(--steel)', bg: 'var(--surface)', border: 'var(--hairline)', activeBg: 'var(--primary)', activeBorder: 'var(--primary)' },
 };
 
-export function Chip({ children, active = false, tone = 'blue', className = '', style, ...props }: ChipProps) {
+export const Chip = React.memo(function Chip({ children, active = false, tone = 'blue', className = '', style, ...props }: ChipProps) {
   const t = tones[tone];
   return (
     <button
@@ -32,4 +32,4 @@ export function Chip({ children, active = false, tone = 'blue', className = '', 
       {children}
     </button>
   );
-}
+});

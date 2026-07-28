@@ -12,7 +12,23 @@ import { createApiRouter } from "./routes/api";
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = parseInt(process.env.PORT || "8080", 10);
 const BASE_URL = process.env.BASE_URL || `http://127.0.0.1:${PORT}`;
-const SESSION_SECRET = process.env.SESSION_SECRET || "bilistudy-dev-session-secret";
+
+function getSessionSecret(): string {
+  const envSecret = process.env.SESSION_SECRET;
+  if (envSecret) return envSecret;
+  if (process.env.NODE_ENV !== "production") {
+    // Dev fallback: generate a random secret each time (launcher.ts sets a stable one)
+    const fallback = require("crypto").randomBytes(32).toString("hex");
+    process.env.SESSION_SECRET = fallback;
+    console.warn("[startup] Using auto-generated SESSION_SECRET — sessions will reset on restart.");
+    return fallback;
+  }
+  console.error("ERROR: SESSION_SECRET environment variable is required in production");
+  console.error('Generate one: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  process.exit(1);
+}
+
+const SESSION_SECRET = getSessionSecret();
 
 const app = express();
 app.set("trust proxy", 1);

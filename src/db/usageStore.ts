@@ -1,9 +1,6 @@
 import Database from "better-sqlite3";
 import crypto from "crypto";
-
-function nowSql(): string {
-  return new Date().toISOString().replace("T", " ").slice(0, 19);
-}
+import { nowSql } from "../common/date";
 
 export function recordApiUsage(db: Database.Database, userId: number, usage: {
   provider?: string;

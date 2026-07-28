@@ -2,6 +2,7 @@
 
 import Database from "better-sqlite3";
 import crypto from "crypto";
+import { nowSql } from "../common/date";
 
 export interface LibraryItem {
   id: string;
@@ -458,8 +459,4 @@ function cleanTag(tag: string): string {
 
 function safeIds(ids: string[]): string[] {
   return [...new Set((Array.isArray(ids) ? ids : []).map(String).map((s) => s.trim()).filter(Boolean))].slice(0, 100);
-}
-
-function nowSql(): string {
-  return new Date().toISOString().replace("T", " ").slice(0, 19);
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { AmbientBackdrop } from './components/AmbientBackdrop';
 import { Library, FileText, Settings, User, GraduationCap } from 'lucide-react';
 import { Sidebar, type NavKey } from './components/Sidebar';
@@ -6,6 +6,7 @@ import { TopNav } from './components/TopNav';
 import { GlobalSearch } from './components/GlobalSearch';
 import { LoginOverlay } from './components/LoginOverlay';
 import { Toast, type ToastState } from './components/Toast';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { HomePage, type SummaryMode } from './pages/HomePage';
 import { ResultPage } from './pages/ResultPage';
 import { FavoritesPage } from './pages/FavoritesPage';
@@ -20,6 +21,7 @@ import {
   type CurrentUser,
   type LibraryItem,
   type SummaryResult,
+  type SubtitleSegment,
 } from './lib/api';
 
 type View =
@@ -32,6 +34,14 @@ type View =
 
 
 function libraryItemToSummaryResult(item: LibraryItem): SummaryResult {
+  // Parse stored transcript text into subtitle segments for display.
+  // Stored transcripts are plain text (possibly with [MM:SS] or [seconds] markers).
+  const transcriptText = item.transcript || '';
+  let subtitleSegments: SubtitleSegment[] | undefined;
+  if (transcriptText) {
+    subtitleSegments = parseTranscriptToSegments(transcriptText);
+  }
+
   return {
     type: item.bvid?.startsWith('http') ? 'xiaoyuzhou' : 'bilibili',
     video: {
@@ -43,12 +53,45 @@ function libraryItemToSummaryResult(item: LibraryItem): SummaryResult {
       pic: item.pic || '',
     },
     summary: item.summary || '',
-    transcript: item.transcript || '',
-    subtitle_count: item.subtitle_count || 0,
+    transcript: transcriptText,
+    subtitle_count: item.subtitle_count || subtitleSegments?.length || 0,
+    subtitle_segments: subtitleSegments,
     mode: item.mode || 'brief',
     suggested_tags: item.tags || [],
     transcript_source: 'whisper',
   };
+}
+
+/** Parse plain transcript text into timestamped segments for the subtitles tab. */
+function parseTranscriptToSegments(text: string): SubtitleSegment[] {
+  // Match lines with optional timestamps like "[12:34]" or "[123.4]" or bare text
+  const lines = text.split('\n').filter((l) => l.trim());
+  const segments: SubtitleSegment[] = [];
+  let timeOffset = 0;
+
+  for (const line of lines) {
+    const tsMatch = line.match(/^\[?(\d{1,3}:?\d{2}(?:\.\d+)?)\]\s*(.+)/);
+    if (tsMatch) {
+      let seconds: number;
+      if (tsMatch[1].includes(':')) {
+        const [min, sec] = tsMatch[1].split(':').map(Number);
+        seconds = min * 60 + (sec || 0);
+      } else {
+        seconds = parseFloat(tsMatch[1]);
+      }
+      timeOffset = seconds;
+      const content = tsMatch[2].trim();
+      if (content) {
+        segments.push({ from: timeOffset, to: timeOffset + Math.max(3, content.length / 5), content });
+      }
+    } else {
+      // Bare text — estimate 3 seconds per line
+      segments.push({ from: timeOffset, to: timeOffset + 3, content: line.trim() });
+      timeOffset += 3;
+    }
+  }
+
+  return segments.length ? segments : undefined;
 }
 
 export default function App() {
@@ -88,10 +131,9 @@ export default function App() {
     else if (key === 'learning') setView({ kind: 'learning' });
     else if (key === 'admin') setView({ kind: 'admin' });
     else if (key === 'settings') setView({ kind: 'settings' });
-    else if (key === 'summarizer') setView({ kind: 'summarizer' });
   }
 
-  const navActive: NavKey =
+  const navActive: NavKey = useMemo(() =>
     view.kind === 'library'
       ? 'library'
       : view.kind === 'learning'
@@ -100,9 +142,10 @@ export default function App() {
           ? 'admin'
           : view.kind === 'settings'
             ? 'settings'
-            : 'home';
+            : 'home',
+  [view.kind]);
 
-  function handleSubmitSummary(url: string, mode: SummaryMode) {
+  const handleSubmitSummary = useCallback((url: string, mode: SummaryMode) => {
     if (!user) {
       showToast('请先登录', 'error');
       setLoginOpen(true);
@@ -114,9 +157,9 @@ export default function App() {
       return;
     }
     setView({ kind: 'result', url, mode });
-  }
+  }, [user, config.api_key_set, config.api_key, showToast]);
 
-  function openLibraryItem(item: LibraryItem) {
+  const openLibraryItem = useCallback((item: LibraryItem) => {
     setView({
       kind: 'result',
       url: item.link || item.bvid || '',
@@ -124,26 +167,26 @@ export default function App() {
       initialResult: libraryItemToSummaryResult(item),
       initialSaved: true,
     });
-  }
+  }, []);
 
-  async function handleLogout() {
+  const handleLogout = useCallback(async () => {
     try {
       await apiLogout();
     } catch {
-      // ignore — we'll force a refetch anyway
+      // ignore
     }
     setUser(null);
     setView({ kind: 'home' });
     showToast('已退出登录', 'info');
-  }
+  }, [showToast]);
 
-  async function handleLoginSuccess() {
+  const handleLoginSuccess = useCallback(async () => {
     setLoginOpen(false);
     const [u, c] = await Promise.all([getMe(), getConfig()]);
     setUser(u);
     setConfig(c);
     showToast('登录成功', 'ok');
-  }
+  }, [showToast]);
 
   return (
     <div
@@ -175,61 +218,73 @@ export default function App() {
           />
 
           {view.kind === 'home' && (
-            <HomePage
-              config={config}
-              isLoggedIn={!!user}
-              refreshKey={refreshKey}
-              onSubmit={handleSubmitSummary}
-              onOpenItem={openLibraryItem}
-            />
+            <ErrorBoundary onReset={() => setView({ kind: 'home' })}>
+              <HomePage
+                config={config}
+                isLoggedIn={!!user}
+                refreshKey={refreshKey}
+                onSubmit={handleSubmitSummary}
+                onOpenItem={openLibraryItem}
+              />
+            </ErrorBoundary>
           )}
 
           {view.kind === 'result' && (
-            <ResultPage
-              url={view.url}
-              mode={view.mode}
-              config={config}
-              initialResult={view.initialResult}
-              initialSaved={view.initialSaved}
-              onBack={() => setView({ kind: 'home' })}
-              onSaved={() => setRefreshKey((n) => n + 1)}
-              onShowToast={showToast}
-              onRequireLogin={() => setLoginOpen(true)}
-            />
+            <ErrorBoundary onReset={() => setView({ kind: 'home' })}>
+              <ResultPage
+                url={view.url}
+                mode={view.mode}
+                config={config}
+                initialResult={view.initialResult}
+                initialSaved={view.initialSaved}
+                onBack={() => setView({ kind: 'home' })}
+                onSaved={() => setRefreshKey((n) => n + 1)}
+                onShowToast={showToast}
+                onRequireLogin={() => setLoginOpen(true)}
+              />
+            </ErrorBoundary>
           )}
 
           {view.kind === 'library' && (
-            <FavoritesPage
-              isLoggedIn={!!user}
-              config={config}
-              refreshKey={refreshKey}
-              bumpRefreshKey={() => setRefreshKey((n) => n + 1)}
-              initialOpenId={view.openId}
-              onConsumedInitialOpen={() =>
-                setView((v) => (v.kind === 'library' ? { kind: 'library' } : v))
-              }
-              onShowToast={showToast}
-              onOpenItem={openLibraryItem}
-            />
+            <ErrorBoundary onReset={() => setView({ kind: 'home' })}>
+              <FavoritesPage
+                isLoggedIn={!!user}
+                config={config}
+                refreshKey={refreshKey}
+                bumpRefreshKey={() => setRefreshKey((n) => n + 1)}
+                initialOpenId={view.openId}
+                onConsumedInitialOpen={() =>
+                  setView((v) => (v.kind === 'library' ? { kind: 'library' } : v))
+                }
+                onShowToast={showToast}
+                onOpenItem={openLibraryItem}
+              />
+            </ErrorBoundary>
           )}
 
           {view.kind === 'learning' && (
-            <LearningPage
-              isLoggedIn={!!user}
-              onShowToast={showToast}
-            />
+            <ErrorBoundary onReset={() => setView({ kind: 'home' })}>
+              <LearningPage
+                isLoggedIn={!!user}
+                onShowToast={showToast}
+              />
+            </ErrorBoundary>
           )}
 
           {view.kind === 'admin' && (
-            <AdminPage onShowToast={showToast} />
+            <ErrorBoundary onReset={() => setView({ kind: 'home' })}>
+              <AdminPage onShowToast={showToast} />
+            </ErrorBoundary>
           )}
 
           {view.kind === 'settings' && (
-            <SettingsPage
-              isLoggedIn={!!user}
-              onConfigSaved={(c) => setConfig(c)}
-              onRequireLogin={() => setLoginOpen(true)}
-            />
+            <ErrorBoundary onReset={() => setView({ kind: 'home' })}>
+              <SettingsPage
+                isLoggedIn={!!user}
+                onConfigSaved={(c) => setConfig(c)}
+                onRequireLogin={() => setLoginOpen(true)}
+              />
+            </ErrorBoundary>
           )}
 
           <footer className="relative z-10 px-6 py-4 text-center text-xs" style={{ color: 'var(--stone)' }}>

@@ -90,61 +90,6 @@ textarea::placeholder {
   color: var(--stone);
 }
 
-.bs-card {
-  background: var(--canvas);
-  border: 1px solid var(--hairline);
-  border-radius: 12px;
-}
-
-.bs-card-feature {
-  background: var(--surface);
-  border: 1px solid var(--hairline-soft);
-  border-radius: 12px;
-}
-
-.bs-button-primary {
-  background: var(--primary);
-  color: var(--on-primary);
-  border: 1px solid var(--primary);
-  border-radius: 9999px;
-  font-weight: 500;
-}
-
-.bs-button-secondary {
-  background: transparent;
-  color: var(--ink);
-  border: 1px solid var(--hairline);
-  border-radius: 9999px;
-  font-weight: 500;
-}
-
-.bs-search-pill {
-  background: var(--surface);
-  border: 1px solid var(--hairline);
-  border-radius: 8px;
-  color: var(--steel);
-}
-
-.bs-code-inline {
-  font-family: 'Geist Mono', 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 13px;
-  font-weight: 500;
-  background: var(--surface);
-  color: var(--charcoal);
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-  padding: 2px 6px;
-}
-
-.bs-badge-tag {
-  background: rgba(55, 114, 207, 0.15);
-  color: var(--brand-tag);
-  border-radius: 6px;
-  padding: 2px 8px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
 .summary {
   line-height: 1.5;
   font-size: 16px;

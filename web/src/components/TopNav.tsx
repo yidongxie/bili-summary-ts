@@ -1,3 +1,4 @@
+import React from 'react';
 import { Plus, Search, User, LogOut } from 'lucide-react';
 import type { CurrentUser } from '@/lib/api';
 
@@ -9,7 +10,7 @@ interface TopNavProps {
   onLogout: () => void;
 }
 
-export function TopNav({ onNewSummary, onOpenSearch, user, onLogin, onLogout }: TopNavProps) {
+export const TopNav = React.memo(function TopNav({ onNewSummary, onOpenSearch, user, onLogin, onLogout }: TopNavProps) {
   return (
     <nav
       className="flex items-center px-3 sm:px-6 py-3 border-b shrink-0"
@@ -61,4 +62,4 @@ export function TopNav({ onNewSummary, onOpenSearch, user, onLogin, onLogout }: 
       )}
     </nav>
   );
-}
+});

@@ -8,7 +8,7 @@ interface EmptyStateProps extends PropsWithChildren {
   action?: ReactNode;
 }
 
-export function EmptyState({ icon, title, desc, action, children }: EmptyStateProps) {
+export const EmptyState = React.memo(function EmptyState({ icon, title, desc, action, children }: EmptyStateProps) {
   return (
     <div
       className="flex flex-col items-center justify-center py-14 px-5 rounded-lg text-center"
@@ -24,4 +24,4 @@ export function EmptyState({ icon, title, desc, action, children }: EmptyStatePr
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
-}
+});

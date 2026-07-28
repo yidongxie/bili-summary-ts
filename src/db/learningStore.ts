@@ -1,10 +1,7 @@
 import Database from "better-sqlite3";
 import crypto from "crypto";
 import { findLibraryItem } from "./libraryStore";
-
-function nowSql(): string {
-  return new Date().toISOString().replace("T", " ").slice(0, 19);
-}
+import { nowSql } from "../common/date";
 
 export function listPaths(db: Database.Database, userId: number) {
   const paths = db.prepare("SELECT * FROM learning_paths WHERE user_id = ? ORDER BY updated_at DESC").all(userId) as any[];

@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react';
+import React, { type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react';
 
 type TextInputProps = InputHTMLAttributes<HTMLInputElement> & {
   rightSlot?: ReactNode;
@@ -19,7 +19,7 @@ const inputStyle: React.CSSProperties = {
   minHeight: 40,
 };
 
-export function TextInput({ rightSlot, style, className = '', ...props }: TextInputProps) {
+export const TextInput = React.memo(function TextInput({ rightSlot, style, className = '', ...props }: TextInputProps) {
   if (rightSlot) {
     return (
       <div className="relative">
@@ -29,8 +29,8 @@ export function TextInput({ rightSlot, style, className = '', ...props }: TextIn
     );
   }
   return <input className={className} style={{ ...inputStyle, ...style }} {...props} />;
-}
+});
 
-export function TextArea({ style, className = '', ...props }: TextAreaProps) {
+export const TextArea = React.memo(function TextArea({ style, className = '', ...props }: TextAreaProps) {
   return <textarea className={className} style={{ ...inputStyle, minHeight: 96, resize: 'vertical', ...style }} {...props} />;
-}
+});

@@ -1,3 +1,4 @@
+import React from 'react';
 import { Library, FileText, Settings, User, Zap, GraduationCap } from 'lucide-react';
 import type { CurrentUser } from '@/lib/api';
 import { LogoMark } from './AmbientBackdrop';
@@ -20,7 +21,7 @@ interface SidebarProps {
   onUserClick: () => void;
 }
 
-export function Sidebar({ active, onChange, user, onUserClick }: SidebarProps) {
+export const Sidebar = React.memo(function Sidebar({ active, onChange, user, onUserClick }: SidebarProps) {
   const isAdmin = (user?.email || '').trim().toLowerCase() === ADMIN_EMAIL;
   const items = isAdmin
     ? [
@@ -94,6 +95,6 @@ export function Sidebar({ active, onChange, user, onUserClick }: SidebarProps) {
       </button>
     </aside>
   );
-}
+});
 
 export { Zap };

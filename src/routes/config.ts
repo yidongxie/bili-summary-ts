@@ -1,0 +1,99 @@
+import { Router, Request, Response } from "express";
+import Database from "better-sqlite3";
+import { getPublicConfig, getDecryptedConfig, saveConfig as saveUserConfig } from "../db/configStore";
+import { enforceRateLimit } from "../common/rateLimit";
+
+function requireUser(req: Request, res: Response): number | null {
+  const user = (req as any).user;
+  if (!user) { res.status(401).json({ success: false, error: "请先登录" }); return null; }
+  return user.id;
+}
+
+export function createConfigRouter(db: Database.Database): Router {
+  const router = Router();
+
+  // ── Public config ──────────────────────────────────────────────────
+  router.get("/api/config", (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      res.json({
+        success: true,
+        config: {
+          default_category: "待整理",
+          deepseek_base_url: "https://api.deepseek.com/v1",
+          deepseek_model: "deepseek-chat",
+          whisper_base_url: "https://api.siliconflow.cn/v1",
+          whisper_model: "FunAudioLLM/SenseVoiceSmall",
+          obsidian_folder: "BiliStudy",
+          obsidian_vault_name: "",
+          api_key_set: false,
+          whisper_api_key_set: false,
+        },
+      });
+      return;
+    }
+    const pub = getPublicConfig(db, userId);
+    res.json({ success: true, config: pub });
+  });
+
+  router.post("/api/config", (req: Request, res: Response) => {
+    const userId = (req as any).user?.id;
+    if (!userId) { res.status(401).json({ success: false, error: "请先登录" }); return; }
+    saveUserConfig(db, userId, req.body);
+    const pub = getPublicConfig(db, userId);
+    res.json({ success: true, config: pub });
+  });
+
+  router.post("/api/config/test-deepseek", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (!enforceRateLimit(req, res, "test-deepseek", 10, 10 * 60 * 1000, String(userId))) return;
+
+    const config = getDecryptedConfig(db, userId);
+    const apiKey = String(req.body.api_key || config.api_key || "").trim();
+    const baseUrl = String(req.body.base_url || config.deepseek_base_url || "https://api.deepseek.com/v1").replace(/\/+$/, "");
+    const model = String(req.body.model || config.deepseek_model || "deepseek-chat").trim();
+    if (!apiKey) { res.status(400).json({ success: false, error: "请先填写 DeepSeek API Key" }); return; }
+
+    try {
+      const r = await fetch(baseUrl + "/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model, messages: [{ role: "user", content: "ping" }], max_tokens: 8 }),
+      });
+      if (!r.ok) {
+        const text = await r.text().catch(() => r.statusText);
+        res.status(400).json({ success: false, error: `连接失败 (${r.status}): ${text.slice(0, 200)}` });
+        return;
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message || "连接失败" });
+    }
+  });
+
+  router.post("/api/config/test-whisper", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (!enforceRateLimit(req, res, "test-whisper", 10, 10 * 60 * 1000, String(userId))) return;
+
+    const config = getDecryptedConfig(db, userId);
+    const apiKey = String(req.body.whisper_api_key || config.whisper_api_key || "").trim();
+    const baseUrl = String(req.body.whisper_base_url || config.whisper_base_url || "https://api.siliconflow.cn/v1").replace(/\/+$/, "");
+    if (!apiKey) { res.status(400).json({ success: false, error: "请先填写 Whisper API Key" }); return; }
+
+    try {
+      const r = await fetch(baseUrl + "/models", { headers: { Authorization: `Bearer ${apiKey}` } });
+      if (!r.ok) {
+        const text = await r.text().catch(() => r.statusText);
+        res.status(400).json({ success: false, error: `连接失败 (${r.status}): ${text.slice(0, 200)}` });
+        return;
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message || "连接失败" });
+    }
+  });
+
+  return router;
+}

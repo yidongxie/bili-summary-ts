@@ -99,17 +99,39 @@ function splitSentences(text: string) {
     .filter((s) => s.length > 8);
 }
 
+const KEY_INSIGHT_MARKERS = /(核心|关键|重要|建议|总结|结论|方法|策略|原理|本质|要点|启示|实践|行动)/;
+const SKIP_SENTENCE_PATTERN = /^(AI|总结|笔记|以下是|根据视频|本文)/;
+
 function buildKeyPoints(summary: string, tags: string[] = []) {
-  const bulletLines = summary
-    .split('\n')
-    .map((l) => l.replace(/^[-*#>\s]+/, '').trim())
-    .filter((l) => l.length > 10 && !/^AI|总结|笔记/.test(l));
-  const points = [
-    ...bulletLines,
-    ...splitSentences(plainMarkdown(summary)),
-    ...tags.map((t) => `围绕「${t}」展开学习与复盘。`),
-  ];
-  return Array.from(new Set(points)).slice(0, 5).map((p) => (p.length > 88 ? p.slice(0, 88) + '…' : p));
+  // Strategy: extract the most insightful sentences from the summary,
+  // NOT just strip bullet markers (which duplicates the structured notes).
+  // 1) Priority: sentences with key insight markers from the summary body
+  // 2) Fallback: heading titles (which are usually the structural points)
+  // 3) Last resort: first few non-trivial sentences
+
+  const plain = plainMarkdown(summary);
+  const allSentences = splitSentences(plain).filter((s) => !SKIP_SENTENCE_PATTERN.test(s));
+
+  // Pick sentences with key insight markers first
+  const insightSentences = allSentences.filter((s) => KEY_INSIGHT_MARKERS.test(s));
+
+  // Also extract heading titles (AI already structures the summary with ## / ###)
+  const headingTitles = Array.from(summary.matchAll(/^#{1,3}\s+(.+)$/gm))
+    .map((m) => m[1].replace(/[#*_`]/g, '').trim())
+    .filter((h) => h.length > 4 && h.length < 60 && !/^AI|总结|笔记/.test(h));
+
+  // Merge: headings first (they're intentional structure), then insight sentences, then plain sentences
+  const combined = [
+    ...new Set([...headingTitles, ...insightSentences, ...allSentences]),
+  ].filter((s) => s.length > 6 && s.length < 120);
+
+  if (combined.length === 0) {
+    // Nothing extracted — generate a minimal point from the first line
+    const firstLine = summary.split('\n').find((l) => l.trim().length > 10);
+    if (firstLine) combined.push(firstLine.replace(/^[#*>\-\s]+/, '').trim().slice(0, 100));
+  }
+
+  return combined.slice(0, 5);
 }
 
 type ChapterItem = { timestamp: string; title: string; detail?: string; from: number };
@@ -121,29 +143,65 @@ function cleanChapterTitle(text: string) {
     .trim();
 }
 
-function summaryHeadings(summary: string) {
-  const headings = Array.from(summary.matchAll(/^#{1,3}\s+(.+)$/gm)).map((m) => cleanChapterTitle(m[1]));
-  if (headings.length) return headings;
-  const bold = Array.from(summary.matchAll(/\*\*(.+?)\*\*/g)).map((m) => cleanChapterTitle(m[1]));
-  return bold.filter((h) => h.length >= 4 && h.length <= 30);
-}
+function extractSummaryChapters(summary: string): { title: string; detail?: string }[] {
+  // AI summaries already have structured headings. Use them as chapters.
+  // Match ## Title or ### Title lines, possibly followed by a short description.
+  const lines = summary.split('\n');
+  const found: { title: string; detail?: string }[] = [];
 
-function scoreBoundary(prev: string, next: string) {
-  let score = 0;
-  if (/[。！？!?]$/.test(prev)) score += 5;
-  if (/[，；：,;:]$/.test(prev)) score += 2;
-  if (/^(但是|所以|然后|接下来|第二|第三|另外|同时|最后|总结|那么|其实|比如|我们|你会|重点|核心)/.test(next)) score += 5;
-  if (/^(好|那|诶|嗯|呃|这个|接着)/.test(next)) score += 2;
-  if (prev.length > 18) score += 1;
-  return score;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^#{1,3}\s+(.+)$/);
+    if (m) {
+      const title = cleanChapterTitle(m[1]);
+      if (!title) continue;
+      // The next non-empty, non-heading line is the detail/summary of this section
+      let detail: string | undefined;
+      for (let j = i + 1; j < lines.length && j < i + 5; j++) {
+        const next = lines[j].trim();
+        if (next && !/^#/.test(next) && next.length > 10) {
+          detail = cleanChapterTitle(next).slice(0, 80);
+          break;
+        }
+      }
+      found.push({ title, detail });
+    }
+  }
+
+  // If we found at least 2 headings, trust them; otherwise fall back to time-based
+  if (found.length >= 2) return found;
+
+  // Try bold text as headings (less reliable)
+  const boldMatches = Array.from(summary.matchAll(/\*\*(.+?)\*\*/g))
+    .map((m) => ({ title: cleanChapterTitle(m[1]), detail: undefined as string | undefined }))
+    .filter((h) => h.title.length >= 4 && h.title.length <= 30);
+
+  if (boldMatches.length >= 2) return boldMatches;
+  return [];
 }
 
 function buildChapters(segments: SubtitleSegment[] | undefined, summary: string): ChapterItem[] {
-  const headings = summaryHeadings(summary).slice(0, 8);
+  // First choice: LLM-generated headings from the summary structure
+  const summaryChapters = extractSummaryChapters(summary);
+  if (summaryChapters.length >= 2) {
+    // Evenly space timestamps across the video duration for heading-based chapters
+    const maxTime = segments?.length
+      ? Math.max(...segments.map((s) => Number(s.to || s.from || 0)), 0)
+      : 600;
+    const interval = maxTime / (summaryChapters.length + 1);
+    return summaryChapters.map((ch, i) => ({
+      timestamp: formatTimelineTime(Math.round(interval * (i + 0.5))),
+      from: Math.round(interval * (i + 0.5)),
+      title: ch.title,
+      detail: ch.detail,
+    }));
+  }
+
+  // Second choice: time-based segmentation from subtitle boundaries
   if (segments?.length) {
+    const headings = summaryChapters.map((c) => c.title);
     const duration = Math.max(...segments.map((s) => Number(s.to || s.from || 0)), 0);
-    const targetCount = Math.min(8, Math.max(3, Math.round(duration / 180) || Math.ceil(segments.length / 12)));
-    const minGap = Math.max(4, Math.floor(segments.length / Math.max(targetCount, 1) / 2));
+    const targetCount = Math.min(6, Math.max(3, Math.round(duration / 240) || 4));
+    const minGap = Math.max(6, Math.floor(segments.length / Math.max(targetCount, 1) / 2));
     const candidates: Array<{ index: number; score: number }> = [];
     for (let i = 1; i < segments.length; i++) {
       candidates.push({ index: i, score: scoreBoundary(segments[i - 1]?.content || '', segments[i]?.content || '') });
@@ -153,20 +211,48 @@ function buildChapters(segments: SubtitleSegment[] | undefined, summary: string)
       if (picked.length >= targetCount) break;
       if (picked.every((idx) => Math.abs(idx - c.index) >= minGap)) picked.push(c.index);
     }
-    while (picked.length < targetCount) {
-      const idx = Math.floor((segments.length * picked.length) / targetCount);
-      if (!picked.includes(idx)) picked.push(idx); else break;
-    }
     return picked.sort((a, b) => a - b).map((idx, i) => {
       const seg = segments[Math.min(idx, segments.length - 1)];
       const context = segments.slice(idx, Math.min(idx + 3, segments.length)).map((s) => s.content).join('');
-      const fallback = cleanChapterTitle(context).slice(0, 22) || '章节内容';
+      const fallback = cleanChapterTitle(context).slice(0, 28) || `第${i + 1}段`;
       const title = headings[i] || fallback;
-      return { timestamp: formatTimelineTime(seg.from || 0), from: Number(seg.from || 0), title: title.length > 26 ? title.slice(0, 26) + '…' : title, detail: fallback };
+      return { timestamp: formatTimelineTime(seg.from || 0), from: Number(seg.from || 0), title: title.length > 30 ? title.slice(0, 30) + '…' : title, detail: fallback !== title ? fallback : undefined };
     });
   }
-  const fallbackTitles = headings.length ? headings : ['开场与背景', '核心观点', '关键案例', '方法总结', '行动建议'];
-  return fallbackTitles.slice(0, 7).map((h, i) => ({ timestamp: `0${i}:00`.slice(-5), from: i * 60, title: h }));
+
+  // Fallback: no segments, use generic labels
+  const fallbackTitles = ['开场引入', '主要内容', '分析讲解', '案例实操', '总结收尾'];
+  return fallbackTitles.map((h, i) => ({ timestamp: `0${i}:00`.slice(-5), from: i * 60, title: h }));
+}
+
+/** Parse plain transcript text into timestamped subtitle segments. */
+function parseTranscriptToSegments(text: string): SubtitleSegment[] {
+  const lines = text.split('\n').filter((l) => l.trim());
+  const segments: SubtitleSegment[] = [];
+  let timeOffset = 0;
+
+  for (const line of lines) {
+    const tsMatch = line.match(/^\[?(\d{1,3}:?\d{2}(?:\.\d+)?)\]\s*(.+)/);
+    if (tsMatch) {
+      let seconds: number;
+      if (tsMatch[1].includes(':')) {
+        const [min, sec] = tsMatch[1].split(':').map(Number);
+        seconds = min * 60 + (sec || 0);
+      } else {
+        seconds = parseFloat(tsMatch[1]);
+      }
+      timeOffset = seconds;
+      const content = tsMatch[2].trim();
+      if (content) {
+        segments.push({ from: timeOffset, to: timeOffset + Math.max(3, content.length / 5), content });
+      }
+    } else {
+      segments.push({ from: timeOffset, to: timeOffset + 3, content: line.trim() });
+      timeOffset += 3;
+    }
+  }
+
+  return segments;
 }
 
 function secondsToSrtTime(seconds: number) {
@@ -476,7 +562,14 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
   const keyPoints = useMemo(() => buildKeyPoints(result?.summary || '', result?.suggested_tags || []), [result]);
   const chapters = useMemo(() => buildChapters(result?.subtitle_segments, result?.summary || ''), [result]);
   const notes = result?.summary || '';
-  const subtitles = result?.subtitle_segments || [];
+  const subtitles = useMemo(() => {
+    if (result?.subtitle_segments?.length) return result.subtitle_segments;
+    // Fallback: parse transcript text into segments for display
+    if (result?.transcript) {
+      return parseTranscriptToSegments(result.transcript);
+    }
+    return [];
+  }, [result]);
   const mindMap = useMemo(() => buildMindMap(keyPoints, chapters, notes), [keyPoints, chapters, notes]);
   const chatKey = useMemo(() => `bilistudy:chat:${meta?.link || meta?.bvid || url}`, [meta, url]);
 

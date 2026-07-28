@@ -13,9 +13,8 @@ id_ed25519*
 .env.*
 !.env.example
 
-# Repo-root local runtime / backup directories
+# Repo-root local runtime directories
 /.claude/
-/_backup_local/
 /data/
 /node_modules/
 

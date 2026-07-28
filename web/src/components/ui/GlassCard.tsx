@@ -1,4 +1,4 @@
-import type { PropsWithChildren } from 'react';
+import React, { type PropsWithChildren } from 'react';
 
 type GlassCardVariant = 'default' | 'readable' | 'subtle';
 
@@ -23,10 +23,10 @@ const variants: Record<GlassCardVariant, React.CSSProperties> = {
   },
 };
 
-export function GlassCard({ children, className = '', variant = 'default', style }: GlassCardProps) {
+export const GlassCard = React.memo(function GlassCard({ children, className = '', variant = 'default', style }: GlassCardProps) {
   return (
     <div className={`rounded-lg ${className}`} style={{ ...variants[variant], ...style }}>
       {children}
     </div>
   );
-}
+});

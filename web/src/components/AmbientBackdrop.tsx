@@ -1,3 +1,5 @@
+import React from 'react';
+
 export function BrandIcon({ size = 44 }: { size?: number }) {
   return (
     <img
@@ -11,10 +13,10 @@ export function BrandIcon({ size = 44 }: { size?: number }) {
   );
 }
 
-export function AmbientBackdrop() {
+export const AmbientBackdrop = React.memo(function AmbientBackdrop() {
   return <div className="fixed inset-0 pointer-events-none" style={{ background: 'var(--canvas)' }} />;
-}
+});
 
-export function LogoMark({ size = 44 }: { size?: number }) {
+export const LogoMark = React.memo(function LogoMark({ size = 44 }: { size?: number }) {
   return <BrandIcon size={size} />;
-}
+});

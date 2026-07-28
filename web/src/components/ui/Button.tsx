@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, PropsWithChildren } from 'react';
+import React, { type ButtonHTMLAttributes, type PropsWithChildren } from 'react';
 
 type ButtonVariant = 'primary' | 'accent' | 'secondary' | 'ghost' | 'danger' | 'success';
 
@@ -40,7 +40,7 @@ const variantStyles: Record<ButtonVariant, React.CSSProperties> = {
   },
 };
 
-export function Button({ children, className = '', variant = 'secondary', size = 'md', style, ...props }: ButtonProps) {
+export const Button = React.memo(function Button({ children, className = '', variant = 'secondary', size = 'md', style, ...props }: ButtonProps) {
   const padding = size === 'sm' ? 'px-3 py-1.5 text-xs' : 'px-5 py-2.5 text-sm';
   return (
     <button
@@ -51,4 +51,4 @@ export function Button({ children, className = '', variant = 'secondary', size =
       {children}
     </button>
   );
-}
+});

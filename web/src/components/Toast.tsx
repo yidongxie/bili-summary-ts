@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 
 export type ToastState = {
   id: number;
@@ -12,7 +12,7 @@ interface ToastProps {
   onClose: () => void;
 }
 
-export function Toast({ toast, onClose }: ToastProps) {
+export const Toast = React.memo(function Toast({ toast, onClose }: ToastProps) {
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(onClose, toast.type === 'error' ? 5000 : 3000);
@@ -51,4 +51,4 @@ export function Toast({ toast, onClose }: ToastProps) {
       )}
     </div>
   );
-}
+});
