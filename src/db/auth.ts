@@ -182,5 +182,66 @@ export function createAuthRouter(db: Database.Database): Router {
     res.json({ success: true });
   });
 
+  // ── WeChat mini-program login ──────────────────────────────────────
+  router.post("/api/auth/wechat", (req: Request, res: Response) => {
+    try {
+      const code = String(req.body.code || "").trim();
+      const displayName = String(req.body.display_name || "").trim() || undefined;
+
+      if (!code) {
+        res.status(400).json({ success: false, error: "缺少微信授权 code" });
+        return;
+      }
+
+      const appId = process.env.WECHAT_APPID;
+      const appSecret = process.env.WECHAT_APPSECRET;
+      if (!appId || !appSecret) {
+        console.error("[wechat] WECHAT_APPID or WECHAT_APPSECRET not configured");
+        res.status(500).json({ success: false, error: "微信登录暂未配置，请使用邮箱登录" });
+        return;
+      }
+
+      // Exchange code for openId via WeChat API
+      const wxUrl = `https://api.weixin.qq.com/sns/jscode2session?appid=${appId}&secret=${appSecret}&js_code=${encodeURIComponent(code)}&grant_type=authorization_code`;
+
+      fetch(wxUrl)
+        .then((r) => r.json())
+        .then(async (wxData: any) => {
+          if (wxData.errcode || !wxData.openid) {
+            console.error("[wechat] jscode2session failed:", wxData);
+            res.status(400).json({ success: false, error: `微信授权失败: ${wxData.errmsg || "未知错误"}` });
+            return;
+          }
+
+          const openId = wxData.openid;
+          // Check for existing user bound to this openId (we store it as github_id for simplicity)
+          let user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE github_id = ?").get(openId) as any;
+
+          if (!user) {
+            // Create new user bound to this WeChat openId
+            const info = db.prepare("INSERT INTO users (github_id, email, display_name) VALUES (?, ?, ?)").run(
+              openId,
+              `wechat_${openId.slice(0, 8)}@bilistudy.local`,
+              displayName || `微信用户${openId.slice(-4)}`,
+            );
+            const userId = info.lastInsertRowid as number;
+            db.prepare("INSERT OR IGNORE INTO user_configs (user_id) VALUES (?)").run(userId);
+            user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?").get(userId) as any;
+          }
+
+          createSession(db, req, res, user.id, () => {
+            res.json({ success: true, user: { id: user.id, email: user.email, display_name: user.display_name, created_at: user.created_at } });
+          });
+        })
+        .catch((err: any) => {
+          console.error("[wechat]", err);
+          res.status(500).json({ success: false, error: "微信登录失败，请稍后重试" });
+        });
+    } catch (err: any) {
+      console.error("[wechat]", err);
+      res.status(500).json({ success: false, error: err.message || "登录失败" });
+    }
+  });
+
   return router;
 }
