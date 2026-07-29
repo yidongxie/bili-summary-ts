@@ -1,6 +1,20 @@
 import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
 import { getDecryptedConfig } from "../db/configStore";
+
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "";
+
+function getApiKeyWithFallback(db: Database.Database, userId: number): string {
+  const config = getDecryptedConfig(db, userId);
+  if (config.api_key) return config.api_key;
+  if (!ADMIN_EMAIL) return "";
+  const adminRow = db.prepare("SELECT id FROM users WHERE email = ?").get(ADMIN_EMAIL) as { id?: number } | undefined;
+  if (adminRow?.id) {
+    const adminConfig = getDecryptedConfig(db, adminRow.id);
+    return adminConfig.api_key || "";
+  }
+  return "";
+}
 import { findLibraryItem } from "../db/libraryStore";
 import { chatCompletion } from "../llm/summarize";
 import { recordApiUsage } from "../db/usageStore";
@@ -114,10 +128,11 @@ export function createLearningRouter(db: Database.Database): Router {
     const item = findLibraryItem(db, userId, String(req.body.library_item_id || ""));
     if (!item) { res.status(404).json({ success: false, error: "未找到收藏" }); return; }
     const config = getDecryptedConfig(db, userId);
-    if (!config.api_key) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
+    const apiKey = getApiKeyWithFallback(db, userId);
+    if (!apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
     try {
       const raw = await chatCompletion(
-        { apiKey: config.api_key, baseUrl: config.deepseek_base_url, model: config.deepseek_model },
+        { apiKey, baseUrl: config.deepseek_base_url, model: config.deepseek_model },
         [
           { role: "system", content: QUIZ_SYSTEM_PROMPT },
           { role: "user", content: buildQuizUserPrompt(item.title, item.summary, item.transcript || "") },

@@ -18,6 +18,21 @@ function requireUser(req: Request, res: Response): number | null {
   return user.id;
 }
 
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "";
+
+/** Get admin's API key as fallback when the current user hasn't set their own. */
+function getApiKeyWithFallback(db: Database.Database, userId: number): string {
+  const config = getDecryptedConfig(db, userId);
+  if (config.api_key) return config.api_key;
+  if (!ADMIN_EMAIL) return "";
+  const adminRow = db.prepare("SELECT id FROM users WHERE email = ?").get(ADMIN_EMAIL) as { id?: number } | undefined;
+  if (adminRow?.id) {
+    const adminConfig = getDecryptedConfig(db, adminRow.id);
+    return adminConfig.api_key || "";
+  }
+  return "";
+}
+
 export function createLlmRouter(db: Database.Database): Router {
   const router = Router();
 
@@ -31,8 +46,9 @@ export function createLlmRouter(db: Database.Database): Router {
     const transcript = String(req.body.transcript || "").slice(0, 8000);
     const segments = Array.isArray(req.body.segments) ? req.body.segments : [];
     if (!question) { res.status(400).json({ success: false, error: "缺少问题" }); return; }
+    const apiKey = getApiKeyWithFallback(db, userId);
+    if (!apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
     const config = getDecryptedConfig(db, userId);
-    if (!config.api_key) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
     const qWords = question.toLowerCase().split(/\s+|，|。|、|？|！|,|\./).filter(Boolean);
     const citations = segments
       .map((seg: any) => {
@@ -46,7 +62,7 @@ export function createLlmRouter(db: Database.Database): Router {
       .map(({ time, text }: any) => ({ time, text }));
     try {
       const answer = await chatCompletion(
-        { apiKey: config.api_key, baseUrl: config.deepseek_base_url, model: config.deepseek_model },
+        { apiKey, baseUrl: config.deepseek_base_url, model: config.deepseek_model },
         [
           { role: "system", content: CHAT_SYSTEM_PROMPT },
           { role: "user", content: buildChatUserPrompt(question, summary, citations.map((c: any) => `[${Math.floor(c.time)}s] ${c.text}`), transcript) },
@@ -70,11 +86,12 @@ export function createLlmRouter(db: Database.Database): Router {
     const keyPoints = Array.isArray(req.body.keyPoints) ? req.body.keyPoints.map(String).slice(0, 8) : [];
     if (!summary) { res.status(400).json({ success: false, error: "缺少总结内容" }); return; }
     const config = getDecryptedConfig(db, userId);
-    if (!config.api_key) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
+    const apiKey = getApiKeyWithFallback(db, userId);
+    if (!apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
     const style = REWRITE_STYLE_MAP[platform] || REWRITE_STYLE_MAP["小红书"];
     try {
       const text = await chatCompletion(
-        { apiKey: config.api_key, baseUrl: config.deepseek_base_url, model: config.deepseek_model },
+        { apiKey, baseUrl: config.deepseek_base_url, model: config.deepseek_model },
         [
           { role: "system", content: REWRITE_SYSTEM_PROMPT },
           { role: "user", content: buildRewriteUserPrompt(platform, style, keyPoints, summary) },
@@ -100,11 +117,12 @@ export function createLlmRouter(db: Database.Database): Router {
     if (!title && !summary) { res.status(400).json({ success: false, error: "缺少标题或总结内容" }); return; }
 
     const config = getDecryptedConfig(db, userId);
-    if (!config.api_key) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
+    const apiKey = getApiKeyWithFallback(db, userId);
+    if (!apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
 
     try {
       const tags = await suggestTags(title, author, summary, {
-        apiKey: config.api_key,
+        apiKey,
         baseUrl: config.deepseek_base_url,
         model: config.deepseek_model,
       });

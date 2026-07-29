@@ -657,10 +657,21 @@ async function runTask(
     updateProgress(db, task, "获取信息…");
 
     const config = getDecryptedConfig(db, task.userId);
-    const apiKey = String(body.api_key || config.api_key || "").trim();
+    let apiKey = String(body.api_key || config.api_key || "").trim();
     const model = String(body.model || config.deepseek_model || "deepseek-chat").trim();
     const baseUrl = String(body.base_url || config.deepseek_base_url || "https://api.deepseek.com/v1").trim();
     const mode = (String(body.mode || "brief").trim() || "brief") as SummaryMode;
+
+    // Fall back to admin's API key if the current user hasn't set their own
+    if (!apiKey && ADMIN_EMAIL && task.userEmail !== ADMIN_EMAIL) {
+      const adminRow = db
+        .prepare("SELECT id FROM users WHERE email = ?")
+        .get(ADMIN_EMAIL) as { id?: number } | undefined;
+      if (adminRow?.id) {
+        const adminConfig = getDecryptedConfig(db, adminRow.id);
+        if (adminConfig.api_key) apiKey = adminConfig.api_key;
+      }
+    }
 
     if (!apiKey) {
       failTask(db, task, "请先在设置中填写 API Key");
