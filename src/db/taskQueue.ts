@@ -234,6 +234,25 @@ export function createTaskRouter(db: Database.Database): Router {
     });
   });
 
+  // Polling endpoint for mini programs (no SSE support)
+  router.get("/api/tasks/:id/poll", (req: Request, res: Response) => {
+    let task = tasks.get(req.params.id);
+    if (!task) {
+      const persisted = loadPersistedTask(db, req.params.id);
+      if (persisted) task = persisted;
+    }
+    if (!task) { res.status(404).json({ success: false, error: "任务不存在" }); return; }
+
+    const row = db.prepare("SELECT status, progress, result_json, error FROM summary_tasks WHERE id = ?").get(task.id) as any;
+    if (row?.status === "done") {
+      res.json({ status: "done", ...JSON.parse(row.result_json || "{}") });
+    } else if (row?.status === "error") {
+      res.json({ status: "error", error: row.error || "任务失败" });
+    } else {
+      res.json({ status: row?.status || "pending", progress: row?.progress || "处理中…" });
+    }
+  });
+
   // Submit task
   router.post("/api/tasks/summarize", async (req: Request, res: Response) => {
     const userId = (req.user as any)?.id;
