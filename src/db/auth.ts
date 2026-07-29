@@ -220,12 +220,16 @@ export function createAuthRouter(db: Database.Database): Router {
           let user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE github_id = ?").get(openId) as any;
 
           if (!user && ADMIN_EMAIL) {
-            // Auto-bind: if admin email user exists, bind this WeChat openId to that account
+            // Auto-bind: web-registered users have a negative numeric github_id (email hash).
+            // A real WeChat openId is a non-numeric string. If the admin user has a legacy
+            // numeric id (or empty id), overwrite it with this openId to link accounts.
             const adminUser = db.prepare("SELECT id, email, display_name, created_at, github_id FROM users WHERE email = ?").get(ADMIN_EMAIL) as any;
-            if (adminUser && !adminUser.github_id) {
+            const legacyId = adminUser?.github_id;
+            const hasLegacyId = legacyId === null || legacyId === undefined || legacyId === 0 || (typeof legacyId === "number") || /^-\d+$/.test(String(legacyId));
+            if (adminUser && hasLegacyId) {
               db.prepare("UPDATE users SET github_id = ? WHERE id = ?").run(openId, adminUser.id);
               user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?").get(adminUser.id) as any;
-              console.log(`[wechat] Bound WeChat openId to admin user (id=${adminUser.id})`);
+              console.log(`[wechat] Bound WeChat openId to admin user (id=${adminUser.id}, old github_id=${legacyId})`);
             }
           }
 
