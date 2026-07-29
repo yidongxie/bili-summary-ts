@@ -18,11 +18,12 @@ if (legacyRow?.password_hash) {
   }
 }
 
+let uid = 0;
+
 if (!email) {
   console.log("ADMIN_EMAIL not set; skipping admin bootstrap");
 } else {
   const row = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
-  let uid;
   if (!row) {
     const info = db.prepare("INSERT INTO users (email, display_name) VALUES (?, ?)").run(email, "admin");
     uid = info.lastInsertRowid;
@@ -58,5 +59,25 @@ if (!email) {
     }
   }
 }
+
+  // Merge orphan WeChat accounts into admin (uid from above)
+  const orphanUsers = db.prepare("SELECT id, email FROM users WHERE email LIKE 'wechat_%@bilistudy.local' AND id != ?").all(uid);
+  if (orphanUsers.length) console.log(`Found ${orphanUsers.length} orphan WeChat user(s), merging into admin id=${uid}...`);
+  for (const orphan of orphanUsers) {
+    db.prepare("UPDATE library_items SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+    db.prepare("UPDATE snippets SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+    db.prepare("UPDATE learning_paths SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+    db.prepare("UPDATE review_items SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+    db.prepare("UPDATE quizzes SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+    db.prepare("UPDATE api_usage_logs SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+    db.prepare("UPDATE chat_threads SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+    db.prepare("UPDATE chat_messages SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+    db.prepare("UPDATE daily_usage SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+    db.prepare("UPDATE tag_metadata SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+    db.prepare("DELETE FROM user_configs WHERE user_id = ?").run(orphan.id);
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(orphan.id);
+    db.prepare("DELETE FROM summary_tasks WHERE user_id = ?").run(orphan.id);
+    db.prepare("DELETE FROM users WHERE id = ?").run(orphan.id);
+  }
 
 db.close();
