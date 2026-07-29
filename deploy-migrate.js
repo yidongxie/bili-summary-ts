@@ -51,4 +51,17 @@ if (!cfg || !cfg.password_hash) {
   console.log("Password already set");
 }
 
+// Set default DeepSeek API key for admin user
+const deepseekKey = process.env.DEEPSEEK_API_KEY || "";
+if (deepseekKey) {
+  try {
+    const { encrypt } = require(path.resolve(__dirname, "dist/db/crypto"));
+    const encrypted = encrypt(deepseekKey);
+    db.prepare("UPDATE user_configs SET api_key_enc = ? WHERE user_id = ? AND (api_key_enc = '' OR api_key_enc IS NULL)").run(encrypted, uid);
+    console.log("DeepSeek API key set for admin user");
+  } catch(e) {
+    console.error("Failed to set API key:", e.message);
+  }
+}
+
 db.close();
