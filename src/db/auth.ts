@@ -5,6 +5,8 @@ import Database from "better-sqlite3";
 import crypto from "crypto";
 import { enforceRateLimit } from "../common/rateLimit";
 
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "";
+
 function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
@@ -216,6 +218,16 @@ export function createAuthRouter(db: Database.Database): Router {
           const openId = wxData.openid;
           // Check for existing user bound to this openId (we store it as github_id for simplicity)
           let user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE github_id = ?").get(openId) as any;
+
+          if (!user && ADMIN_EMAIL) {
+            // Auto-bind: if admin email user exists, bind this WeChat openId to that account
+            const adminUser = db.prepare("SELECT id, email, display_name, created_at, github_id FROM users WHERE email = ?").get(ADMIN_EMAIL) as any;
+            if (adminUser && !adminUser.github_id) {
+              db.prepare("UPDATE users SET github_id = ? WHERE id = ?").run(openId, adminUser.id);
+              user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?").get(adminUser.id) as any;
+              console.log(`[wechat] Bound WeChat openId to admin user (id=${adminUser.id})`);
+            }
+          }
 
           if (!user) {
             // Create new user bound to this WeChat openId
