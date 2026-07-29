@@ -35,14 +35,15 @@ if (!email) {
 
   if (password && password.length >= 12) {
     const cfg = db.prepare("SELECT password_hash FROM user_configs WHERE user_id = ?").get(uid);
-if (!cfg || !cfg.password_hash) {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
-  db.prepare("UPDATE user_configs SET password_hash = ? WHERE user_id = ?").run(salt + ":" + hash, uid);
-  console.log("Password hash set");
-} else {
-  console.log("Password already set");
-}
+    if (!cfg || !cfg.password_hash) {
+      const salt = crypto.randomBytes(16).toString("hex");
+      const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
+      db.prepare("UPDATE user_configs SET password_hash = ? WHERE user_id = ?").run(salt + ":" + hash, uid);
+      console.log("Password hash set");
+    } else {
+      console.log("Password already set");
+    }
+  }
 
   // Set default DeepSeek API key for admin user
   const deepseekKey = process.env.DEEPSEEK_API_KEY || "";
