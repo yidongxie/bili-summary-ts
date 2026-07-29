@@ -20,28 +20,21 @@ if (legacyRow?.password_hash) {
 
 if (!email) {
   console.log("ADMIN_EMAIL not set; skipping admin bootstrap");
-  db.close();
-  process.exit(0);
-}
-if (!password || password.length < 12) {
-  console.error("ADMIN_PASSWORD must be at least 12 characters when ADMIN_EMAIL is set");
-  db.close();
-  process.exit(1);
-}
-
-const row = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
-let uid;
-if (!row) {
-  const info = db.prepare("INSERT INTO users (email, display_name) VALUES (?, ?)").run(email, "admin");
-  uid = info.lastInsertRowid;
-  db.prepare("INSERT OR IGNORE INTO user_configs (user_id) VALUES (?)").run(uid);
-  console.log("Admin user created (id=" + uid + ")");
 } else {
-  uid = row.id;
-  console.log("Admin user exists (id=" + uid + ")");
-}
+  const row = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
+  let uid;
+  if (!row) {
+    const info = db.prepare("INSERT INTO users (email, display_name) VALUES (?, ?)").run(email, "admin");
+    uid = info.lastInsertRowid;
+    db.prepare("INSERT OR IGNORE INTO user_configs (user_id) VALUES (?)").run(uid);
+    console.log("Admin user created (id=" + uid + ")");
+  } else {
+    uid = row.id;
+    console.log("Admin user exists (id=" + uid + ")");
+  }
 
-const cfg = db.prepare("SELECT password_hash FROM user_configs WHERE user_id = ?").get(uid);
+  if (password && password.length >= 12) {
+    const cfg = db.prepare("SELECT password_hash FROM user_configs WHERE user_id = ?").get(uid);
 if (!cfg || !cfg.password_hash) {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
@@ -51,16 +44,17 @@ if (!cfg || !cfg.password_hash) {
   console.log("Password already set");
 }
 
-// Set default DeepSeek API key for admin user
-const deepseekKey = process.env.DEEPSEEK_API_KEY || "";
-if (deepseekKey) {
-  try {
-    const { encrypt } = require(path.resolve(__dirname, "dist/db/crypto"));
-    const encrypted = encrypt(deepseekKey);
-    db.prepare("UPDATE user_configs SET api_key_enc = ? WHERE user_id = ? AND (api_key_enc = '' OR api_key_enc IS NULL)").run(encrypted, uid);
-    console.log("DeepSeek API key set for admin user");
-  } catch(e) {
-    console.error("Failed to set API key:", e.message);
+  // Set default DeepSeek API key for admin user
+  const deepseekKey = process.env.DEEPSEEK_API_KEY || "";
+  if (deepseekKey) {
+    try {
+      const { encrypt } = require(path.resolve(__dirname, "dist/db/crypto"));
+      const encrypted = encrypt(deepseekKey);
+      db.prepare("UPDATE user_configs SET api_key_enc = ? WHERE user_id = ? AND (api_key_enc = '' OR api_key_enc IS NULL)").run(encrypted, uid);
+      console.log("DeepSeek API key set for admin user");
+    } catch(e) {
+      console.error("Failed to set API key:", e.message);
+    }
   }
 }
 

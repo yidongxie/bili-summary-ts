@@ -194,6 +194,9 @@ jobs:
             if ! grep -q '^NODE_ENV=' "$REPO_DIR/.env"; then
               echo "NODE_ENV=production" >> "$REPO_DIR/.env"
             fi
+            if ! grep -q '^ADMIN_EMAIL=' "$REPO_DIR/.env"; then
+              echo "ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}" >> "$REPO_DIR/.env"
+            fi
             if ! grep -q '^BASE_URL=' "$REPO_DIR/.env"; then
               echo "BASE_URL=https://xydong.site" >> "$REPO_DIR/.env"
             fi
