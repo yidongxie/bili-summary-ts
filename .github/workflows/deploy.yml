@@ -203,6 +203,13 @@ jobs:
             if ! grep -q '^DOUYIN_DOWNLOADER_OUTPUT_DIR=' "$REPO_DIR/.env"; then
               echo "DOUYIN_DOWNLOADER_OUTPUT_DIR=/opt/bili-summary/douyin-downloader/Downloaded" >> "$REPO_DIR/.env"
             fi
+            # WeChat mini-program login — inject from GitHub Secrets
+            if ! grep -q '^WECHAT_APPID=' "$REPO_DIR/.env"; then
+              echo "WECHAT_APPID=${{ secrets.WECHAT_APPID }}" >> "$REPO_DIR/.env"
+            fi
+            if ! grep -q '^WECHAT_APPSECRET=' "$REPO_DIR/.env"; then
+              echo "WECHAT_APPSECRET=${{ secrets.WECHAT_APPSECRET }}" >> "$REPO_DIR/.env"
+            fi
 
             echo "=== STEP: update code ==="
             mkdir -p "$PROJ_DIR"
@@ -242,7 +249,7 @@ jobs:
               pm2 start .venv/bin/python --name douyin-downloader -- run.py --serve --serve-host 127.0.0.1 --serve-port 8765 --config /opt/bili-summary/douyin-downloader/config.yml || true
             fi
             cd "$PROJ_DIR"
-            PATH="/opt/bili-summary/bin:$PATH" ENCRYPTION_KEY=$ENCRYPTION_KEY SESSION_SECRET=$SESSION_SECRET NODE_ENV=${NODE_ENV:-production} BASE_URL=${BASE_URL:-https://xydong.site} ADMIN_EMAIL=${ADMIN_EMAIL:-} FFMPEG_PATH=$FFMPEG_BIN YT_DLP_PATH=$YT_DLP_BIN YT_DLP_COOKIES_FILE=${YT_DLP_COOKIES_FILE:-} YT_DLP_BROWSER_COOKIES=${YT_DLP_BROWSER_COOKIES:-} DOUYIN_DOWNLOADER_API=${DOUYIN_DOWNLOADER_API:-http://127.0.0.1:8765} DOUYIN_DOWNLOADER_OUTPUT_DIR=${DOUYIN_DOWNLOADER_OUTPUT_DIR:-/opt/bili-summary/douyin-downloader/Downloaded} pm2 start dist/index.js --name bilistudy --max-memory-restart 1G
+            PATH="/opt/bili-summary/bin:$PATH" ENCRYPTION_KEY=$ENCRYPTION_KEY SESSION_SECRET=$SESSION_SECRET NODE_ENV=${NODE_ENV:-production} BASE_URL=${BASE_URL:-https://xydong.site} ADMIN_EMAIL=${ADMIN_EMAIL:-} FFMPEG_PATH=$FFMPEG_BIN YT_DLP_PATH=$YT_DLP_BIN YT_DLP_COOKIES_FILE=${YT_DLP_COOKIES_FILE:-} YT_DLP_BROWSER_COOKIES=${YT_DLP_BROWSER_COOKIES:-} DOUYIN_DOWNLOADER_API=${DOUYIN_DOWNLOADER_API:-http://127.0.0.1:8765} DOUYIN_DOWNLOADER_OUTPUT_DIR=${DOUYIN_DOWNLOADER_OUTPUT_DIR:-/opt/bili-summary/douyin-downloader/Downloaded} WECHAT_APPID=${{ secrets.WECHAT_APPID }} WECHAT_APPSECRET=${{ secrets.WECHAT_APPSECRET }} pm2 start dist/index.js --name bilistudy --max-memory-restart 1G
             pm2 save
             pm2 status bilistudy
 
