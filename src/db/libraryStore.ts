@@ -21,8 +21,15 @@ export interface LibraryItem {
   notes: string;
   mode: string;
   pic: string;
+  subtitle_segments?: SubtitleSegmentData[];
   snippet?: string;
   highlights?: string[];
+}
+
+export interface SubtitleSegmentData {
+  from: number;
+  to: number;
+  content: string;
 }
 
 export interface TagInfo {
@@ -156,12 +163,32 @@ function makeSnippet(item: LibraryItem, q: string): string {
 
 export function findLibraryItem(db: Database.Database, userId: number, id: string): LibraryItem | null {
   const row = db.prepare("SELECT * FROM library_items WHERE id = ? AND user_id = ?").get(id, userId) as any;
-  return row ? rowToItem(row) : null;
+  if (!row) return null;
+  const item = rowToItem(row);
+  // Attach real subtitle segments only on the detail endpoint — the list stays lean.
+  item.subtitle_segments = parseSubtitleSegments(row.subtitle_segments);
+  return item;
 }
 
 export function findLibraryItemByBvid(db: Database.Database, userId: number, bvid: string): LibraryItem | null {
   const row = db.prepare("SELECT * FROM library_items WHERE bvid = ? AND user_id = ?").get(bvid, userId) as any;
   return row ? rowToItem(row) : null;
+}
+
+function serializeSegments(segs?: SubtitleSegmentData[] | string | null): string {
+  if (segs == null) return "";
+  if (typeof segs === "string") return segs;
+  return JSON.stringify(Array.isArray(segs) ? segs : []);
+}
+
+function parseSubtitleSegments(raw: string | null | undefined): SubtitleSegmentData[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? (arr as SubtitleSegmentData[]) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function saveLibraryItem(db: Database.Database, userId: number, data: Partial<LibraryItem> & { id?: string }): LibraryItem {
@@ -175,7 +202,7 @@ export function saveLibraryItem(db: Database.Database, userId: number, data: Par
       `UPDATE library_items SET
         updated_at = ?, title = ?, author = ?, duration = ?, bvid = ?, link = ?,
         summary = ?, transcript = ?, subtitle_count = ?, category = ?, tags = ?,
-        notes = ?, mode = ?, pic = ?
+        notes = ?, mode = ?, pic = ?, subtitle_segments = ?
        WHERE id = ? AND user_id = ?`
     ).run(
       now,
@@ -192,6 +219,7 @@ export function saveLibraryItem(db: Database.Database, userId: number, data: Par
       data.notes ?? existing.notes ?? "",
       data.mode ?? existing.mode ?? "brief",
       data.pic ?? existing.pic ?? "",
+      serializeSegments(data.subtitle_segments ?? existing.subtitle_segments),
       id,
       userId
     );
@@ -199,8 +227,8 @@ export function saveLibraryItem(db: Database.Database, userId: number, data: Par
     db.prepare(
       `INSERT INTO library_items
         (id, user_id, created_at, updated_at, title, author, duration, bvid, link,
-         summary, transcript, subtitle_count, category, tags, notes, mode, pic)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         summary, transcript, subtitle_count, category, tags, notes, mode, pic, subtitle_segments)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       userId,
@@ -218,7 +246,8 @@ export function saveLibraryItem(db: Database.Database, userId: number, data: Par
       JSON.stringify(tags),
       data.notes || "",
       data.mode || "brief",
-      data.pic || ""
+      data.pic || "",
+      serializeSegments(data.subtitle_segments)
     );
   }
 

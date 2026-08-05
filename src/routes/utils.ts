@@ -32,6 +32,16 @@ export function escapeHtml(text: string): string {
 
 export function markdownToHtml(md: string): string {
   let html = escapeHtml(md || "");
+  // GFM tables — emit <table> directly with no inner newlines, so the
+  // \n -> <br> pass below leaves the rows intact.
+  html = html.replace(/(?:^|\n)(?:\|.*\|[^\n]*)(?:\n\|.*\|[^\n]*)*/g, (block) => {
+    const lines = block.trim().split("\n").map((l) => l.trim());
+    if (lines.length < 2) return block;
+    if (!/^\|?[\s:|-]+\|[\s:|-]*$/.test(lines[1])) return block; // no delimiter row -> not a table
+    const cells = (l: string) => l.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    const row = (r: string[], tag: string) => `<tr>${r.map((c) => `<${tag}>${c || "&nbsp;"}</${tag}>`).join("")}</tr>`;
+    return `<table>${row(cells(lines[0]), "th")}${lines.slice(2).map((l) => row(cells(l), "td")).join("")}</table>`;
+  });
   html = html
     .replace(/^### (.+)$/gm, "<h3>$1</h3>")
     .replace(/^## (.+)$/gm, "<h2>$1</h2>")
@@ -133,6 +143,9 @@ export function itemToPrintableHtml(item: any): string {
   p { margin: 8px 0; }
   ul { padding-left: 22px; }
   code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: 90%; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid #d8dee9; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f6fa; font-weight: 600; }
   .toolbar { position: fixed; top: 14px; right: 14px; display: flex; gap: 8px; }
   .toolbar button { padding: 8px 14px; border: 0; border-radius: 6px; background: #fb7299; color: #fff; font-weight: 600; cursor: pointer; box-shadow: 0 6px 16px rgba(251,114,153,.3); }
   @media print { .toolbar { display: none; } body { margin: 0; padding: 0; max-width: none; } }

@@ -645,6 +645,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
       summary: result.summary,
       transcript: result.transcript || '',
       subtitle_count: result.subtitle_count,
+      subtitle_segments: result.subtitle_segments || [],
       mode: result.mode || mode,
       category: config.default_category || '待整理',
       tags: result.suggested_tags || [],

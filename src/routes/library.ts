@@ -98,6 +98,7 @@ export function createLibraryRouter(db: Database.Database): Router {
       summary,
       transcript: String(req.body.transcript ?? "").trim(),
       subtitle_count: Number(req.body.subtitle_count ?? 0) || 0,
+      subtitle_segments: Array.isArray(req.body.subtitle_segments) ? req.body.subtitle_segments : undefined,
       category: String(req.body.category ?? "待整理").trim() || "待整理",
       tags: Array.isArray(req.body.tags) ? req.body.tags : [],
       notes: String(req.body.notes ?? "").trim(),

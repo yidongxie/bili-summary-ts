@@ -35,11 +35,13 @@ type View =
 
 
 function libraryItemToSummaryResult(item: LibraryItem): SummaryResult {
-  // Parse stored transcript text into subtitle segments for display.
-  // Stored transcripts are plain text (possibly with [MM:SS] or [seconds] markers).
+  // Prefer the real subtitle segments persisted at save time; fall back to
+  // parsing the stored transcript (plain text) into estimated timestamps.
   const transcriptText = item.transcript || '';
   let subtitleSegments: SubtitleSegment[] | undefined;
-  if (transcriptText) {
+  if (item.subtitle_segments?.length) {
+    subtitleSegments = item.subtitle_segments;
+  } else if (transcriptText) {
     subtitleSegments = parseTranscriptToSegments(transcriptText);
   }
 

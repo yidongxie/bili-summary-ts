@@ -47,9 +47,19 @@ export function relativeTime(value?: string): string {
 
 // Same lightweight markdown -> HTML used in the legacy frontend.
 // We intentionally keep it small: AI summaries only use #/##/###, **bold**,
-// `code`, "- list" and paragraph breaks.
+// `code`, "- list", GFM tables and paragraph breaks.
 export function markdownToHtml(md: string | undefined | null): string {
   let html = escapeHtml(md || '');
+  // GFM tables — emit <table> directly with no inner newlines, so the
+  // \n -> <br> pass below leaves the rows intact.
+  html = html.replace(/(?:^|\n)(?:\|.*\|[^\n]*)(?:\n\|.*\|[^\n]*)*/g, (block) => {
+    const lines = block.trim().split('\n').map((l) => l.trim());
+    if (lines.length < 2) return block;
+    if (!/^\|?[\s:|-]+\|[\s:|-]*$/.test(lines[1])) return block; // no delimiter row -> not a table
+    const cells = (l: string) => l.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+    const row = (r: string[], tag: string) => `<tr>${r.map((c) => `<${tag}>${c || '&nbsp;'}</${tag}>`).join('')}</tr>`;
+    return `<table>${row(cells(lines[0]), 'th')}${lines.slice(2).map((l) => row(cells(l), 'td')).join('')}</table>`;
+  });
   html = html
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')

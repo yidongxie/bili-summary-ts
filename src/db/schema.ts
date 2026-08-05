@@ -38,6 +38,7 @@ export interface DbLibraryItem {
   notes: string;
   mode: string;
   pic: string;
+  subtitle_segments: string;
 }
 
 export interface DbUserConfig {
@@ -115,7 +116,8 @@ export function createDb(dataDir: string): Database.Database {
       tags TEXT NOT NULL DEFAULT '',
       notes TEXT NOT NULL DEFAULT '',
       mode TEXT NOT NULL DEFAULT 'brief',
-      pic TEXT NOT NULL DEFAULT ''
+      pic TEXT NOT NULL DEFAULT '',
+      subtitle_segments TEXT NOT NULL DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS user_configs (
@@ -291,6 +293,9 @@ export function createDb(dataDir: string): Database.Database {
   const haveLib = new Set(libCols.map((c) => c.name));
   if (!haveLib.has("pic")) {
     db.exec("ALTER TABLE library_items ADD COLUMN pic TEXT NOT NULL DEFAULT ''");
+  }
+  if (!haveLib.has("subtitle_segments")) {
+    db.exec("ALTER TABLE library_items ADD COLUMN subtitle_segments TEXT NOT NULL DEFAULT ''");
   }
 
   // Optional FTS5 index. Some SQLite builds may not include FTS5, so startup must remain safe.

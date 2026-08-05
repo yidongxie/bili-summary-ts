@@ -79,6 +79,7 @@ export type LibraryItem = {
   summary: string;
   transcript?: string;
   subtitle_count?: number;
+  subtitle_segments?: SubtitleSegment[];
   category?: string;
   tags?: string[];
   notes?: string;
@@ -350,6 +351,7 @@ export function saveLibrary(payload: {
   summary: string;
   transcript?: string;
   subtitle_count?: number;
+  subtitle_segments?: SubtitleSegment[];
   mode?: string;
   category: string;
   tags: string[];

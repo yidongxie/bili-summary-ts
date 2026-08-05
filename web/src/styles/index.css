@@ -144,6 +144,29 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 
 .summary strong { color: var(--ink); font-weight: 650; }
 
+.summary table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: 13.5px;
+}
+
+.summary th, .summary td {
+  border: 1px solid var(--hairline);
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.summary th {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.summary tr:nth-child(even) td { background: rgba(127, 127, 127, 0.05); }
+
 /* ── Spinner ──────────────────────────────────────────────────────── */
 
 @keyframes spin { to { transform: rotate(360deg); } }
