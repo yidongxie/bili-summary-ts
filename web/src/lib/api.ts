@@ -55,6 +55,7 @@ export type SubtitleSegment = {
 };
 
 export type SummaryResult = {
+  id?: string;
   type?: 'bilibili' | 'xiaoyuzhou' | 'douyin' | 'xiaohongshu' | 'wechat' | 'youtube' | string;
   video?: VideoMeta;
   podcast?: PodcastMeta;
@@ -339,7 +340,7 @@ export function getLibrary(params: { q?: string; category?: string; tag?: string
 }
 
 export function checkLibraryByBvid(bvid: string) {
-  return request<{ saved: boolean }>('/api/library/check/' + encodeURIComponent(bvid));
+  return request<{ saved: boolean; item?: LibraryItem }>('/api/library/check/' + encodeURIComponent(bvid));
 }
 
 export function getLibraryItem(id: string) {
@@ -347,14 +348,15 @@ export function getLibraryItem(id: string) {
 }
 
 export function saveLibrary(payload: {
+  id?: string;
   video: VideoMeta;
   summary: string;
   transcript?: string;
   subtitle_count?: number;
   subtitle_segments?: SubtitleSegment[];
   mode?: string;
-  category: string;
-  tags: string[];
+  category?: string;
+  tags?: string[];
   notes?: string;
 }) {
   return request<{ item: LibraryItem }>('/api/library', {

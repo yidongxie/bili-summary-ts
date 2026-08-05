@@ -46,6 +46,7 @@ function libraryItemToSummaryResult(item: LibraryItem): SummaryResult {
   }
 
   return {
+    id: item.id,
     type: item.bvid?.startsWith('http') ? 'xiaoyuzhou' : 'bilibili',
     video: {
       title: item.title,

@@ -99,9 +99,10 @@ export function createLibraryRouter(db: Database.Database): Router {
       transcript: String(req.body.transcript ?? "").trim(),
       subtitle_count: Number(req.body.subtitle_count ?? 0) || 0,
       subtitle_segments: Array.isArray(req.body.subtitle_segments) ? req.body.subtitle_segments : undefined,
-      category: String(req.body.category ?? "待整理").trim() || "待整理",
-      tags: Array.isArray(req.body.tags) ? req.body.tags : [],
-      notes: String(req.body.notes ?? "").trim(),
+      // Undefined when omitted so an update preserves the stored values.
+      category: req.body.category == null ? undefined : String(req.body.category).trim() || "待整理",
+      tags: Array.isArray(req.body.tags) ? req.body.tags : undefined,
+      notes: req.body.notes == null ? undefined : String(req.body.notes).trim(),
       mode: String(req.body.mode ?? "brief").trim() || "brief",
     });
     res.json({ success: true, item });

@@ -503,6 +503,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
   const [error, setError] = useState('');
   const [result, setResult] = useState<SummaryResult | null>(initialResult || null);
   const [saved, setSaved] = useState(!!initialSaved);
+  const [savedItemId, setSavedItemId] = useState(initialResult?.id || '');
   const [runId, setRunId] = useState(0);
   const [reRunKey, setReRunKey] = useState(0);
   const closeRef = useRef<(() => void) | null>(null);
@@ -528,6 +529,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
     if (initialResult && !reRunKey) {
       setResult(initialResult);
       setSaved(!!initialSaved);
+      setSavedItemId(initialResult.id || '');
       setPhase('success');
       return;
     }
@@ -560,7 +562,11 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
             setResult(data);
             setPhase('success');
             const idToCheck = data.video?.bvid || data.podcast?.audioUrl || data.podcast?.id;
-            if (idToCheck) checkLibraryByBvid(idToCheck).then((r) => setSaved(!!r.saved)).catch(() => {});
+            // The fresh result is not saved yet — enable the button. If the
+            // video is already in the library, keep its id so saving updates
+            // that item instead of creating a duplicate.
+            setSaved(false);
+            if (idToCheck) checkLibraryByBvid(idToCheck).then((r) => setSavedItemId(r?.item?.id || '')).catch(() => {});
             closeRef.current?.();
             closeRef.current = null;
           } else if (e.type === 'network-error') setProgress(e.data?.error || '连接中断，正在等待重连…');
@@ -640,20 +646,26 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
       link: result.podcast?.link || '',
       pic: result.podcast?.cover || '',
     };
+    const isUpdate = !!savedItemId;
     const data = await saveLibrary({
+      id: savedItemId || undefined,
       video,
       summary: result.summary,
       transcript: result.transcript || '',
       subtitle_count: result.subtitle_count,
       subtitle_segments: result.subtitle_segments || [],
       mode: result.mode || mode,
-      category: config.default_category || '待整理',
-      tags: result.suggested_tags || [],
-      notes: '',
+      // On update, omit notes/tags/category so the server keeps the user's
+      // existing values instead of wiping them with the fresh task's defaults.
+      ...(isUpdate ? {} : {
+        category: config.default_category || '待整理',
+        tags: result.suggested_tags || [],
+        notes: '',
+      }),
     });
     setSaved(true);
     onSaved();
-    onShowToast(`已保存：${data.item.title}`, 'ok');
+    onShowToast(isUpdate ? `已更新：${data.item.title}` : `已保存：${data.item.title}`, 'ok');
   }
 
   function streamText(text: string, setter: (s: string) => void, speed = 20, chunk = 2, done?: () => void) {
@@ -749,7 +761,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
                   </div>
                 </div>
               </div>
-              <DarkButton variant="primary" onClick={handleSave} disabled={saved}><Save className="w-4 h-4" />{saved ? '已收藏' : '保存到收藏库'}</DarkButton>
+              <DarkButton variant="primary" onClick={handleSave} disabled={saved}><Save className="w-4 h-4" />{saved ? '已收藏' : savedItemId ? '更新收藏' : '保存到收藏库'}</DarkButton>
             </div>
           </aside>
 
