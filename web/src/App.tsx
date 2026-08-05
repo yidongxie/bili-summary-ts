@@ -64,7 +64,7 @@ function libraryItemToSummaryResult(item: LibraryItem): SummaryResult {
 }
 
 /** Parse plain transcript text into timestamped segments for the subtitles tab. */
-function parseTranscriptToSegments(text: string): SubtitleSegment[] {
+function parseTranscriptToSegments(text: string): SubtitleSegment[] | undefined {
   // Match lines with optional timestamps like "[12:34]" or "[123.4]" or bare text
   const lines = text.split('\n').filter((l) => l.trim());
   const segments: SubtitleSegment[] = [];

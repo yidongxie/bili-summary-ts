@@ -60,14 +60,19 @@ export async function chatCompletion(
 
 // ── Public API ──────────────────────────────────────────────────────
 
-export async function summarizeText(text: string, config: LlmConfig, mode: SummaryMode): Promise<string> {
+export async function summarizeText(
+  text: string,
+  config: LlmConfig,
+  mode: SummaryMode,
+  meta?: { title?: string; author?: string; duration?: string },
+): Promise<string> {
   if (!text.trim()) return "视频没有可用的转写文本，无法总结。";
   const maxInput = 16000;
   const input = text.length > maxInput ? text.slice(0, maxInput) + "\n\n...[内容较长，已截断]" : text;
   const instruction = SUMMARY_PROMPTS[mode] ?? SUMMARY_PROMPTS.brief;
   const messages = [
     { role: "system", content: SUMMARIZE_SYSTEM_PROMPT },
-    { role: "user", content: buildSummarizeUserPrompt(instruction, input) },
+    { role: "user", content: buildSummarizeUserPrompt(instruction, input, meta) },
   ];
   return chatCompletion(config, messages, 2400, mode);
 }

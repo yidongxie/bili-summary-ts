@@ -59,7 +59,7 @@ export function TagManagerModal({ tags, onClose, onRefresh, onShowToast }: TagMa
               <button type="button" onClick={() => mergeOne(name)} className="text-xs underline" style={{ color: 'var(--brand-tag)' }}>合并</button>
               <button type="button" onClick={() => deleteOne(name)} className="text-xs underline" style={{ color: 'var(--brand-error)' }}>删除</button>
             </div>
-          )) : <EmptyState title="暂无标签" description="收藏内容添加标签后会出现在这里。" />}
+          )) : <EmptyState title="暂无标签" desc="收藏内容添加标签后会出现在这里。" />}
         </div>
         <button type="button" onClick={onClose} className="self-end text-sm px-3 py-1.5 rounded-md" style={{ background: 'rgba(255,255,255,0.7)', color: 'var(--brand-tag)', border: '1px solid var(--hairline)' }}>完成</button>
       </div>

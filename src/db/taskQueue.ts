@@ -11,6 +11,7 @@ import { summarizeText, suggestTags, SummaryMode } from "../llm/summarize";
 import { enforceRateLimit } from "../common/rateLimit";
 import { getDecryptedConfig } from "./configStore";
 import { downloadWithDouyinDownloader, isDouyinDownloaderAvailable } from "../common/DouyinDownloaderFallback";
+import { formatDuration } from "../common/date";
 
 const MAX_DAILY_SUMMARIES = parseInt(process.env.MAX_DAILY_SUMMARIES || "10", 10);
 const MAX_SUBTITLE_CHARS = parseInt(process.env.MAX_SUBTITLE_CHARS || "60000", 10);
@@ -371,7 +372,11 @@ async function processBilibili(
   }
 
   updateProgress(db, task, "AI 总结中…");
-  let summary = await summarizeText(transcript, llmConfig, mode);
+  let summary = await summarizeText(transcript, llmConfig, mode, {
+    title: info.title,
+    author: info.author,
+    duration: formatDuration(info.duration),
+  });
   if (transcriptTruncated) summary += `\n\n> 字幕过长（${originalTranscriptLength} 字），本总结基于截取后的 ${MAX_SUBTITLE_CHARS} 字内容生成。`;
 
   updateProgress(db, task, "生成标签…");
@@ -446,7 +451,11 @@ async function processXiaoyuzhou(
   }
 
   updateProgress(db, task, "AI 总结中…");
-  let summary = await summarizeText(transcript, llmConfig, mode);
+  let summary = await summarizeText(transcript, llmConfig, mode, {
+    title: episode.title,
+    author: episode.author,
+    duration: formatDuration(episode.duration || 0),
+  });
   if (transcriptTruncated) summary += `\n\n> 内容过长（${originalTranscriptLength} 字），本总结基于截取后的 ${MAX_SUBTITLE_CHARS} 字内容生成。`;
 
   updateProgress(db, task, "生成标签…");
@@ -545,7 +554,11 @@ async function processWithYtDlp(
   }
 
   updateProgress(db, task, "AI 总结中…");
-  let summary = await summarizeText(transcript, llmConfig, mode);
+  let summary = await summarizeText(transcript, llmConfig, mode, {
+    title: videoInfo.title,
+    author: videoInfo.author,
+    duration: formatDuration(videoInfo.duration || 0),
+  });
   if (transcriptTruncated) summary += `\n\n> 内容过长（${originalTranscriptLength} 字），本总结基于截取后的 ${MAX_SUBTITLE_CHARS} 字内容生成。`;
 
   updateProgress(db, task, "生成标签…");
@@ -635,7 +648,11 @@ async function processWithDouyinDownloader(
   }
 
   updateProgress(db, task, "AI 总结中…");
-  let summary = await summarizeText(transcript, llmConfig, mode);
+  let summary = await summarizeText(transcript, llmConfig, mode, {
+    title: media.title,
+    author: media.author,
+    duration: '未知',
+  });
   if (transcriptTruncated) summary += `\n\n> 内容过长（${originalTranscriptLength} 字），本总结基于截取后的 ${MAX_SUBTITLE_CHARS} 字内容生成。`;
 
   updateProgress(db, task, "生成标签…");

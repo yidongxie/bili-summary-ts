@@ -179,6 +179,17 @@ function extractSummaryChapters(summary: string): { title: string; detail?: stri
   return [];
 }
 
+/** Heuristic score for how good a chapter boundary between two adjacent subtitle segments is. */
+function scoreBoundary(prev: string, next: string) {
+  let score = 0;
+  if (/[。！？!?]$/.test(prev)) score += 5;
+  if (/[，；：,;:]$/.test(prev)) score += 2;
+  if (/^(但是|所以|然后|接下来|第二|第三|另外|同时|最后|总结|那么|其实|比如|我们|你会|重点|核心)/.test(next)) score += 5;
+  if (/^(好|那|诶|嗯|呃|这个|接着)/.test(next)) score += 2;
+  if (prev.length > 18) score += 1;
+  return score;
+}
+
 function buildChapters(segments: SubtitleSegment[] | undefined, summary: string): ChapterItem[] {
   // First choice: LLM-generated headings from the summary structure
   const summaryChapters = extractSummaryChapters(summary);
@@ -285,12 +296,6 @@ function normalizeSubtitleText(text: string) {
   return String(text || '').replace(/\s+/g, ' ').replace(/([，。！？；：,.!?;:])+/g, '$1').trim();
 }
 
-function ensureLinePunctuation(text: string, isFinal: boolean) {
-  const clean = text.trim().replace(/[，。！？；：,.!?;:]+$/, '');
-  if (!clean) return '';
-  return clean + (isFinal ? '。' : '，');
-}
-
 function splitByPunctuation(text: string) {
   return normalizeSubtitleText(text).match(/[^，。！？；：,.!?;:]+[，。！？；：,.!?;:]?/g)?.map((s) => s.trim()).filter(Boolean) || [];
 }
@@ -325,24 +330,48 @@ function splitLongSubtitleClause(text: string): string[] {
   return out;
 }
 
+const MAX_SUBTITLE_LINE_CHARS = 80; // safety cap so a transcript without sentence-final punctuation can't collapse into one giant line
+
 function formatSubtitleSegments(segments: SubtitleSegment[] = []): FormattedSubtitleLine[] {
   const lines: FormattedSubtitleLine[] = [];
+  let pending: { from: number; parts: string[]; endPunct: string } | null = null;
+
+  const flushPending = () => {
+    if (!pending || !pending.parts.length) return;
+    lines.push({ from: pending.from, text: pending.parts.join('') + pending.endPunct });
+    pending = null;
+  };
+
   for (const seg of segments) {
     const clauses = splitByPunctuation(seg.content).flatMap(splitLongSubtitleClause);
-    const merged: string[] = [];
+    if (!clauses.length) continue;
+
     for (const raw of clauses) {
-      const part = raw.replace(/[，。！？；：,.!?;:]+$/, '').trim();
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      // Keep the actual sentence-ending punctuation (。！？) instead of always forcing a period
+      const isEnd = /[。！？]$/.test(trimmed);
+      const part = trimmed.replace(/[，。！？；：,.!?;:]+$/, '').trim();
       if (!part) continue;
-      const last = merged[merged.length - 1] || '';
-      if (last && last.length < 12 && (last + part).length <= 20) merged[merged.length - 1] = last + part;
-      else merged.push(part);
+
+      if (!pending) {
+        pending = { from: Number(seg.from || 0), parts: [], endPunct: '。' };
+      }
+      pending.parts.push(part);
+
+      if (isEnd) {
+        pending.endPunct = trimmed.slice(-1);
+        flushPending();
+      } else if (pending.parts.join('').length >= MAX_SUBTITLE_LINE_CHARS) {
+        // Safety net: flush mid-sentence once a line gets too long
+        flushPending();
+      }
     }
-    const duration = Math.max(1, Number(seg.to || seg.from + Math.max(merged.length, 1) * 2) - Number(seg.from || 0));
-    merged.forEach((line, index) => {
-      const from = Number(seg.from || 0) + (duration * index) / Math.max(merged.length, 1);
-      lines.push({ from, text: ensureLinePunctuation(line, index === merged.length - 1) });
-    });
   }
+
+  // Flush any remaining partial sentence
+  flushPending();
+
   return lines;
 }
 
@@ -571,7 +600,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
     return [];
   }, [result]);
   const mindMap = useMemo(() => buildMindMap(keyPoints, chapters, notes), [keyPoints, chapters, notes]);
-  const chatKey = useMemo(() => `bilistudy:chat:${meta?.link || meta?.bvid || url}`, [meta, url]);
+  const chatKey = useMemo(() => `bilistudy:chat:${meta?.link || (meta && 'bvid' in meta ? meta.bvid : undefined) || url}`, [meta, url]);
 
   useEffect(() => {
     if (!result) return;

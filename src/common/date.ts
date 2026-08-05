@@ -9,3 +9,12 @@ export function nowSql(): string {
 export function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
+
+/** Format seconds as "m:ss" or "h:mm:ss". */
+export function formatDuration(seconds: number): string {
+  seconds = Number(seconds || 0);
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+}

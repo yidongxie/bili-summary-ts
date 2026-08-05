@@ -1,6 +1,10 @@
 /** Shared utilities used across route modules. */
 
 import type { LibraryItem } from "../db/libraryStore";
+import { formatDuration } from "../common/date";
+
+// Re-export so existing callers of routes/utils keep working.
+export { formatDuration };
 
 /** e.g. "2026-07-28 15:55:47" */
 export function nowSql(): string {
@@ -39,14 +43,6 @@ export function markdownToHtml(md: string): string {
     .replace(/\n{2,}/g, "</p><p>")
     .replace(/\n/g, "<br>");
   return "<p>" + html + "</p>";
-}
-
-export function formatDuration(seconds: number): string {
-  seconds = Number(seconds || 0);
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
 }
 
 export function formatDate(value: string): string {
