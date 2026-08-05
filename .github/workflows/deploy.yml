@@ -240,7 +240,10 @@ jobs:
             # as the primary static dir (see src/index.ts).
             npm run build:web
             echo "=== STEP: migrate ==="
-            DEEPSEEK_API_KEY="${{ secrets.DEEPSEEK_API_KEY }}" node "$PROJ_DIR/deploy-migrate.js"
+            # Source .env so deploy-migrate.js gets ENCRYPTION_KEY for crypto, and
+            # pass ADMIN_EMAIL + DEEPSEEK_API_KEY so admin bootstrap / key sync runs.
+            source "$REPO_DIR/.env" || true
+            ADMIN_EMAIL="${{ secrets.ADMIN_EMAIL }}" DEEPSEEK_API_KEY="${{ secrets.DEEPSEEK_API_KEY }}" node "$PROJ_DIR/deploy-migrate.js"
 
             echo "=== STEP: pm2 restart ==="
             # Start fresh (PM2 restart keeps old env, so delete + start)

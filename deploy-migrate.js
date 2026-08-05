@@ -46,14 +46,14 @@ if (!email) {
     }
   }
 
-  // Set default DeepSeek API key for admin user
+  // Sync admin DeepSeek API key from the deploy secret (applied whenever provided).
   const deepseekKey = process.env.DEEPSEEK_API_KEY || "";
   if (deepseekKey) {
     try {
       const { encrypt } = require(path.resolve(__dirname, "dist/db/crypto"));
       const encrypted = encrypt(deepseekKey);
-      db.prepare("UPDATE user_configs SET api_key_enc = ? WHERE user_id = ? AND (api_key_enc = '' OR api_key_enc IS NULL)").run(encrypted, uid);
-      console.log("DeepSeek API key set for admin user");
+      db.prepare("UPDATE user_configs SET api_key_enc = ? WHERE user_id = ?").run(encrypted, uid);
+      console.log(`DeepSeek API key synced for admin user (id=${uid})`);
     } catch(e) {
       console.error("Failed to set API key:", e.message);
     }
