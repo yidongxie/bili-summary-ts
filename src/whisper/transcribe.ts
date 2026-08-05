@@ -279,17 +279,27 @@ function postMultipartRaw(
   });
 }
 
-/** Transcribe with word timestamps, falling back to a plain request if the endpoint rejects the extra param. */
-function postMultipartTranscribe(
+/**
+ * Transcribe, preferring the fast path (verbose_json alone, which most
+ * endpoints answer with segment timestamps directly) and only paying for
+ * word-level alignment when no segments come back.
+ */
+async function postMultipartTranscribe(
   filePath: string,
   config: WhisperConfig,
 ): Promise<{ text: string; segments?: TranscribedSegment[] }> {
-  return postMultipartRaw(filePath, config, true).catch((e: any) => {
+  // Fast path: plain verbose_json usually yields segment timestamps directly.
+  const plain = await postMultipartRaw(filePath, config, false);
+  if (plain.segments?.length) return plain;
+  // Slow path: no segments — ask for word-level timestamps and group them.
+  try {
+    return await postMultipartRaw(filePath, config, true);
+  } catch (e: any) {
     if (/HTTP 400|HTTP 422/.test(String(e?.message || ''))) {
-      return postMultipartRaw(filePath, config, false);
+      return plain; // endpoint rejects the granularity param; keep the text-only result
     }
     throw e;
-  });
+  }
 }
 
 export interface AudioTranscribeResult {
