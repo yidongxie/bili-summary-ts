@@ -60,27 +60,42 @@ if (!email) {
   }
 }
 
-  // Merge orphan WeChat accounts into admin (uid from above)
-  const orphanUsers = db.prepare("SELECT id, email FROM users WHERE email LIKE 'wechat_%@bilistudy.local' AND id != ?").all(uid);
-  if (orphanUsers.length) console.log(`Found ${orphanUsers.length} orphan WeChat user(s), merging into admin id=${uid}...`);
-  for (const orphan of orphanUsers) {
-    // FK cleanup first (child rows that reference the orphan user's data)
-    db.prepare("DELETE FROM chat_messages WHERE user_id = ?").run(orphan.id);
-    db.prepare("DELETE FROM chat_threads WHERE user_id = ?").run(orphan.id);
-    db.prepare("DELETE FROM review_items WHERE user_id = ?").run(orphan.id);
-    db.prepare("DELETE FROM learning_path_items WHERE path_id IN (SELECT id FROM learning_paths WHERE user_id = ?)").run(orphan.id);
-    // Reassign remaining data to admin
-    db.prepare("UPDATE library_items SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
-    db.prepare("UPDATE snippets SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
-    db.prepare("UPDATE learning_paths SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
-    db.prepare("UPDATE quizzes SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
-    db.prepare("UPDATE api_usage_logs SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
-    db.prepare("UPDATE daily_usage SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
-    db.prepare("UPDATE tag_metadata SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
-    db.prepare("DELETE FROM user_configs WHERE user_id = ?").run(orphan.id);
-    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(orphan.id);
-    db.prepare("DELETE FROM summary_tasks WHERE user_id = ?").run(orphan.id);
-    db.prepare("DELETE FROM users WHERE id = ?").run(orphan.id);
+  // Merge orphan WeChat accounts into admin (uid from above).
+  // Skipped when there is no admin context (uid stays 0) — reassigning
+  // user_id to 0 would violate the users(id) FK constraint.
+  if (uid > 0) {
+    const orphanUsers = db.prepare("SELECT id, email FROM users WHERE email LIKE 'wechat_%@bilistudy.local' AND id != ?").all(uid);
+    if (orphanUsers.length) console.log(`Found ${orphanUsers.length} orphan WeChat user(s), merging into admin id=${uid}...`);
+    for (const orphan of orphanUsers) {
+      // FK cleanup first (child rows that reference the orphan user's data)
+      db.prepare("DELETE FROM chat_messages WHERE user_id = ?").run(orphan.id);
+      db.prepare("DELETE FROM chat_threads WHERE user_id = ?").run(orphan.id);
+      db.prepare("DELETE FROM review_items WHERE user_id = ?").run(orphan.id);
+      db.prepare("DELETE FROM learning_path_items WHERE path_id IN (SELECT id FROM learning_paths WHERE user_id = ?)").run(orphan.id);
+      // Reassign remaining data to admin
+      db.prepare("UPDATE library_items SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+      db.prepare("UPDATE snippets SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+      db.prepare("UPDATE learning_paths SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+      db.prepare("UPDATE quizzes SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+      db.prepare("UPDATE api_usage_logs SET user_id = ? WHERE user_id = ?").run(uid, orphan.id);
+      // daily_usage has PRIMARY KEY (user_id, date) — merge counts, then drop orphan rows
+      db.prepare(
+        `INSERT INTO daily_usage (user_id, date, summarize_count)
+         SELECT ?, date, summarize_count FROM daily_usage WHERE user_id = ?
+         ON CONFLICT(user_id, date) DO UPDATE SET summarize_count = summarize_count + excluded.summarize_count`
+      ).run(uid, orphan.id);
+      db.prepare("DELETE FROM daily_usage WHERE user_id = ?").run(orphan.id);
+      // tag_metadata has UNIQUE(user_id, tag_name) — keep orphan's tag only if admin lacks it
+      db.prepare(
+        `INSERT OR IGNORE INTO tag_metadata (user_id, tag_name, color, description, updated_at)
+         SELECT ?, tag_name, color, description, updated_at FROM tag_metadata WHERE user_id = ?`
+      ).run(uid, orphan.id);
+      db.prepare("DELETE FROM tag_metadata WHERE user_id = ?").run(orphan.id);
+      db.prepare("DELETE FROM user_configs WHERE user_id = ?").run(orphan.id);
+      db.prepare("DELETE FROM sessions WHERE user_id = ?").run(orphan.id);
+      db.prepare("DELETE FROM summary_tasks WHERE user_id = ?").run(orphan.id);
+      db.prepare("DELETE FROM users WHERE id = ?").run(orphan.id);
+    }
   }
 
 db.close();
