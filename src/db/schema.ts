@@ -127,7 +127,7 @@ export function createDb(dataDir: string): Database.Database {
       whisper_api_key_enc TEXT NOT NULL DEFAULT '',
       yt_dlp_cookies_enc TEXT NOT NULL DEFAULT '',
       whisper_base_url TEXT NOT NULL DEFAULT 'https://api.siliconflow.cn/v1',
-      whisper_model TEXT NOT NULL DEFAULT 'FunAudioLLM/SenseVoiceSmall',
+      whisper_model TEXT NOT NULL DEFAULT 'TeleAI/TeleSpeechASR',
       deepseek_base_url TEXT NOT NULL DEFAULT 'https://api.deepseek.com/v1',
       deepseek_model TEXT NOT NULL DEFAULT 'deepseek-v4-flash',
       obsidian_folder TEXT NOT NULL DEFAULT 'BiliStudy',

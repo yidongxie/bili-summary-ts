@@ -295,7 +295,7 @@ export function createTaskRouter(db: Database.Database): Router {
 function getWhisperConfig(db: Database.Database, userId: number, userEmail: string, body: any, config: any) {
   let whisperApiKey = String(body.whisper_api_key || config.whisper_api_key || "").trim();
   let whisperBaseUrl = String(body.whisper_base_url || config.whisper_base_url || "https://api.siliconflow.cn/v1").trim();
-  let whisperModel = String(body.whisper_model || config.whisper_model || "FunAudioLLM/SenseVoiceSmall").trim();
+  let whisperModel = String(body.whisper_model || config.whisper_model || "TeleAI/TeleSpeechASR").trim();
 
   if (!whisperApiKey && ADMIN_EMAIL && userEmail !== ADMIN_EMAIL) {
     const adminRow = db

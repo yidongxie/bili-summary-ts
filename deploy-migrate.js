@@ -81,6 +81,13 @@ if (!email) {
   ).run();
   if (modelMigrated.changes) console.log(`Updated ${modelMigrated.changes} user config(s) to model deepseek-v4-flash`);
 
+  // Switch the default whisper model to TeleAI/TeleSpeechASR for users still
+  // on the legacy SenseVoiceSmall default (only touches rows never customized).
+  const whisperMigrated = db.prepare(
+    "UPDATE user_configs SET whisper_model = 'TeleAI/TeleSpeechASR' WHERE whisper_model = 'FunAudioLLM/SenseVoiceSmall'"
+  ).run();
+  if (whisperMigrated.changes) console.log(`Updated ${whisperMigrated.changes} user config(s) to whisper model TeleAI/TeleSpeechASR`);
+
   // Merge orphan WeChat accounts into admin (uid from above).
   // Skipped when there is no admin context (uid stays 0) — reassigning
   // user_id to 0 would violate the users(id) FK constraint.

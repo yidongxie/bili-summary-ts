@@ -23,7 +23,7 @@ export function createConfigRouter(db: Database.Database): Router {
           deepseek_base_url: "https://api.deepseek.com/v1",
           deepseek_model: "deepseek-v4-flash",
           whisper_base_url: "https://api.siliconflow.cn/v1",
-          whisper_model: "FunAudioLLM/SenseVoiceSmall",
+          whisper_model: "TeleAI/TeleSpeechASR",
           obsidian_folder: "BiliStudy",
           obsidian_vault_name: "",
           api_key_set: false,

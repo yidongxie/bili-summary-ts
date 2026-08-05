@@ -89,7 +89,7 @@ export function SettingsPage({
   const [deepseekApiUrl, setDeepseekApiUrl] = useState('https://api.deepseek.com/v1');
   const [whisperKey, setWhisperKey] = useState('');
   const [whisperApiUrl, setWhisperApiUrl] = useState('https://api.siliconflow.cn/v1');
-  const [whisperModel, setWhisperModel] = useState('FunAudioLLM/SenseVoiceSmall');
+  const [whisperModel, setWhisperModel] = useState('TeleAI/TeleSpeechASR');
   const [defaultCategory, setDefaultCategory] = useState('待整理');
   const [ytDlpCookies, setYtDlpCookies] = useState('');
   const [obsidianVault, setObsidianVault] = useState('');
@@ -115,7 +115,7 @@ export function SettingsPage({
       setDeepseekModel(cfg.deepseek_model || 'deepseek-v4-flash');
       setDeepseekApiUrl(cfg.deepseek_base_url || 'https://api.deepseek.com/v1');
       setWhisperApiUrl(cfg.whisper_base_url || 'https://api.siliconflow.cn/v1');
-      setWhisperModel(cfg.whisper_model || 'FunAudioLLM/SenseVoiceSmall');
+      setWhisperModel(cfg.whisper_model || 'TeleAI/TeleSpeechASR');
       setDefaultCategory(cfg.default_category || '待整理');
       setObsidianVault(cfg.obsidian_vault_name || '');
       setObsidianSubfolder(cfg.obsidian_folder || 'BiliStudy');
@@ -208,7 +208,7 @@ export function SettingsPage({
         deepseek_model: deepseekModel.trim(),
         deepseek_base_url: deepseekApiUrl.trim(),
         whisper_base_url: whisperApiUrl.trim() || 'https://api.siliconflow.cn/v1',
-        whisper_model: whisperModel.trim() || 'FunAudioLLM/SenseVoiceSmall',
+        whisper_model: whisperModel.trim() || 'TeleAI/TeleSpeechASR',
         default_category: defaultCategory.trim() || '待整理',
         obsidian_vault_name: obsidianVault.trim(),
         obsidian_folder: obsidianSubfolder.trim() || 'BiliStudy',
