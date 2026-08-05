@@ -21,7 +21,7 @@ export function createConfigRouter(db: Database.Database): Router {
         config: {
           default_category: "待整理",
           deepseek_base_url: "https://api.deepseek.com/v1",
-          deepseek_model: "deepseek-chat",
+          deepseek_model: "deepseek-v4-flash",
           whisper_base_url: "https://api.siliconflow.cn/v1",
           whisper_model: "FunAudioLLM/SenseVoiceSmall",
           obsidian_folder: "BiliStudy",
@@ -52,7 +52,7 @@ export function createConfigRouter(db: Database.Database): Router {
     const config = getDecryptedConfig(db, userId);
     const apiKey = String(req.body.api_key || config.api_key || "").trim();
     const baseUrl = String(req.body.base_url || config.deepseek_base_url || "https://api.deepseek.com/v1").replace(/\/+$/, "");
-    const model = String(req.body.model || config.deepseek_model || "deepseek-chat").trim();
+    const model = String(req.body.model || config.deepseek_model || "deepseek-v4-flash").trim();
     if (!apiKey) { res.status(400).json({ success: false, error: "请先填写 DeepSeek API Key" }); return; }
 
     try {

@@ -85,7 +85,7 @@ export function SettingsPage({
   onRequireLogin,
 }: SettingsPageProps) {
   const [deepseekKey, setDeepseekKey] = useState('');
-  const [deepseekModel, setDeepseekModel] = useState('deepseek-chat');
+  const [deepseekModel, setDeepseekModel] = useState('deepseek-v4-flash');
   const [deepseekApiUrl, setDeepseekApiUrl] = useState('https://api.deepseek.com/v1');
   const [whisperKey, setWhisperKey] = useState('');
   const [whisperApiUrl, setWhisperApiUrl] = useState('https://api.siliconflow.cn/v1');
@@ -112,7 +112,7 @@ export function SettingsPage({
     let cancelled = false;
     getConfig().then((cfg) => {
       if (cancelled) return;
-      setDeepseekModel(cfg.deepseek_model || 'deepseek-chat');
+      setDeepseekModel(cfg.deepseek_model || 'deepseek-v4-flash');
       setDeepseekApiUrl(cfg.deepseek_base_url || 'https://api.deepseek.com/v1');
       setWhisperApiUrl(cfg.whisper_base_url || 'https://api.siliconflow.cn/v1');
       setWhisperModel(cfg.whisper_model || 'FunAudioLLM/SenseVoiceSmall');

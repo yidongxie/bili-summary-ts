@@ -543,7 +543,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
           url,
           mode,
           api_key: config.api_key || '',
-          model: config.deepseek_model || 'deepseek-chat',
+          model: config.deepseek_model || 'deepseek-v4-flash',
           base_url: config.deepseek_base_url || 'https://api.deepseek.com/v1',
           whisper_api_key: config.whisper_api_key || '',
           whisper_base_url: config.whisper_base_url || '',

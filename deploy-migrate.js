@@ -60,6 +60,13 @@ if (!email) {
   }
 }
 
+  // Migrate the default LLM model to deepseek-v4-flash for users still on the
+  // legacy 'deepseek-chat' default (safe: only touches rows never customized).
+  const modelMigrated = db.prepare(
+    "UPDATE user_configs SET deepseek_model = 'deepseek-v4-flash' WHERE deepseek_model = 'deepseek-chat'"
+  ).run();
+  if (modelMigrated.changes) console.log(`Updated ${modelMigrated.changes} user config(s) to model deepseek-v4-flash`);
+
   // Merge orphan WeChat accounts into admin (uid from above).
   // Skipped when there is no admin context (uid stays 0) — reassigning
   // user_id to 0 would violate the users(id) FK constraint.

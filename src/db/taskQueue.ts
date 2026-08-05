@@ -694,7 +694,7 @@ async function runTask(
 
     const config = getDecryptedConfig(db, task.userId);
     let apiKey = String(body.api_key || config.api_key || "").trim();
-    const model = String(body.model || config.deepseek_model || "deepseek-chat").trim();
+    const model = String(body.model || config.deepseek_model || "deepseek-v4-flash").trim();
     const baseUrl = String(body.base_url || config.deepseek_base_url || "https://api.deepseek.com/v1").trim();
     const mode = (String(body.mode || "brief").trim() || "brief") as SummaryMode;
 

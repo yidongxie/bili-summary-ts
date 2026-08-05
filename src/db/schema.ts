@@ -127,7 +127,7 @@ export function createDb(dataDir: string): Database.Database {
       whisper_base_url TEXT NOT NULL DEFAULT 'https://api.siliconflow.cn/v1',
       whisper_model TEXT NOT NULL DEFAULT 'FunAudioLLM/SenseVoiceSmall',
       deepseek_base_url TEXT NOT NULL DEFAULT 'https://api.deepseek.com/v1',
-      deepseek_model TEXT NOT NULL DEFAULT 'deepseek-chat',
+      deepseek_model TEXT NOT NULL DEFAULT 'deepseek-v4-flash',
       obsidian_folder TEXT NOT NULL DEFAULT 'BiliStudy',
       obsidian_vault_name TEXT NOT NULL DEFAULT '',
       default_category TEXT NOT NULL DEFAULT '待整理'
