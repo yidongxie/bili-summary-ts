@@ -167,8 +167,58 @@ function ffmpegToMp3(input: string, output: string): Promise<void> {
   });
 }
 
-/** Multipart upload to OpenAI-compatible /audio/transcriptions endpoint. */
-function postMultipartTranscribe(filePath: string, config: WhisperConfig): Promise<{ text: string; segments?: TranscribedSegment[] }> {
+interface WordTimestamp { word: string; start: number; end: number; }
+
+/** Group word-level timestamps into sentence segments (split on 。！？.!?）. */
+function wordsToSegments(words: WordTimestamp[]): TranscribedSegment[] {
+  const out: TranscribedSegment[] = [];
+  let cur: { from: number; to: number; parts: string[] } | null = null;
+  for (const w of words) {
+    const word = String(w.word || '').trim();
+    if (!word) continue;
+    if (!cur) cur = { from: Number(w.start) || 0, to: Number(w.end) || 0, parts: [] };
+    cur.to = Number(w.end) || cur.to;
+    cur.parts.push(word);
+    if (/[。！？.!?]$/.test(word)) {
+      out.push({ from: cur.from, to: cur.to, content: cur.parts.join(' ') });
+      cur = null;
+    }
+  }
+  if (cur && cur.parts.length) out.push({ from: cur.from, to: cur.to, content: cur.parts.join(' ') });
+  return out;
+}
+
+/**
+ * Normalise an OpenAI-compatible transcription response into segments.
+ * Tolerates several shapes: segments[], timestamped_segments[], words[].
+ */
+function parseTranscription(json: any): { text: string; segments?: TranscribedSegment[] } {
+  const text = String(json.text || '').trim();
+  const direct = json.segments || json.timestamped_segments || json.segments_with_timestamps || json.transcript_segments;
+  if (Array.isArray(direct)) {
+    const segs = direct
+      .map((s: any) => ({
+        from: Number(s.start) || 0,
+        to: Number(s.end) || Number(s.start) || 0,
+        content: String(s.text || s.content || '').trim(),
+      }))
+      .filter((s: TranscribedSegment) => s.content);
+    if (segs.length) return { text, segments: segs };
+  }
+  const words = json.words || json.word_timestamps || json.timestamped_words;
+  if (Array.isArray(words) && words.length) {
+    const segs = wordsToSegments(words);
+    if (segs.length) return { text, segments: segs };
+  }
+  return { text };
+}
+
+/** Upload to an OpenAI-compatible /audio/transcriptions endpoint. */
+function postMultipartRaw(
+  filePath: string,
+  config: WhisperConfig,
+  withWordTimestamps: boolean,
+): Promise<{ text: string; segments?: TranscribedSegment[] }> {
   return new Promise((resolve, reject) => {
     const base = config.baseUrl.replace(/\/+$/, '');
     const url = new URL(base + '/audio/transcriptions');
@@ -180,6 +230,9 @@ function postMultipartTranscribe(filePath: string, config: WhisperConfig): Promi
     const parts: Buffer[] = [
       header('model', config.model),
       header('response_format', 'verbose_json'),
+      // Word-level timestamps give us per-sentence timing. Some endpoints
+      // reject this param, so the wrapper retries without it on a 4xx.
+      ...(withWordTimestamps ? [header('timestamp_granularities[]', 'word'), header('timestamp_granularities[]', 'segment')] : []),
       Buffer.from(
         `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: audio/mpeg\r\n\r\n`,
         'utf-8',
@@ -212,11 +265,7 @@ function postMultipartTranscribe(filePath: string, config: WhisperConfig): Promi
             return;
           }
           try {
-            const j = JSON.parse(text);
-            const segments: TranscribedSegment[] = Array.isArray(j.segments)
-              ? j.segments.map((s: any) => ({ from: Number(s.start) || 0, to: Number(s.end) || 0, content: String(s.text || '').trim() })).filter((s: TranscribedSegment) => s.content)
-              : [];
-            resolve({ text: String(j.text || '').trim(), segments });
+            resolve(parseTranscription(JSON.parse(text)));
           } catch (e) {
             reject(new Error(`Whisper JSON parse: ${e}`));
           }
@@ -227,6 +276,19 @@ function postMultipartTranscribe(filePath: string, config: WhisperConfig): Promi
     req.on('timeout', () => { req.destroy(); reject(new Error('Whisper timeout')); });
     req.write(body);
     req.end();
+  });
+}
+
+/** Transcribe with word timestamps, falling back to a plain request if the endpoint rejects the extra param. */
+function postMultipartTranscribe(
+  filePath: string,
+  config: WhisperConfig,
+): Promise<{ text: string; segments?: TranscribedSegment[] }> {
+  return postMultipartRaw(filePath, config, true).catch((e: any) => {
+    if (/HTTP 400|HTTP 422/.test(String(e?.message || ''))) {
+      return postMultipartRaw(filePath, config, false);
+    }
+    throw e;
   });
 }
 
