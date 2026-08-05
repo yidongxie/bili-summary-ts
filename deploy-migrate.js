@@ -1,7 +1,21 @@
 /** Deployment migration – optionally ensure an admin user exists */
 const path = require("path");
+const fs = require("fs");
 const db = require(path.resolve(__dirname, "dist/db/schema")).createDb(path.resolve(__dirname, "data"));
 const crypto = require("crypto");
+
+// The workflow sources <repo>/.env before running this script, but if that
+// ever fails, fall back to reading ENCRYPTION_KEY from the .env file directly
+// (deployed layout keeps .env one level up from this repo checkout).
+if (!process.env.ENCRYPTION_KEY) {
+  for (const candidate of [path.resolve(__dirname, ".env"), path.resolve(__dirname, "..", ".env")]) {
+    try {
+      const m = fs.readFileSync(candidate, "utf8").match(/^ENCRYPTION_KEY=(\S+)$/m);
+      if (m) { process.env.ENCRYPTION_KEY = m[1].trim(); break; }
+    } catch { /* keep looking */ }
+  }
+  if (!process.env.ENCRYPTION_KEY) console.warn("WARN: ENCRYPTION_KEY not found; admin API key sync will fail");
+}
 
 const email = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
 const password = String(process.env.ADMIN_PASSWORD || "");

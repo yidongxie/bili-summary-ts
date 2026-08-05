@@ -243,6 +243,7 @@ jobs:
             # Source .env so deploy-migrate.js gets ENCRYPTION_KEY for crypto, and
             # pass ADMIN_EMAIL + DEEPSEEK_API_KEY so admin bootstrap / key sync runs.
             source "$REPO_DIR/.env" || true
+            echo "migrate env: ENCRYPTION_KEY=$([ -n "$ENCRYPTION_KEY" ] && echo present || echo MISSING) ADMIN_EMAIL=$([ -n "$ADMIN_EMAIL" ] && echo present || echo MISSING)"
             ADMIN_EMAIL="${{ secrets.ADMIN_EMAIL }}" DEEPSEEK_API_KEY="${{ secrets.DEEPSEEK_API_KEY }}" node "$PROJ_DIR/deploy-migrate.js"
 
             echo "=== STEP: pm2 restart ==="
