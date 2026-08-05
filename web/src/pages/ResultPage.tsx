@@ -330,6 +330,36 @@ function splitLongSubtitleClause(text: string): string[] {
   return out;
 }
 
+// Whisper sometimes returns a single all-encompassing segment or none at all.
+// Detect that and estimate progressive timestamps across the media duration so
+// subtitle lines don't all render as [00:00:00].
+function distributeTimestamps(segments: SubtitleSegment[], durationSeconds: number): SubtitleSegment[] {
+  const duration = Number(durationSeconds) > 0 ? Number(durationSeconds) : Math.max(segments.length * 3, 60);
+  const totalLen = segments.reduce((sum, s) => sum + (s.content || '').length, 0) || 1;
+  let cursor = 0;
+  return segments.map((s) => {
+    const from = cursor;
+    cursor = Math.min(duration, cursor + ((s.content || '').length / totalLen) * duration);
+    return { from, to: cursor, content: s.content };
+  });
+}
+
+function ensureTimedSegments(segments: SubtitleSegment[] = [], durationSeconds: number): SubtitleSegment[] {
+  if (!segments.length) return segments;
+  if (segments.length === 1) {
+    // One segment carrying the whole text — split into sentences so we can space them out.
+    const sentences = splitByPunctuation(segments[0].content)
+      .map((s) => s.replace(/[，；：,;:]$/, '').trim())
+      .filter(Boolean);
+    if (sentences.length > 1) {
+      return distributeTimestamps(sentences.map((c) => ({ from: 0, to: 0, content: c })), durationSeconds);
+    }
+    return segments;
+  }
+  const starts = new Set(segments.map((s) => Number(s.from || 0)));
+  return starts.size > 1 ? segments : distributeTimestamps(segments, durationSeconds);
+}
+
 const MAX_SUBTITLE_LINE_CHARS = 80; // safety cap so a transcript without sentence-final punctuation can't collapse into one giant line
 
 function formatSubtitleSegments(segments: SubtitleSegment[] = []): FormattedSubtitleLine[] {
@@ -768,7 +798,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
           <section className="lg:col-span-3 space-y-4">
             <TabBar active={activeTab} onChange={setActiveTab} />
             {activeTab === 'summary' && <SummaryTab notes={notes} copied={copiedNotes} setCopied={setCopiedNotes} rewritePlatform={rewritePlatform} setRewritePlatform={setRewritePlatform} rewriteText={rewriteText} onRewrite={() => streamText(`【${rewritePlatform}改写】\n${plainMarkdown(notes).slice(0, 500)}\n\n适合发布到${rewritePlatform}，保留核心观点并增强可读性。`, setRewriteText, 30, 3)} />}
-            {activeTab === 'subtitles' && <SubtitlesTab segments={subtitles} search={subtitleSearch} setSearch={setSubtitleSearch} highlightTime={highlightTime} language={language} setLanguage={setLanguage} translating={translating} translation={translation} view={subtitleView} setView={setSubtitleView} onAskSelected={askSelectedText} onTranslate={() => { setTranslating(true); const raw = subtitles.map((s) => s.content).join('\n'); streamText(`翻译为 ${language}:\n${raw.slice(0, 800)}`, setTranslation, 15, 1, () => setTranslating(false)); }} />}
+            {activeTab === 'subtitles' && <SubtitlesTab segments={subtitles} duration={meta?.duration || 0} search={subtitleSearch} setSearch={setSubtitleSearch} highlightTime={highlightTime} language={language} setLanguage={setLanguage} translating={translating} translation={translation} view={subtitleView} setView={setSubtitleView} onAskSelected={askSelectedText} onTranslate={() => { setTranslating(true); const raw = subtitles.map((s) => s.content).join('\n'); streamText(`翻译为 ${language}:\n${raw.slice(0, 800)}`, setTranslation, 15, 1, () => setTranslating(false)); }} />}
             {activeTab === 'mindmap' && <MindMapTab node={mindMap} expanded={expanded} setExpanded={setExpanded} full={mindFull} setFull={setMindFull} view={mindView} setView={setMindView} />}
             {activeTab === 'chat' && <ChatTab messages={messages} streaming={streaming} input={chatInput} setInput={setChatInput} send={sendChat} jump={jumpToSubtitle} />}
           </section>
@@ -861,11 +891,12 @@ function SummaryTab({ notes, copied, setCopied, rewritePlatform, setRewritePlatf
   return <div className="space-y-6"><div className="summary rounded-lg p-4 text-sm" style={{ background: 'var(--surface)' }} dangerouslySetInnerHTML={{ __html: markdownToHtml(notes) }} /><div className="mt-4 flex flex-wrap items-center gap-2"><DarkButton onClick={copyNotes}>{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{copied ? '已复制' : '复制笔记'}</DarkButton><DarkButton onClick={() => downloadText('summary.md', notes, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><div className="ml-auto flex gap-2"><select value={rewritePlatform} onChange={(e) => setRewritePlatform(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'var(--canvas)', color: fg, border: `1px solid ${border}` }}><option>公众号</option><option>小红书</option><option>微博</option><option>博客</option></select><DarkButton variant="primary" onClick={onRewrite}>改写</DarkButton></div></div>{rewriteText && <div className="mt-4 rounded-lg p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{rewriteText}</div>}</div>;
 }
 
-function SubtitlesTab({ segments, language, setLanguage, translating, translation, onTranslate }: any) {
-  const formatted = formatSubtitleSegments(segments);
+function SubtitlesTab({ segments, duration, language, setLanguage, translating, translation, onTranslate }: any) {
+  const timed = ensureTimedSegments(segments, duration);
+  const formatted = formatSubtitleSegments(timed);
   const txt = formattedSubtitleText(formatted);
   const markdown = `# 字幕\n\n${txt}`;
-  return <Panel title="字幕"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => copyText(txt)}><Copy className="w-4 h-4" />复制全部</DarkButton><DarkButton onClick={() => downloadText('subtitles.srt', buildSrt(segments))}><Download className="w-4 h-4" />导出 SRT</DarkButton><DarkButton onClick={() => downloadText('subtitles.md', markdown, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><select value={language} onChange={(e) => setLanguage(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'var(--canvas)', color: fg, border: `1px solid ${border}` }}><option>English</option><option>日本語</option><option>한국어</option><option>繁體中文</option><option>Français</option><option>Deutsch</option><option>Español</option></select><DarkButton variant="primary" onClick={onTranslate} disabled={translating}>{translating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}开始翻译</DarkButton></div>{translation && <div className="mb-4 rounded-lg p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{translation}</div>}<div className="max-h-[500px] overflow-y-auto divide-y" style={{ borderColor: border }}>{formatted.map((line, i) => <div key={i} className="flex items-start gap-4 px-4 py-3"><span className="w-24 shrink-0 font-mono text-xs tabular-nums" style={{ color: muted }}>[{subtitleTimestamp(line.from)}]</span><span className="min-w-0 flex-1 text-sm leading-relaxed" style={{ color: fg }}>{line.text}</span></div>)}</div></Panel>;
+  return <Panel title="字幕"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => copyText(txt)}><Copy className="w-4 h-4" />复制全部</DarkButton><DarkButton onClick={() => downloadText('subtitles.srt', buildSrt(timed))}><Download className="w-4 h-4" />导出 SRT</DarkButton><DarkButton onClick={() => downloadText('subtitles.md', markdown, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><select value={language} onChange={(e) => setLanguage(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'var(--canvas)', color: fg, border: `1px solid ${border}` }}><option>English</option><option>日本語</option><option>한국어</option><option>繁體中文</option><option>Français</option><option>Deutsch</option><option>Español</option></select><DarkButton variant="primary" onClick={onTranslate} disabled={translating}>{translating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}开始翻译</DarkButton></div>{translation && <div className="mb-4 rounded-lg p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{translation}</div>}<div className="max-h-[500px] overflow-y-auto divide-y" style={{ borderColor: border }}>{formatted.map((line, i) => <div key={i} className="flex items-start gap-4 px-4 py-3"><span className="w-24 shrink-0 font-mono text-xs tabular-nums" style={{ color: muted }}>[{subtitleTimestamp(line.from)}]</span><span className="min-w-0 flex-1 text-sm leading-relaxed" style={{ color: fg }}>{line.text}</span></div>)}</div></Panel>;
 }
 
 function MindNodeView({ node, expanded, setExpanded, depth = 0 }: any) {
