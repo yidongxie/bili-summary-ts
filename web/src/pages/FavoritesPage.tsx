@@ -5,6 +5,7 @@ import {
   getLibraryItem,
   deleteLibrary,
   fetchAndDownload,
+  downloadBiliVideo,
   getObsidianPayload,
   reindexLibrary,
   bulkAddTags,
@@ -725,6 +726,20 @@ export function FavoritesPage({
                   <ExternalLink className="w-3 h-3" />
                   {openItem.bvid?.startsWith('http') ? '打开原链接' : '打开原视频'}
                 </a>
+              )}
+              {openItem.bvid && !openItem.bvid.startsWith('http') && (
+                <button
+                  type="button"
+                  onClick={() => { downloadBiliVideo(openItem.bvid!); }}
+                  className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition-all "
+                  style={{
+                    background: 'var(--primary)',
+                    color: 'var(--on-primary)',
+                  }}
+                >
+                  <FileDown className="w-3 h-3" />
+                  下载视频
+                </button>
               )}
               <button
                 type="button"

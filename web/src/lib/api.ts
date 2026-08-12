@@ -554,8 +554,24 @@ async function downloadResponse(r: Response) {
 export async function fetchAndDownload(url: string) {
   const r = await fetch(url, { credentials: 'include' });
   if (!r.ok) {
-    const t = await r.text().catch(() => r.statusText);
-    throw new Error(t || r.statusText);
+    const t = await r.text().catch(() => '');
+    let msg = t || r.statusText;
+    try {
+      const j = JSON.parse(t);
+      if (j?.error) msg = j.error;
+    } catch { /* not JSON — keep raw body */ }
+    throw new Error(msg);
   }
   await downloadResponse(r);
+}
+
+export function downloadBiliVideo(bvid: string) {
+  // Browser-native download: navigating to the URL streams the file straight
+  // to disk instead of buffering it into a blob first (much faster + resumable).
+  const a = document.createElement('a');
+  a.href = '/api/download/bilibili?bvid=' + encodeURIComponent(bvid);
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }

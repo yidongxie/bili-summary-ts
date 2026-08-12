@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Sparkles, X, Zap, Clock, ChevronRight } from 'lucide-react';
+import { Sparkles, X, Zap, Download, Clock, ChevronRight } from 'lucide-react';
 import type { AppConfig, LibraryItem } from '@/lib/api';
-import { getLibrary } from '@/lib/api';
+import { getLibrary, downloadBiliVideo } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
 
 const PLATFORMS = [
@@ -78,6 +78,27 @@ export function HomePage({ config, isLoggedIn, onSubmit, onOpenItem, refreshKey 
     onSubmit(trimmed, mode);
   }
 
+  function handleDownload() {
+    const trimmed = query.trim();
+    if (!trimmed) { setHint('请输入 B 站视频链接'); return; }
+    if (!isLoggedIn) { setHint('请先登录后下载视频'); return; }
+    const bv = trimmed.match(/BV[a-zA-Z0-9]{10,}/);
+    setHint(null);
+    if (bv) {
+      downloadBiliVideo(bv[0]);
+    } else if (/bilibili\.com|b23\.tv/i.test(trimmed)) {
+      // b23.tv short links need server-side redirect resolution; pass the URL.
+      const a = document.createElement('a');
+      a.href = '/api/download/bilibili?url=' + encodeURIComponent(trimmed);
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } else {
+      setHint('仅支持 B 站视频链接或 BV 号');
+    }
+  }
+
   return (
     <main className="flex-1 flex flex-col items-center px-4 sm:px-6 py-8 sm:py-12 gap-8" style={{ justifyContent: 'safe center' }}>
       {/* Brand */}
@@ -130,6 +151,9 @@ export function HomePage({ config, isLoggedIn, onSubmit, onOpenItem, refreshKey 
                 <X className="w-4 h-4" style={{ color: 'var(--ink)' }} />
               </button>
             )}
+            <button type="button" onClick={handleDownload} className="btn-secondary shrink-0 flex items-center gap-2">
+              <Download className="w-4 h-4" /> 一键下载
+            </button>
             <button type="button" onClick={handleSubmit} className="btn-primary shrink-0 flex items-center gap-2">
               <Zap className="w-4 h-4" /> 一键总结
             </button>

@@ -7,6 +7,7 @@ import {
   testWhisperConfig,
   type AppConfig,
 } from '@/lib/api';
+import { copyText } from '@/lib/clipboard';
 
 interface SettingsPageProps {
   isLoggedIn: boolean;
@@ -192,6 +193,31 @@ export function SettingsPage({
       setStatus({ msg: err.message || '清空失败', type: 'error' });
     } finally {
       setSaving(false);
+    }
+  }
+
+  // One-liner the user pastes into bilibili.com's dev-tools console. It grabs
+  // the page cookies, keeps the keys our backend needs (incl. SESSDATA), and
+  // copies them to the clipboard so the user can paste them into the field.
+  const BILI_COOKIE_SCRIPT = [
+    "(() => {",
+    "  const keep = ['SESSDATA','bili_jct','buvid3','buvid4','DedeUserID','DedeUserID__ckMd5','sid'];",
+    "  const parts = document.cookie.split(';').map(s => s.trim()).filter(Boolean);",
+    "  const picked = parts.filter(p => keep.some(k => p.startsWith(k + '=')));",
+    "  if (!picked.length) { alert('未找到 SESSDATA，请确认已登录 bilibili.com'); return; }",
+    "  const out = picked.join('; ');",
+    "  const copy = (t) => { const el = document.createElement('textarea'); el.value = t; el.style.position='fixed'; el.style.left='-9999px'; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); };",
+    "  copy(out);",
+    "  alert('已复制 cookies 到剪贴板，回到 BiliStudy 设置页粘贴即可。');",
+    "})()",
+  ].join('');
+
+  async function handleCopyBiliScript() {
+    try {
+      await copyText(BILI_COOKIE_SCRIPT);
+      setStatus({ msg: '已复制提取脚本。到 bilibili.com 按 F12 → Console 粘贴运行，再回到这里粘贴结果。', type: 'info' });
+    } catch {
+      setStatus({ msg: '复制失败，请手动复制', type: 'error' });
     }
   }
 
@@ -398,10 +424,20 @@ export function SettingsPage({
           </div>
 
           <div className="border-t pt-3" style={{ borderColor: 'rgba(55,114,207,0.15)' }}>
-            <label style={labelStyle}>yt-dlp Cookies（抖音/小红书等平台）</label>
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+              <label style={labelStyle}>yt-dlp Cookies（B站高清下载 / 抖音 / 小红书等）</label>
+              <button
+                type="button"
+                onClick={handleCopyBiliScript}
+                className="text-xs px-2.5 py-1 rounded-full font-medium"
+                style={{ color: 'var(--brand-tag)', background: 'rgba(55,114,207,0.10)', border: '1px solid rgba(55,114,207,0.22)' }}
+              >
+                复制 B站提取脚本
+              </button>
+            </div>
             <textarea
               style={{ ...inputStyle, minHeight: 120, resize: 'vertical', fontFamily: '"Geist Mono", "SF Mono", Menlo, Consolas, monospace', fontSize: 12 }}
-              placeholder={ytDlpCookiesSet ? '已保存，留空则不修改；粘贴新内容后保存可更新' : '粘贴 Netscape cookies.txt 内容，例如从浏览器导出的 douyin.com cookies'}
+              placeholder={ytDlpCookiesSet ? '已保存，留空则不修改；粘贴新内容后保存可更新' : '粘贴提取到的 cookies；留空保存不会修改现有 Cookies'}
               value={ytDlpCookies}
               onChange={(e) => setYtDlpCookies(e.target.value)}
             />
@@ -420,6 +456,25 @@ export function SettingsPage({
                   清空 Cookies
                 </button>
               )}
+            </div>
+            <div className="mt-1.5 text-xs leading-relaxed" style={{ color: 'var(--stone)' }}>
+              <b>一键提取：</b>点「复制 B站提取脚本」→ 打开 <b>bilibili.com</b> 并按 <b>F12</b> → 切到 <b>Console</b>（控制台）→ 粘贴运行 → 自动复制 → 回到本页粘贴到上方输入框即可。
+            </div>
+            <div className="mt-1.5 text-xs leading-relaxed" style={{ color: 'var(--stone)' }}>
+              脚本会提取 <span style={{ color: 'var(--brand-tag)', fontFamily: '"Geist Mono", monospace' }}>SESSDATA</span> 等 B站 cookies，用于解锁 <b>1080p 高清下载</b>（未登录时自动降级到 360p）。也可手动复制：浏览器登录 bilibili.com → F12 → Application → Cookies → 复制 bilibili.com 下的整段 cookies。
+            </div>
+            <div
+              className="mt-2 rounded-md px-3 py-2 text-xs leading-relaxed"
+              style={{ background: 'rgba(55,114,207,0.08)', border: '1px solid rgba(55,114,207,0.18)', color: 'var(--steel)' }}
+            >
+              粘贴内容需包含类似下面格式的一行（Netscape cookies.txt 或 header 格式均可，可直接整段粘贴）：
+              <div
+                className="mt-1 rounded px-2 py-1 overflow-x-auto whitespace-pre"
+                style={{ background: 'rgba(0,0,0,0.05)', fontFamily: '"Geist Mono", monospace', fontSize: 11 }}
+              >
+                bilibili.com&#9;TRUE&#9;/&#9;FALSE&#9;2147483647&#9;SESSDATA&#9;你的SESSDATA值
+              </div>
+              或：<span style={{ fontFamily: '"Geist Mono", monospace' }}>SESSDATA=你的SESSDATA值; bili_jct=...</span>
             </div>
           </div>
         </div>

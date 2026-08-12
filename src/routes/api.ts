@@ -12,6 +12,7 @@ import { createAdminRouter } from "./admin";
 import { createChatRouter } from "./chat";
 import { createAudioProxyRouter } from "./audioProxy";
 import { createYtDlpRouter } from "./ytDlp";
+import { createDownloadRouter } from "./download";
 
 export function createApiRouter(db: Database.Database): Router {
   const router = Router();
@@ -26,6 +27,7 @@ export function createApiRouter(db: Database.Database): Router {
   router.use(createChatRouter(db));
   router.use(createAudioProxyRouter());
   router.use(createYtDlpRouter());
+  router.use(createDownloadRouter(db));
 
   return router;
 }

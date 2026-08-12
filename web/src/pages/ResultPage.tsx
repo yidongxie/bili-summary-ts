@@ -24,6 +24,7 @@ import {
   subscribeTask,
   saveLibrary,
   checkLibraryByBvid,
+  downloadBiliVideo,
   type AppConfig,
   type SummaryResult,
   type SubtitleSegment,
@@ -745,6 +746,9 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
           <div className="min-w-0 flex-1"><div className="truncate text-lg font-semibold">{meta.title || '视频总结'}</div></div>
           <span className="rounded-full px-2 py-1 text-xs" style={{ background: mutedBg, color: 'var(--ink)' }}>{getPlatformLabel(result)}</span>
           <DarkButton variant="primary" onClick={() => setReRunKey((n) => n + 1)}><RefreshCw className="w-4 h-4" />重新总结</DarkButton>
+          {result.type === 'bilibili' && result.video?.bvid && !result.video.bvid.startsWith('http') && (
+            <DarkButton onClick={() => { downloadBiliVideo(result.video!.bvid); }}><Download className="w-4 h-4" />下载视频</DarkButton>
+          )}
           {meta.link && <a href={meta.link} target="_blank" rel="noreferrer" className="hidden sm:inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm" style={darkSubtleStyle}><ExternalLink className="w-4 h-4" />查看原视频</a>}
         </div>
 
