@@ -575,3 +575,9 @@ export function downloadBiliVideo(bvid: string) {
   a.click();
   a.remove();
 }
+
+export function listUploaderVideos(url: string) {
+  return request<{ success: boolean; uploader?: string; total?: number; videos?: Array<{ title: string; bvid: string; duration?: number }>; error?: string }>(
+    '/api/download/uploader?url=' + encodeURIComponent(url),
+  );
+}

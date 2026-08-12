@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Sparkles, X, Zap, Download, Clock, ChevronRight } from 'lucide-react';
+import { Sparkles, X, Zap, Download, Clock, ChevronRight, Users } from 'lucide-react';
 import type { AppConfig, LibraryItem } from '@/lib/api';
-import { getLibrary, downloadBiliVideo } from '@/lib/api';
+import { getLibrary, downloadBiliVideo, listUploaderVideos } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
 
 const PLATFORMS = [
@@ -61,6 +61,11 @@ export function HomePage({ config, isLoggedIn, onSubmit, onOpenItem, refreshKey 
   const [recent, setRecent] = useState<LibraryItem[]>([]);
   const [hint, setHint] = useState<string | null>(null);
   const [mode, setMode] = useState<SummaryMode>('brief');
+  const [uploaderLoading, setUploaderLoading] = useState(false);
+  const [uploaderError, setUploaderError] = useState<string | null>(null);
+  const [uploaderName, setUploaderName] = useState('');
+  const [uploaderVideos, setUploaderVideos] = useState<Array<{ title: string; bvid: string; duration?: number }>>([]);
+  const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!isLoggedIn) { setRecent([]); return; }
@@ -96,6 +101,32 @@ export function HomePage({ config, isLoggedIn, onSubmit, onOpenItem, refreshKey 
       a.remove();
     } else {
       setHint('仅支持 B 站视频链接或 BV 号');
+    }
+  }
+
+  async function handleFetchUploader() {
+    const trimmed = query.trim();
+    if (!trimmed) { setHint('请输入博主空间链接'); return; }
+    if (!isLoggedIn) { setHint('请先登录后使用批量下载'); return; }
+    const uidMatch = trimmed.match(/(?:space\.bilibili\.com\/)(\d+)/);
+    if (!uidMatch && !/space\.bilibili\.com/i.test(trimmed)) {
+      setHint('请输入博主空间链接（如 https://space.bilibili.com/123456）');
+      return;
+    }
+    setHint(null);
+    setUploaderLoading(true);
+    setUploaderError(null);
+    try {
+      const data = await listUploaderVideos(trimmed);
+      if (!data.success || !data.videos?.length) throw new Error(data.error || '未获取到视频');
+      setUploaderName(data.uploader || '');
+      setUploaderVideos(data.videos);
+      setSelectedVideos(new Set(data.videos.map((v) => v.bvid)));
+    } catch (err: any) {
+      setUploaderError(err.message || '获取失败');
+      setUploaderVideos([]);
+    } finally {
+      setUploaderLoading(false);
     }
   }
 
@@ -157,6 +188,9 @@ export function HomePage({ config, isLoggedIn, onSubmit, onOpenItem, refreshKey 
             <button type="button" onClick={handleSubmit} className="btn-primary shrink-0 flex items-center gap-2">
               <Zap className="w-4 h-4" /> 一键总结
             </button>
+            <button type="button" onClick={handleFetchUploader} className="btn-secondary shrink-0 flex items-center gap-2">
+              <Users className="w-4 h-4" /> 博主合集
+            </button>
           </div>
         </div>
 
@@ -186,6 +220,66 @@ export function HomePage({ config, isLoggedIn, onSubmit, onOpenItem, refreshKey 
             </button>
           ))}
         </div>
+
+        {/* Uploader batch download */}
+        {(uploaderLoading || uploaderError || uploaderVideos.length > 0) && (
+          <div className="mt-3 rounded-lg p-4" style={{ background: 'var(--canvas)', border: '1px solid var(--hairline)' }}>
+            {uploaderLoading && (
+              <div className="text-xs" style={{ color: 'var(--steel)' }}>正在获取博主视频列表…</div>
+            )}
+            {uploaderError && (
+              <div className="text-xs" style={{ color: 'var(--brand-error)' }}>{uploaderError}</div>
+            )}
+            {!uploaderLoading && !uploaderError && uploaderVideos.length > 0 && (
+              <>
+                <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                  <div className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
+                    {uploaderName ? `${uploaderName} 的视频` : '博主视频'}（共 {uploaderVideos.length} 个）
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs" style={{ color: 'var(--steel)' }}>已选 {selectedVideos.size}</span>
+                    <button type="button" onClick={() => setSelectedVideos(new Set(uploaderVideos.map((v) => v.bvid)))} className="text-xs px-2 py-1 rounded-full font-medium" style={{ color: 'var(--brand-tag)', background: 'rgba(55,114,207,0.10)', border: '1px solid rgba(55,114,207,0.22)' }}>全选</button>
+                    <button type="button" onClick={() => setSelectedVideos(new Set())} className="text-xs px-2 py-1 rounded-full font-medium" style={{ color: 'var(--steel)', background: 'var(--surface)', border: '1px solid var(--hairline)' }}>清空</button>
+                    <button
+                      type="button"
+                      onClick={() => uploaderVideos.forEach((v) => { if (selectedVideos.has(v.bvid)) downloadBiliVideo(v.bvid); })}
+                      className="text-xs px-3 py-1.5 rounded-full font-semibold"
+                      style={{ background: 'var(--primary)', color: 'var(--on-primary)' }}
+                    >
+                      下载所选（{selectedVideos.size}）
+                    </button>
+                  </div>
+                </div>
+                <div className="max-h-64 overflow-y-auto divide-y" style={{ borderColor: 'var(--hairline-soft)' }}>
+                  {uploaderVideos.map((v, idx) => (
+                    <label key={v.bvid} className="flex items-start gap-2 py-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedVideos.has(v.bvid)}
+                        onChange={(e) => {
+                          setSelectedVideos((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(v.bvid); else next.delete(v.bvid);
+                            return next;
+                          });
+                        }}
+                        className="mt-0.5 shrink-0"
+                      />
+                      <span className="min-w-0 flex-1 text-xs leading-snug" style={{ color: 'var(--ink)' }}>
+                        <span className="mr-1.5 opacity-50">{idx + 1}.</span>{v.title}
+                      </span>
+                      {v.duration ? (
+                        <span className="text-[11px] shrink-0 font-mono" style={{ color: 'var(--muted)' }}>
+                          {Math.floor(v.duration / 60)}:{String(v.duration % 60).padStart(2, '0')}
+                        </span>
+                      ) : null}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Recent summaries */}

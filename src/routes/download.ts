@@ -2,6 +2,7 @@
 
 import { Router, Request, Response } from "express";
 import fs from "fs";
+import path from "path";
 import http from "http";
 import https from "https";
 import { URL } from "url";
@@ -11,6 +12,11 @@ import { enforceRateLimit } from "../common/rateLimit";
 import { getDecryptedConfig } from "../db/configStore";
 import { contentDisposition, slugify } from "./utils";
 import { fetchVideoInfo, extractVideoId } from "../bilibili/api";
+import { findYtDlpPath } from "../common/YtDlpExtractor";
+import { execFile } from "child_process";
+import { promisify } from "util";
+
+const execFileAsync = promisify(execFile);
 
 const BILI_HEADERS: Record<string, string> = {
   "User-Agent":
@@ -161,6 +167,71 @@ function proxyStream(req: Request, res: Response, upstreamUrl: string): void {
   upstreamReq.on("timeout", () => { upstreamReq.destroy(new Error("timeout")); });
 }
 
+/**
+ * List all videos from a Bilibili uploader's space via yt-dlp's flat
+ * playlist mode (fast — no downloads, just metadata).
+ */
+async function listUploaderVideos(url: string, cookies?: string): Promise<{ uploader: string; videos: Array<{ title: string; bvid: string; duration?: number }> }> {
+  const ytDlpPath = findYtDlpPath();
+  if (!ytDlpPath) throw new Error("yt-dlp 未安装，无法获取博主视频列表");
+
+  const args = [
+    "--flat-playlist",
+    "--no-warnings",
+    "--no-update",
+    "--print-json",
+    "--user-agent",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    url,
+  ];
+  let cookieFile = "";
+  try {
+    if (cookies?.trim()) {
+      cookieFile = path.join(process.cwd(), "data", `yt-dlp-uploader-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`);
+      fs.mkdirSync(path.dirname(cookieFile), { recursive: true });
+      fs.writeFileSync(cookieFile, cookies.trim() + "\n", { mode: 0o600 });
+      args.splice(args.length - 1, 0, "--cookies", cookieFile);
+    }
+  } catch (err: any) {
+    console.error("[uploader] cookies setup failed:", err.message);
+  }
+
+  let stdout = "";
+  try {
+    const result = await execFileAsync(ytDlpPath, args, { timeout: 60000 });
+    stdout = result.stdout;
+  } catch (err: any) {
+    console.error("[uploader] yt-dlp failed:", err.message);
+    throw new Error("无法获取博主视频列表，请确认输入的是博主空间链接（如 space.bilibili.com/UID）");
+  } finally {
+    if (cookieFile) { try { fs.unlinkSync(cookieFile); } catch { /* ignore */ } }
+  }
+
+  const videos: Array<{ title: string; bvid: string; duration?: number }> = [];
+  let uploader = "";
+
+  // With --print-json + --flat-playlist yt-dlp prints one JSON object per
+  // entry line. Tolerate both that and a single playlist JSON with entries[].
+  const parsedEntries: any[] = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t) continue;
+    try {
+      const obj = JSON.parse(t);
+      if (Array.isArray(obj.entries)) parsedEntries.push(...obj.entries);
+      else parsedEntries.push(obj);
+    } catch { /* skip non-JSON */ }
+  }
+  for (const entry of parsedEntries) {
+    if (entry.uploader || entry.channel) uploader = entry.uploader || entry.channel || uploader;
+    const bvid = String(entry.id || "").match(/BV[a-zA-Z0-9]{10,}/)?.[0] || "";
+    if (bvid) {
+      videos.push({ title: entry.title || "未命名", bvid, duration: Number(entry.duration) || undefined });
+    }
+  }
+  return { uploader, videos };
+}
+
 /** Mux DASH video+audio into a fragmented MP4 via ffmpeg, streaming to res. */
 function muxDash(res: Response, videoUrl: string, audioUrl: string): void {
   const ffmpeg = resolveFfmpegPath();
@@ -196,6 +267,45 @@ function muxDash(res: Response, videoUrl: string, audioUrl: string): void {
 
 export function createDownloadRouter(db: Database.Database): Router {
   const router = Router();
+
+  // List all videos from an uploader's space (yt-dlp flat playlist).
+  router.get("/api/download/uploader", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (!enforceRateLimit(req, res, "download-uploader", 6, 10 * 60 * 1000, String(userId))) return;
+
+    const raw = String(req.query.url || req.query.uid || "").trim();
+    if (!raw) { res.status(400).json({ success: false, error: "缺少博主空间链接或 UID" }); return; }
+
+    let url = raw;
+    const uidMatch = raw.match(/^(?:UID|uid)?\s*(\d+)$/);
+    if (uidMatch) {
+      url = `https://space.bilibili.com/${uidMatch[1]}/video`;
+    } else if (/space\.bilibili\.com/i.test(raw)) {
+      // ensure it points at the video tab
+      if (!/\/video/i.test(raw)) url = raw.replace(/\/+$/, "") + "/video";
+    } else {
+      res.status(400).json({ success: false, error: "请输入博主空间链接（如 https://space.bilibili.com/UID）" });
+      return;
+    }
+
+    try {
+      const config = getDecryptedConfig(db, userId);
+      const cookies = config.yt_dlp_cookies || "";
+      const { uploader, videos } = await listUploaderVideos(url, cookies);
+      if (!videos.length) {
+        res.status(400).json({
+          success: false,
+          error: "未能获取到视频列表。B站空间列表需要登录 cookies，请到设置页一键提取 B站 cookies 后重试。",
+        });
+        return;
+      }
+      res.json({ success: true, uploader, url, total: videos.length, videos });
+    } catch (err: any) {
+      console.error("[uploader] failed", err.message);
+      if (!res.headersSent) res.status(500).json({ success: false, error: err.message || "获取视频列表失败" });
+    }
+  });
 
   router.get("/api/download/bilibili", async (req: Request, res: Response) => {
     const userId = requireUser(req, res);
