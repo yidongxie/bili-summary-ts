@@ -3,6 +3,7 @@
 import path from "path";
 import express, { Request, Response, NextFunction } from "express";
 import session from "express-session";
+import compression from "compression";
 import { createDb } from "./db/schema";
 import { createAuthRouter } from "./db/auth";
 import { createTaskRouter } from "./db/taskQueue";
@@ -31,13 +32,56 @@ function getSessionSecret(): string {
 const SESSION_SECRET = getSessionSecret();
 
 const app = express();
+app.disable("x-powered-by");
 app.set("trust proxy", 1);
+
+// gzip responses; never compress SSE event streams.
+app.use(
+  compression({
+    threshold: 1024,
+    filter: (req, res) => {
+      const ctype = String(res.getHeader("Content-Type") || "");
+      if (ctype.startsWith("text/event-stream")) return false;
+      return /(json|text|javascript|xml|css|svg)/i.test(ctype);
+    },
+  })
+);
+
+// Security headers
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  _res.setHeader("X-Content-Type-Options", "nosniff");
+  _res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  _res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  _res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  _res.setHeader("X-XSS-Protection", "0");
+  _res.setHeader(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "img-src 'self' data: https:",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      "frame-src https://player.bilibili.com",
+      "connect-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join("; ")
+  );
+  if (req.secure) {
+    _res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  next();
+});
 
 // JSON body
 app.use(express.json({ limit: "2mb" }));
 
-// Session
+// Session — mounted on /api ONLY so static assets stop receiving
+// Set-Cookie: connect.sid on every JS/CSS/SVG request.
 app.use(
+  "/api",
   session({
     secret: SESSION_SECRET,
     resave: false,
@@ -59,7 +103,7 @@ runStartupMaintenance(db);
 // Attach the authenticated user (if any) to req.user for downstream routes.
 // All API handlers read `(req as any).user`, so this middleware must run
 // before any router that depends on it.
-app.use((req: Request, _res: Response, next: NextFunction) => {
+app.use("/api", (req: Request, _res: Response, next: NextFunction) => {
   try {
     const sid = req.sessionID;
     if (sid) {
@@ -87,6 +131,35 @@ app.use(createAuthRouter(db));
 app.use(createApiRouter(db));
 app.use(createTaskRouter(db));
 
+// ── SEO files (robots.txt / sitemap.xml previously 404) ─────────────
+function siteOrigin(req: Request): string {
+  const base = BASE_URL.replace(/\/+$/, "");
+  if (base.startsWith("http")) return base;
+  const proto = req.secure ? "https" : "http";
+  const host = (req.headers.host as string) || `127.0.0.1:${PORT}`;
+  return `${proto}://${host}`;
+}
+
+app.get("/robots.txt", (req: Request, res: Response) => {
+  const origin = siteOrigin(req);
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.type("text/plain; charset=utf-8").send(
+    `User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${origin}/sitemap.xml\n`
+  );
+});
+
+app.get("/sitemap.xml", (req: Request, res: Response) => {
+  const origin = siteOrigin(req);
+  const today = new Date().toISOString().slice(0, 10);
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.type("application/xml; charset=utf-8").send(
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      `  <url><loc>${origin}/</loc><lastmod>${today}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>\n` +
+      "</urlset>\n"
+  );
+});
+
 // Static files (frontend)
 //
 // The frontend is built by Vite into public/dist/ (see vite.config.ts).
@@ -95,14 +168,43 @@ app.use(createTaskRouter(db));
 // project root only for emergency rollback.
 const distDir = path.resolve(__dirname, "..", "public", "dist");
 const legacyDir = path.resolve(__dirname, "..", "public");
-app.use(express.static(distDir));
+// Immutable long-term cache for hashed Vite build artifacts and anything under
+// /assets/; everything else (index.html etc.) stays fresh.
+const HASHED_FILE =
+  /\.([a-f0-9]{6,32}|[A-Za-z0-9_-]{7,32})\.(js|css|png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|otf|eot|map)$/i;
+app.use(
+  express.static(distDir, {
+    etag: true,
+    lastModified: true,
+    setHeaders(res, filePath) {
+      if (filePath.includes(`${path.sep}assets${path.sep}`) || HASHED_FILE.test(path.basename(filePath))) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else {
+        res.setHeader("Cache-Control", "no-cache");
+      }
+    },
+  })
+);
 // Fall back to public/ for any plain assets that may live alongside the
 // built bundle (e.g. legacy uploads or favicons added later).
-app.use(express.static(legacyDir));
+app.use(
+  express.static(legacyDir, {
+    etag: true,
+    lastModified: true,
+    setHeaders(res, filePath) {
+      if (filePath.includes(`${path.sep}assets${path.sep}`) || HASHED_FILE.test(path.basename(filePath))) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else {
+        res.setHeader("Cache-Control", "no-cache");
+      }
+    },
+  })
+);
 
 // SPA fallback — serve the Vite-built index.html for any non-API GET.
 app.use((_req: any, res: any, next: any) => {
   if (_req.method === "GET" && !_req.path.startsWith("/api/")) {
+    res.setHeader("Cache-Control", "no-cache");
     res.sendFile(path.join(distDir, "index.html"), (err: any) => {
       if (err) next();
     });
