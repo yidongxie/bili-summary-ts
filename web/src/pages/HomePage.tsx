@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { Sparkles, X, Zap, Download, Clock, ChevronRight, Users } from 'lucide-react';
 import type { AppConfig, LibraryItem } from '@/lib/api';
-import { getLibrary, downloadBiliVideo, listUploaderVideos } from '@/lib/api';
+import { getLibrary, downloadBiliVideo, downloadXiaoyuzhou, listUploaderVideos } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
 
 const PLATFORMS = [
@@ -99,6 +99,8 @@ export function HomePage({ config, isLoggedIn, onSubmit, onOpenItem, refreshKey 
       document.body.appendChild(a);
       a.click();
       a.remove();
+    } else if (/xiaoyuzhoufm|xiaoyuzhou\.fm|xyz\.fm/i.test(trimmed)) {
+      downloadXiaoyuzhou(trimmed);
     } else {
       setHint('仅支持 B 站视频链接或 BV 号');
     }

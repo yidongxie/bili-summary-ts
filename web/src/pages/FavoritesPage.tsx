@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, BookOpen, ExternalLink, Trash2, FileDown, FileText, BookMarked, CheckSquare, Square, RefreshCw, Tags } from 'lucide-react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { Search, BookOpen, ExternalLink, Trash2, FileDown, FileText, BookMarked, CheckSquare, Square, RefreshCw, Tags, Download } from 'lucide-react';
 import {
   getLibrary,
   getLibraryItem,
   deleteLibrary,
   fetchAndDownload,
   downloadBiliVideo,
+  downloadXiaoyuzhou,
   getObsidianPayload,
   reindexLibrary,
   bulkAddTags,
@@ -739,6 +740,20 @@ export function FavoritesPage({
                 >
                   <FileDown className="w-3 h-3" />
                   下载视频
+                </button>
+              )}
+              {openItem.bvid && openItem.bvid.startsWith('http') && (
+                <button
+                  type="button"
+                  onClick={() => { downloadXiaoyuzhou(openItem.bvid!); }}
+                  className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition-all "
+                  style={{
+                    background: 'var(--primary)',
+                    color: 'var(--on-primary)',
+                  }}
+                >
+                  <Download className="w-3 h-3" />
+                  下载音频
                 </button>
               )}
               <button

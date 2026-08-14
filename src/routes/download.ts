@@ -1,4 +1,4 @@
-/** Bilibili video download route. */
+﻿/** Bilibili video download route. */
 
 import { Router, Request, Response } from "express";
 import fs from "fs";
@@ -12,6 +12,7 @@ import { enforceRateLimit } from "../common/rateLimit";
 import { getDecryptedConfig } from "../db/configStore";
 import { contentDisposition, slugify } from "./utils";
 import { fetchVideoInfo, extractVideoId } from "../bilibili/api";
+import { isXiaoyuzhouUrl, extractEpisodeId, fetchEpisodeInfo, getDirectAudioUrl } from "../xiaoyuzhou/api";
 import { findYtDlpPath } from "../common/YtDlpExtractor";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -133,16 +134,16 @@ async function resolveStreams(bvid: string, cid: number, sessdata: string, qn = 
 }
 
 /** Stream an upstream response to res, forwarding Range for resumable downloads. */
-function proxyStream(req: Request, res: Response, upstreamUrl: string): void {
+function proxyStream(req: Request, res: Response, upstreamUrl: string, headers: Record<string, string> = BILI_HEADERS, platform = "B站"): void {
   const parsed = new URL(upstreamUrl);
   const mod = parsed.protocol === "https:" ? https : http;
   const range = req.headers.range || undefined;
   const upstreamReq = mod.get(
     upstreamUrl,
-    { headers: { ...BILI_HEADERS, ...(range ? { Range: range } : {}) }, timeout: 30000 },
+    { headers: { ...headers, ...(range ? { Range: range } : {}) }, timeout: 30000 },
     (upstream) => {
       if (upstream.statusCode && upstream.statusCode >= 400) {
-        res.status(502).json({ success: false, error: `B站媒体返回 ${upstream.statusCode}` });
+        res.status(502).json({ success: false, error: `${platform}媒体返回 ${upstream.statusCode}` });
         upstream.resume();
         return;
       }
@@ -267,6 +268,37 @@ function muxDash(res: Response, videoUrl: string, audioUrl: string): void {
 
 export function createDownloadRouter(db: Database.Database): Router {
   const router = Router();
+
+  // Download a Xiaoyuzhou podcast episode's audio (proxy the CDN stream).
+  router.get("/api/download/xiaoyuzhou", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (!enforceRateLimit(req, res, "download-xiaoyuzhou", 20, 10 * 60 * 1000, String(userId))) return;
+
+    const raw = String(req.query.url || req.query.id || "").trim();
+    if (!raw) { res.status(400).json({ success: false, error: "缺少播客链接" }); return; }
+
+    try {
+      let episodeId = raw;
+      if (isXiaoyuzhouUrl(raw)) episodeId = await extractEpisodeId(raw);
+      const episode = await fetchEpisodeInfo(episodeId, raw);
+      if (!episode.audioUrl) { res.status(400).json({ success: false, error: "未能获取到音频链接" }); return; }
+      const direct = await getDirectAudioUrl(episode.audioUrl);
+      const ext = /\.mp3$/i.test(direct) ? "mp3" : /\.m4a$/i.test(direct) ? "m4a" : "mp3";
+      const filename = `${slugify(episode.title)}.${ext}`;
+      res.setHeader("Content-Type", ext === "m4a" ? "audio/mp4" : "audio/mpeg");
+      res.setHeader("Content-Disposition", contentDisposition(filename));
+
+      const xyzHeaders: Record<string, string> = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://www.xiaoyuzhou.fm/",
+      };
+      proxyStream(req, res, direct, xyzHeaders, "xiaoyuzhou");
+    } catch (err: any) {
+      console.error("[download/xiaoyuzhou] failed", err.message);
+      if (!res.headersSent) res.status(500).json({ success: false, error: `下载失败: ${err.message}` });
+    }
+  });
 
   // List all videos from an uploader's space (yt-dlp flat playlist).
   router.get("/api/download/uploader", async (req: Request, res: Response) => {

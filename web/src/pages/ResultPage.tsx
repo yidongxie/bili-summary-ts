@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   ArrowLeft,
   Bot,
@@ -25,7 +25,7 @@ import {
   saveLibrary,
   checkLibraryByBvid,
   downloadBiliVideo,
-  type AppConfig,
+  downloadXiaoyuzhou,
   type SummaryResult,
   type SubtitleSegment,
   chatApi,
@@ -748,6 +748,9 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
           <DarkButton variant="primary" onClick={() => setReRunKey((n) => n + 1)}><RefreshCw className="w-4 h-4" />重新总结</DarkButton>
           {result.type === 'bilibili' && result.video?.bvid && !result.video.bvid.startsWith('http') && (
             <DarkButton onClick={() => { downloadBiliVideo(result.video!.bvid); }}><Download className="w-4 h-4" />下载视频</DarkButton>
+          )}
+          {result.type === 'xiaoyuzhou' && (result.podcast?.audioUrl || result.podcast?.id) && (
+            <DarkButton onClick={() => { downloadXiaoyuzhou(result.podcast?.id || result.podcast?.audioUrl || ''); }}><Download className="w-4 h-4" />下载音频</DarkButton>
           )}
           {meta.link && <a href={meta.link} target="_blank" rel="noreferrer" className="hidden sm:inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm" style={darkSubtleStyle}><ExternalLink className="w-4 h-4" />查看原视频</a>}
         </div>

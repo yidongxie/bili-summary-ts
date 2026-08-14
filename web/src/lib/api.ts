@@ -1,4 +1,4 @@
-// Centralised API client. All requests go through `api()` so we never miss
+﻿// Centralised API client. All requests go through `api()` so we never miss
 // `credentials: 'include'` (the express-session cookie matters for /api/auth).
 //
 // Backend routes are documented in UI_FUNCTIONAL_SPEC.md §13 and implemented
@@ -565,6 +565,14 @@ export async function fetchAndDownload(url: string) {
   await downloadResponse(r);
 }
 
+export function downloadXiaoyuzhou(urlOrId: string) {
+  const a = document.createElement('a');
+  a.href = '/api/download/xiaoyuzhou?url=' + encodeURIComponent(urlOrId);
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
 export function downloadBiliVideo(bvid: string) {
   // Browser-native download: navigating to the URL streams the file straight
   // to disk instead of buffering it into a blob first (much faster + resumable).
