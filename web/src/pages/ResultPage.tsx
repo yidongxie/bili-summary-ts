@@ -538,6 +538,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
   const youtubeContainerRef = useRef<HTMLDivElement | null>(null);
   const youtubePlayerRef = useRef<any>(null);
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
+  const [streamFailed, setStreamFailed] = useState(false);
 
   useEffect(() => {
     if (initialResult && !reRunKey) {
@@ -688,6 +689,10 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
     };
   }, [result?.type, result?.video?.link]);
 
+  useEffect(() => {
+    setStreamFailed(false);
+  }, [result?.video?.bvid]);
+
   function jumpToSubtitle(time: number) {
     setActiveTab('subtitles');
     setHighlightTime(time);
@@ -798,14 +803,24 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
               <div className="rounded-lg overflow-hidden" style={darkCardStyle}>
                 <div className="aspect-video overflow-hidden flex items-center justify-center" style={{ background: `var(--surface)` }}>
                   {result.video?.bvid && result.type === 'bilibili' && !result.video.bvid.startsWith('http') ? (
-                    <video
-                      ref={videoRef}
-                      controls
-                      playsInline
-                      className="w-full h-full"
-                      src={`/api/stream/bilibili?bvid=${result.video.bvid}`}
-                      onTimeUpdate={(e) => setVideoCurrentTime(Math.floor(e.currentTarget.currentTime))}
-                    />
+                    streamFailed ? (
+                      <iframe
+                        src={`https://player.bilibili.com/player.html?bvid=${result.video.bvid}&autoplay=0&high_quality=1`}
+                        frameBorder={0}
+                        allowFullScreen
+                        className="w-full h-full"
+                      />
+                    ) : (
+                      <video
+                        ref={videoRef}
+                        controls
+                        playsInline
+                        className="w-full h-full"
+                        src={`/api/stream/bilibili?bvid=${result.video.bvid}`}
+                        onTimeUpdate={(e) => setVideoCurrentTime(Math.floor(e.currentTarget.currentTime))}
+                        onError={() => setStreamFailed(true)}
+                      />
+                    )
                   ) : result.type === 'youtube' && result.video?.link ? (
                     <div ref={youtubeContainerRef} className="w-full h-full" />
                   ) : result.video?.bvid?.startsWith('http') || result.podcast?.audioUrl ? (

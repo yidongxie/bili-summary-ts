@@ -152,13 +152,15 @@ async function resolveAudioStream(bvid: string, cid: number, sessdata: string): 
 async function resolveCombinedStream(bvid: string, cid: number, sessdata: string): Promise<{ url: string; size?: number } | null> {
   const headers = { ...BILI_HEADERS };
   if (sessdata?.trim()) headers.Cookie = `SESSDATA=${sessdata.trim()}`;
-  const res = await requestJson<PlayUrlResponse>(
-    `https://api.bilibili.com/x/player/playurl?bvid=${bvid}&cid=${cid}&qn=64&fnval=0&fnver=0&fourk=1`,
-    headers,
-  );
-  if (res.code === 0 && res.data?.durl?.length) {
-    const first = res.data.durl[0];
-    return { url: first.url, size: first.size };
+  for (const qn of [64, 32, 16]) {
+    const res = await requestJson<PlayUrlResponse>(
+      `https://api.bilibili.com/x/player/playurl?bvid=${bvid}&cid=${cid}&qn=${qn}&fnval=0&fnver=0&fourk=1`,
+      headers,
+    );
+    if (res.code === 0 && res.data?.durl?.length) {
+      const first = res.data.durl[0];
+      return { url: first.url, size: first.size };
+    }
   }
   return null;
 }
