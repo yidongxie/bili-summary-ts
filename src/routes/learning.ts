@@ -1,20 +1,6 @@
 import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
-import { getDecryptedConfig } from "../db/configStore";
-
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "";
-
-function getApiKeyWithFallback(db: Database.Database, userId: number): string {
-  const config = getDecryptedConfig(db, userId);
-  if (config.api_key) return config.api_key;
-  if (!ADMIN_EMAIL) return "";
-  const adminRow = db.prepare("SELECT id FROM users WHERE email = ?").get(ADMIN_EMAIL) as { id?: number } | undefined;
-  if (adminRow?.id) {
-    const adminConfig = getDecryptedConfig(db, adminRow.id);
-    return adminConfig.api_key || "";
-  }
-  return "";
-}
+import { getLlmConfigWithFallback } from "../db/configStore";
 import { findLibraryItem } from "../db/libraryStore";
 import { chatCompletion } from "../llm/summarize";
 import { recordApiUsage } from "../db/usageStore";
@@ -127,12 +113,11 @@ export function createLearningRouter(db: Database.Database): Router {
     if (!userId) return;
     const item = findLibraryItem(db, userId, String(req.body.library_item_id || ""));
     if (!item) { res.status(404).json({ success: false, error: "未找到收藏" }); return; }
-    const config = getDecryptedConfig(db, userId);
-    const apiKey = getApiKeyWithFallback(db, userId);
-    if (!apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
+    const llm = getLlmConfigWithFallback(db, userId);
+    if (!llm.apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
     try {
       const raw = await chatCompletion(
-        { apiKey, baseUrl: config.deepseek_base_url, model: config.deepseek_model },
+        { apiKey: llm.apiKey, baseUrl: llm.baseUrl, model: llm.model },
         [
           { role: "system", content: QUIZ_SYSTEM_PROMPT },
           { role: "user", content: buildQuizUserPrompt(item.title, item.summary, item.transcript || "") },
@@ -142,7 +127,7 @@ export function createLearningRouter(db: Database.Database): Router {
       const jsonText = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
       let questions: any[] = [];
       try { questions = JSON.parse(jsonText); } catch { questions = [{ type: "short", question: "请概括这条内容的核心观点", options: [], answer: "参考原总结", explanation: item.summary.slice(0, 300) }]; }
-      recordApiUsage(db, userId, { provider: "deepseek", model: config.deepseek_model, endpoint: "/api/quizzes/generate", tokens_input: Math.ceil((item.summary.length + (item.transcript || "").slice(0, 4000).length) / 4), tokens_output: Math.ceil(raw.length / 4) });
+      recordApiUsage(db, userId, { provider: "deepseek", model: llm.model, endpoint: "/api/quizzes/generate", tokens_input: Math.ceil((item.summary.length + (item.transcript || "").slice(0, 4000).length) / 4), tokens_output: Math.ceil(raw.length / 4) });
       const quiz = saveQuiz(db, userId, item.id, Array.isArray(questions) ? questions.slice(0, 8) : []);
       res.json({ success: true, quiz });
     } catch (err: any) {

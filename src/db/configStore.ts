@@ -89,6 +89,36 @@ export function getDecryptedConfig(db: Database.Database, userId: number): FullC
   };
 }
 
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "";
+
+export interface LlmRuntimeConfig {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+}
+
+/**
+ * Resolve a user's LLM runtime config. When the user has not set their own
+ * API key, fall back to the admin's key AND the admin's baseUrl/model — never
+ * the user's — so an admin key can never be sent to a user-controlled endpoint.
+ */
+export function getLlmConfigWithFallback(db: Database.Database, userId: number): LlmRuntimeConfig {
+  const config = getDecryptedConfig(db, userId);
+  if (config.api_key) {
+    return { apiKey: config.api_key, baseUrl: config.deepseek_base_url, model: config.deepseek_model };
+  }
+  if (ADMIN_EMAIL) {
+    const adminRow = db.prepare("SELECT id FROM users WHERE email = ?").get(ADMIN_EMAIL) as { id?: number } | undefined;
+    if (adminRow?.id) {
+      const adminConfig = getDecryptedConfig(db, adminRow.id);
+      if (adminConfig.api_key) {
+        return { apiKey: adminConfig.api_key, baseUrl: adminConfig.deepseek_base_url, model: adminConfig.deepseek_model };
+      }
+    }
+  }
+  return { apiKey: "", baseUrl: config.deepseek_base_url, model: config.deepseek_model };
+}
+
 export function saveConfig(
   db: Database.Database,
   userId: number,

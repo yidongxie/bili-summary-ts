@@ -32,7 +32,7 @@ function walkMediaFiles(dir: string): Map<string, { mtimeMs: number; size: numbe
 }
 
 async function fetchJson(url: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(url, init);
+  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(30000) });
   const text = await res.text();
   let data: any = {};
   try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }

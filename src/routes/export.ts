@@ -21,6 +21,13 @@ export function createExportRouter(db: Database.Database): Router {
     if (!item) { res.status(404).send("未找到收藏"); return; }
     const html = itemToPrintableHtml(item);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
+    // This printable page is fully self-contained and every interpolated field
+    // is HTML-escaped, so allowing inline script for the print button/auto-print
+    // is safe and keeps the global CSP strict everywhere else.
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https:; base-uri 'none'; form-action 'none'"
+    );
     res.send(html);
   });
 

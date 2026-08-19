@@ -33,7 +33,9 @@ const SESSION_SECRET = getSessionSecret();
 
 const app = express();
 app.disable("x-powered-by");
-app.set("trust proxy", 1);
+// Trust only a loopback reverse proxy (e.g. local nginx). This keeps X-Forwarded-For
+// honored when behind same-host nginx while ignoring spoofed XFF from direct clients.
+app.set("trust proxy", "loopback");
 
 // gzip responses; never compress SSE event streams.
 app.use(
@@ -85,7 +87,7 @@ app.use(
   session({
     secret: SESSION_SECRET,
     resave: false,
-    saveUninitialized: true,
+    saveUninitialized: false,
     cookie: {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       httpOnly: true,

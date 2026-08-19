@@ -96,6 +96,11 @@ export function buildRewriteUserPrompt(
   return `目标平台：${platform}\n风格要求：${style}\n\n核心要点：\n${keyPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n\n原始总结：\n${summary}`;
 }
 
+// ── Translate ────────────────────────────────────────────────────────
+
+export const TRANSLATE_SYSTEM_PROMPT =
+  '你是专业翻译助手。将用户提供的文本准确、自然地翻译成目标语言，忠实原文，不添加、不删减、不解释，只输出译文。';
+
 // ── Quiz Generation ──────────────────────────────────────────────────
 
 export const QUIZ_SYSTEM_PROMPT =

@@ -5,8 +5,6 @@ import Database from "better-sqlite3";
 import crypto from "crypto";
 import { enforceRateLimit } from "../common/rateLimit";
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "";
-
 function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
@@ -16,7 +14,9 @@ function hashPassword(password: string): string {
 function verifyPassword(password: string, stored: string): boolean {
   const [salt, hash] = stored.split(":");
   const computed = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
-  return hash === computed;
+  const a = Buffer.from(hash, "hex");
+  const b = Buffer.from(computed, "hex");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 function createSession(
@@ -219,17 +219,15 @@ export function createAuthRouter(db: Database.Database): Router {
           // Check for existing user bound to this openId (we store it as github_id for simplicity)
           let user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE github_id = ?").get(openId) as any;
 
-          if (!user && ADMIN_EMAIL) {
-            // Auto-bind: web-registered users have a negative numeric github_id (email hash).
-            // A real WeChat openId is a non-numeric string. If the admin user has a legacy
-            // numeric id (or empty id), overwrite it with this openId to link accounts.
-            const adminUser = db.prepare("SELECT id, email, display_name, created_at, github_id FROM users WHERE email = ?").get(ADMIN_EMAIL) as any;
-            const legacyId = adminUser?.github_id;
-            const hasLegacyId = legacyId === null || legacyId === undefined || legacyId === 0 || (typeof legacyId === "number") || /^-\d+$/.test(String(legacyId));
-            if (adminUser && hasLegacyId) {
-              db.prepare("UPDATE users SET github_id = ? WHERE id = ?").run(openId, adminUser.id);
-              user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?").get(adminUser.id) as any;
-              console.log(`[wechat] Bound WeChat openId to admin user (id=${adminUser.id}, old github_id=${legacyId})`);
+          if (!user) {
+            // Only link an openId to an already-authenticated account (the user
+            // explicitly linking their own WeChat). Never auto-bind by email —
+            // that would let any WeChat user take over the admin account.
+            const authedUser = (req as any).user;
+            if (authedUser) {
+              db.prepare("UPDATE users SET github_id = ? WHERE id = ?").run(openId, authedUser.id);
+              user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?").get(authedUser.id) as any;
+              console.log(`[wechat] Linked WeChat openId to authenticated user (id=${authedUser.id})`);
             }
           }
 

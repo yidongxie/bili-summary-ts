@@ -244,6 +244,12 @@ export function createTaskRouter(db: Database.Database): Router {
     }
     if (!task) { res.status(404).json({ success: false, error: "任务不存在" }); return; }
 
+    const userId = (req as any).user?.id;
+    if (!userId || task.userId !== userId) {
+      res.status(403).json({ success: false, error: "无权访问此任务" });
+      return;
+    }
+
     const row = db.prepare("SELECT status, progress, result_json, error FROM summary_tasks WHERE id = ?").get(task.id) as any;
     if (row?.status === "done") {
       res.json({ status: "done", ...JSON.parse(row.result_json || "{}") });
@@ -305,8 +311,10 @@ function getWhisperConfig(db: Database.Database, userEmail: string, body: any, c
       const adminConfig = getDecryptedConfig(db, adminRow.id);
       if (adminConfig.whisper_api_key) {
         whisperApiKey = adminConfig.whisper_api_key;
-        if (!body.whisper_base_url && !config.whisper_base_url) whisperBaseUrl = adminConfig.whisper_base_url || whisperBaseUrl;
-        if (!body.whisper_model && !config.whisper_model) whisperModel = adminConfig.whisper_model || whisperModel;
+        // Always use the admin's baseUrl/model with the admin's key, so the key
+        // can never be sent to a user-controlled endpoint.
+        whisperBaseUrl = adminConfig.whisper_base_url || whisperBaseUrl;
+        whisperModel = adminConfig.whisper_model || whisperModel;
       }
     }
   }
@@ -693,18 +701,23 @@ async function runTask(
 
     const config = getDecryptedConfig(db, task.userId);
     let apiKey = String(body.api_key || config.api_key || "").trim();
-    const model = String(body.model || config.deepseek_model || "deepseek-v4-flash").trim();
-    const baseUrl = String(body.base_url || config.deepseek_base_url || "https://api.deepseek.com/v1").trim();
+    let model = String(body.model || config.deepseek_model || "deepseek-v4-flash").trim();
+    let baseUrl = String(body.base_url || config.deepseek_base_url || "https://api.deepseek.com/v1").trim();
     const mode = (String(body.mode || "brief").trim() || "brief") as SummaryMode;
 
-    // Fall back to admin's API key if the current user hasn't set their own
+    // Fall back to the admin's full config (key + baseUrl + model) so an admin
+    // key is never sent to a user-controlled baseUrl.
     if (!apiKey && ADMIN_EMAIL && task.userEmail !== ADMIN_EMAIL) {
       const adminRow = db
         .prepare("SELECT id FROM users WHERE email = ?")
         .get(ADMIN_EMAIL) as { id?: number } | undefined;
       if (adminRow?.id) {
         const adminConfig = getDecryptedConfig(db, adminRow.id);
-        if (adminConfig.api_key) apiKey = adminConfig.api_key;
+        if (adminConfig.api_key) {
+          apiKey = adminConfig.api_key;
+          model = adminConfig.deepseek_model || model;
+          baseUrl = adminConfig.deepseek_base_url || baseUrl;
+        }
       }
     }
 

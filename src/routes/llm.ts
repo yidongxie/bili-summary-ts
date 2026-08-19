@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
-import { getDecryptedConfig } from "../db/configStore";
+import { getLlmConfigWithFallback } from "../db/configStore";
 import { enforceRateLimit } from "../common/rateLimit";
 import { chatCompletion, suggestTags } from "../llm/summarize";
 import { recordApiUsage } from "../db/usageStore";
@@ -10,6 +10,7 @@ import {
   REWRITE_SYSTEM_PROMPT,
   REWRITE_STYLE_MAP,
   buildRewriteUserPrompt,
+  TRANSLATE_SYSTEM_PROMPT,
 } from "../llm/prompts";
 
 function requireUser(req: Request, res: Response): number | null {
@@ -18,20 +19,7 @@ function requireUser(req: Request, res: Response): number | null {
   return user.id;
 }
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "";
 
-/** Get admin's API key as fallback when the current user hasn't set their own. */
-function getApiKeyWithFallback(db: Database.Database, userId: number): string {
-  const config = getDecryptedConfig(db, userId);
-  if (config.api_key) return config.api_key;
-  if (!ADMIN_EMAIL) return "";
-  const adminRow = db.prepare("SELECT id FROM users WHERE email = ?").get(ADMIN_EMAIL) as { id?: number } | undefined;
-  if (adminRow?.id) {
-    const adminConfig = getDecryptedConfig(db, adminRow.id);
-    return adminConfig.api_key || "";
-  }
-  return "";
-}
 
 export function createLlmRouter(db: Database.Database): Router {
   const router = Router();
@@ -46,9 +34,8 @@ export function createLlmRouter(db: Database.Database): Router {
     const transcript = String(req.body.transcript || "").slice(0, 8000);
     const segments = Array.isArray(req.body.segments) ? req.body.segments : [];
     if (!question) { res.status(400).json({ success: false, error: "缺少问题" }); return; }
-    const apiKey = getApiKeyWithFallback(db, userId);
-    if (!apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
-    const config = getDecryptedConfig(db, userId);
+    const llm = getLlmConfigWithFallback(db, userId);
+    if (!llm.apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
     const qWords = question.toLowerCase().split(/\s+|，|。|、|？|！|,|\./).filter(Boolean);
     const citations = segments
       .map((seg: any) => {
@@ -62,14 +49,14 @@ export function createLlmRouter(db: Database.Database): Router {
       .map(({ time, text }: any) => ({ time, text }));
     try {
       const answer = await chatCompletion(
-        { apiKey, baseUrl: config.deepseek_base_url, model: config.deepseek_model },
+        { apiKey: llm.apiKey, baseUrl: llm.baseUrl, model: llm.model },
         [
           { role: "system", content: CHAT_SYSTEM_PROMPT },
           { role: "user", content: buildChatUserPrompt(question, summary, citations.map((c: any) => `[${Math.floor(c.time)}s] ${c.text}`), transcript) },
         ],
         900,
       );
-      recordApiUsage(db, userId, { provider: "deepseek", model: config.deepseek_model, endpoint: "/api/llm/chat", tokens_input: Math.ceil((summary.length + transcript.length + question.length) / 4), tokens_output: Math.ceil(answer.length / 4) });
+      recordApiUsage(db, userId, { provider: "deepseek", model: llm.model, endpoint: "/api/llm/chat", tokens_input: Math.ceil((summary.length + transcript.length + question.length) / 4), tokens_output: Math.ceil(answer.length / 4) });
       res.json({ success: true, answer, citations });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message || "问答失败" });
@@ -85,23 +72,51 @@ export function createLlmRouter(db: Database.Database): Router {
     const summary = String(req.body.summary || "").trim().slice(0, 8000);
     const keyPoints = Array.isArray(req.body.keyPoints) ? req.body.keyPoints.map(String).slice(0, 8) : [];
     if (!summary) { res.status(400).json({ success: false, error: "缺少总结内容" }); return; }
-    const config = getDecryptedConfig(db, userId);
-    const apiKey = getApiKeyWithFallback(db, userId);
-    if (!apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
+    const llm = getLlmConfigWithFallback(db, userId);
+    if (!llm.apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
     const style = REWRITE_STYLE_MAP[platform] || REWRITE_STYLE_MAP["小红书"];
     try {
       const text = await chatCompletion(
-        { apiKey, baseUrl: config.deepseek_base_url, model: config.deepseek_model },
+        { apiKey: llm.apiKey, baseUrl: llm.baseUrl, model: llm.model },
         [
           { role: "system", content: REWRITE_SYSTEM_PROMPT },
           { role: "user", content: buildRewriteUserPrompt(platform, style, keyPoints, summary) },
         ],
         1600,
       );
-      recordApiUsage(db, userId, { provider: "deepseek", model: config.deepseek_model, endpoint: "/api/llm/rewrite", tokens_input: Math.ceil(summary.length / 4), tokens_output: Math.ceil(text.length / 4) });
+      recordApiUsage(db, userId, { provider: "deepseek", model: llm.model, endpoint: "/api/llm/rewrite", tokens_input: Math.ceil(summary.length / 4), tokens_output: Math.ceil(text.length / 4) });
       res.json({ success: true, text });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message || "改写失败" });
+    }
+  });
+
+  // ── Translate ──────────────────────────────────────────────────────
+  router.post("/api/llm/translate", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (!enforceRateLimit(req, res, "llm-translate", 40, 60 * 60 * 1000, String(userId))) return;
+
+    const text = String(req.body.text || "").trim().slice(0, 12000);
+    const target = String(req.body.target || "English").trim().slice(0, 20);
+    if (!text) { res.status(400).json({ success: false, error: "缺少待翻译内容" }); return; }
+
+    const llm = getLlmConfigWithFallback(db, userId);
+    if (!llm.apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
+
+    try {
+      const translated = await chatCompletion(
+        { apiKey: llm.apiKey, baseUrl: llm.baseUrl, model: llm.model },
+        [
+          { role: "system", content: TRANSLATE_SYSTEM_PROMPT },
+          { role: "user", content: `目标语言：${target}\n\n待翻译内容：\n${text}` },
+        ],
+        2400,
+      );
+      recordApiUsage(db, userId, { provider: "deepseek", model: llm.model, endpoint: "/api/llm/translate", tokens_input: Math.ceil(text.length / 4), tokens_output: Math.ceil(translated.length / 4) });
+      res.json({ success: true, text: translated });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || "翻译失败" });
     }
   });
 
@@ -116,15 +131,14 @@ export function createLlmRouter(db: Database.Database): Router {
     const summary = String(req.body.summary ?? "").trim().slice(0, 8000);
     if (!title && !summary) { res.status(400).json({ success: false, error: "缺少标题或总结内容" }); return; }
 
-    const config = getDecryptedConfig(db, userId);
-    const apiKey = getApiKeyWithFallback(db, userId);
-    if (!apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
+    const llm = getLlmConfigWithFallback(db, userId);
+    if (!llm.apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
 
     try {
       const tags = await suggestTags(title, author, summary, {
-        apiKey,
-        baseUrl: config.deepseek_base_url,
-        model: config.deepseek_model,
+        apiKey: llm.apiKey,
+        baseUrl: llm.baseUrl,
+        model: llm.model,
       });
       res.json({ success: true, tags });
     } catch (err: any) {

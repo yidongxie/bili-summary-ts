@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
 import { getPublicConfig, getDecryptedConfig, saveConfig as saveUserConfig } from "../db/configStore";
+import { isSafeUpstreamUrl } from "./utils";
 import { enforceRateLimit } from "../common/rateLimit";
 
 function requireUser(req: Request, res: Response): number | null {
@@ -54,12 +55,14 @@ export function createConfigRouter(db: Database.Database): Router {
     const baseUrl = String(req.body.base_url || config.deepseek_base_url || "https://api.deepseek.com/v1").replace(/\/+$/, "");
     const model = String(req.body.model || config.deepseek_model || "deepseek-v4-flash").trim();
     if (!apiKey) { res.status(400).json({ success: false, error: "请先填写 DeepSeek API Key" }); return; }
+    if (!isSafeUpstreamUrl(baseUrl)) { res.status(400).json({ success: false, error: "不允许连接到该地址" }); return; }
 
     try {
       const r = await fetch(baseUrl + "/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({ model, messages: [{ role: "user", content: "ping" }], max_tokens: 8 }),
+        signal: AbortSignal.timeout(30000),
       });
       if (!r.ok) {
         const text = await r.text().catch(() => r.statusText);
@@ -81,9 +84,10 @@ export function createConfigRouter(db: Database.Database): Router {
     const apiKey = String(req.body.whisper_api_key || config.whisper_api_key || "").trim();
     const baseUrl = String(req.body.whisper_base_url || config.whisper_base_url || "https://api.siliconflow.cn/v1").replace(/\/+$/, "");
     if (!apiKey) { res.status(400).json({ success: false, error: "请先填写 Whisper API Key" }); return; }
+    if (!isSafeUpstreamUrl(baseUrl)) { res.status(400).json({ success: false, error: "不允许连接到该地址" }); return; }
 
     try {
-      const r = await fetch(baseUrl + "/models", { headers: { Authorization: `Bearer ${apiKey}` } });
+      const r = await fetch(baseUrl + "/models", { headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(30000) });
       if (!r.ok) {
         const text = await r.text().catch(() => r.statusText);
         res.status(400).json({ success: false, error: `连接失败 (${r.status}): ${text.slice(0, 200)}` });
