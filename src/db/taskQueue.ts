@@ -194,7 +194,7 @@ export function createTaskRouter(db: Database.Database): Router {
       res.status(404).json({ success: false, error: "任务不存在" });
       return;
     }
-    const userId = (req.user as any)?.id;
+    const userId = (req as any).user?.id;
     if (!userId || task.userId !== userId) {
       res.status(403).json({ success: false, error: "无权访问此任务" });
       return;
@@ -256,8 +256,8 @@ export function createTaskRouter(db: Database.Database): Router {
 
   // Submit task
   router.post("/api/tasks/summarize", async (req: Request, res: Response) => {
-    const userId = (req.user as any)?.id;
-    const userEmail = (req.user as any)?.email || "";
+    const userId = (req as any).user?.id;
+    const userEmail = (req as any).user?.email || "";
     if (!userId) {
       res.status(401).json({ success: false, error: "请先登录" });
       return;
@@ -292,7 +292,7 @@ export function createTaskRouter(db: Database.Database): Router {
 }
 
 /** Get whisper config with admin fallback */
-function getWhisperConfig(db: Database.Database, userId: number, userEmail: string, body: any, config: any) {
+function getWhisperConfig(db: Database.Database, userEmail: string, body: any, config: any) {
   let whisperApiKey = String(body.whisper_api_key || config.whisper_api_key || "").trim();
   let whisperBaseUrl = String(body.whisper_base_url || config.whisper_base_url || "https://api.siliconflow.cn/v1").trim();
   let whisperModel = String(body.whisper_model || config.whisper_model || "TeleAI/TeleSpeechASR").trim();
@@ -615,7 +615,6 @@ async function processWithYtDlp(
   };
 }
 
-
 async function processWithDouyinDownloader(
   db: Database.Database,
   task: Task,
@@ -715,7 +714,7 @@ async function runTask(
     }
 
     const llmConfig = { apiKey, baseUrl, model };
-    const whisperConfig = getWhisperConfig(db, task.userId, task.userEmail, body, config);
+    const whisperConfig = getWhisperConfig(db, task.userEmail, body, config);
 
     // 第一步：清理 URL（从分享文本中提取纯 URL）
     const validation = validateUrl(url);

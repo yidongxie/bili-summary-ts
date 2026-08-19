@@ -1,4 +1,4 @@
-﻿/** Bilibili video download route. */
+/** Bilibili video download route. */
 
 import { Router, Request, Response } from "express";
 import fs from "fs";
@@ -11,7 +11,7 @@ import Database from "better-sqlite3";
 import { enforceRateLimit } from "../common/rateLimit";
 import { getDecryptedConfig } from "../db/configStore";
 import { contentDisposition, slugify } from "./utils";
-import { fetchVideoInfo, extractVideoId } from "../bilibili/api";
+import { fetchVideoInfo, extractVideoId, fetchPageList } from "../bilibili/api";
 import { isXiaoyuzhouUrl, extractEpisodeId, fetchEpisodeInfo, getDirectAudioUrl } from "../xiaoyuzhou/api";
 import { findYtDlpPath } from "../common/YtDlpExtractor";
 import { execFile } from "child_process";
@@ -131,6 +131,21 @@ async function resolveStreams(bvid: string, cid: number, sessdata: string, qn = 
   }
 
   throw new Error(`B站接口错误: ${dash.code !== 0 ? dash.message : "无可用视频流"}`);
+}
+
+/** Resolve the best DASH audio-only stream (for "仅音频" downloads). */
+async function resolveAudioStream(bvid: string, cid: number, sessdata: string): Promise<string | null> {
+  const headers = { ...BILI_HEADERS };
+  if (sessdata?.trim()) headers.Cookie = `SESSDATA=${sessdata.trim()}`;
+  const dash = await requestJson<PlayUrlResponse>(
+    `https://api.bilibili.com/x/player/playurl?bvid=${bvid}&cid=${cid}&qn=116&fnval=4048&fnver=0&fourk=1`,
+    headers,
+  );
+  if (dash.code === 0 && dash.data?.dash?.audio?.length) {
+    const audio = [...dash.data.dash.audio].sort((a, b) => (b.bandwidth || 0) - (a.bandwidth || 0))[0];
+    return audio.baseUrl || audio.base_url || "";
+  }
+  return null;
 }
 
 /** Stream an upstream response to res, forwarding Range for resumable downloads. */
@@ -266,8 +281,90 @@ function muxDash(res: Response, videoUrl: string, audioUrl: string): void {
   p.stdout.pipe(res);
 }
 
+let ffmpegAvailable: boolean | null = null;
+async function isFfmpegAvailable(): Promise<boolean> {
+  if (ffmpegAvailable !== null) return ffmpegAvailable;
+  try {
+    await execFileAsync(resolveFfmpegPath(), ["-version"], { timeout: 5000 });
+    ffmpegAvailable = true;
+  } catch {
+    ffmpegAvailable = false;
+  }
+  return ffmpegAvailable;
+}
+
+interface PodcastMeta {
+  title: string;
+  artist: string;
+  coverUrl?: string;
+}
+
+/** Download a podcast episode's audio and embed ID3 tags (title / podcast / cover). */
+function streamPodcastAudio(res: Response, audioUrl: string, meta: PodcastMeta): void {
+  const ffmpeg = resolveFfmpegPath();
+  const args = [
+    "-hide_banner", "-loglevel", "error",
+    "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "-i", audioUrl,
+  ];
+  if (meta.coverUrl) args.push("-i", meta.coverUrl);
+  args.push(
+    "-map", "0:a:0",
+    "-c:a", "libmp3lame", "-b:a", "128k",
+    "-id3v2_version", "3",
+    "-metadata", `title=${meta.title}`,
+    "-metadata", `artist=${meta.artist}`,
+    "-metadata", `album=${meta.artist}`,
+  );
+  if (meta.coverUrl) {
+    args.push(
+      "-map", "1:v:0",
+      "-c:v", "mjpeg",
+      "-disposition:v", "attached_pic",
+      "-metadata:s:v", "title=Album cover",
+      "-metadata:s:v", "comment=Cover (front)",
+    );
+  }
+  args.push("-f", "mp3", "pipe:1");
+
+  const p = spawn(ffmpeg, args, { stdio: ["ignore", "pipe", "pipe"] });
+  let stderr = "";
+  p.stderr.on("data", (c: Buffer) => { stderr += c.toString(); });
+  p.on("error", (e: Error) => {
+    console.error("[download] ffmpeg spawn error", e.message);
+    if (!res.headersSent) res.status(500).json({ success: false, error: "ffmpeg 不可用" });
+    else res.end();
+  });
+  p.on("close", (code) => {
+    if (code !== 0) console.error("[download] ffmpeg exit", code, stderr.slice(-400));
+    res.end();
+  });
+  res.on("close", () => { p.kill(); });
+  p.stdout.pipe(res);
+}
+
 export function createDownloadRouter(db: Database.Database): Router {
   const router = Router();
+
+  // List all pages (分P) of a Bilibili video so the UI can offer page + quality selection.
+  router.get("/api/download/bilibili/pages", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+
+    const raw = String(req.query.bvid || "").trim();
+    const bvid = raw.match(/BV[a-zA-Z0-9]{10,}/)?.[0] || "";
+    if (!bvid) { res.status(400).json({ success: false, error: "缺少 bvid" }); return; }
+
+    try {
+      const info = await fetchVideoInfo(bvid);
+      const pages = await fetchPageList(bvid);
+      const list = pages.length ? pages : [{ cid: info.cid, page: 1, part: info.title, duration: info.duration }];
+      res.json({ success: true, title: info.title, author: info.author, pic: info.pic, pages: list });
+    } catch (err: any) {
+      console.error("[download/pages] failed", err.message);
+      if (!res.headersSent) res.status(500).json({ success: false, error: err.message || "获取分P列表失败" });
+    }
+  });
 
   // Download a Xiaoyuzhou podcast episode's audio (proxy the CDN stream).
   router.get("/api/download/xiaoyuzhou", async (req: Request, res: Response) => {
@@ -284,6 +381,17 @@ export function createDownloadRouter(db: Database.Database): Router {
       const episode = await fetchEpisodeInfo(episodeId, raw);
       if (!episode.audioUrl) { res.status(400).json({ success: false, error: "未能获取到音频链接" }); return; }
       const direct = await getDirectAudioUrl(episode.audioUrl);
+      const artist = episode.podcastName || episode.author || "小宇宙播客";
+
+      // Prefer embedding ID3 metadata (title / podcast / cover) via ffmpeg;
+      // fall back to proxying the raw CDN stream when ffmpeg is unavailable.
+      if (await isFfmpegAvailable()) {
+        res.setHeader("Content-Type", "audio/mpeg");
+        res.setHeader("Content-Disposition", contentDisposition(`${slugify(episode.title)}.mp3`));
+        streamPodcastAudio(res, direct, { title: episode.title, artist, coverUrl: episode.coverUrl || "" });
+        return;
+      }
+
       const ext = /\.mp3$/i.test(direct) ? "mp3" : /\.m4a$/i.test(direct) ? "m4a" : "mp3";
       const filename = `${slugify(episode.title)}.${ext}`;
       res.setHeader("Content-Type", ext === "m4a" ? "audio/mp4" : "audio/mpeg");
@@ -366,11 +474,29 @@ export function createDownloadRouter(db: Database.Database): Router {
       // quality. Videos without a login still download fine at base quality.
       const sessdata = extractSessdata(config.yt_dlp_cookies || "");
 
+      // Optional page (cid) for multi-part (分P) videos; defaults to the first page.
+      const cidParam = parseInt(String(req.query.cid || ""), 10);
+      const cid = Number.isFinite(cidParam) && cidParam > 0 ? cidParam : info.cid;
+      const audioOnly = req.query.audio === "1" || req.query.audio === "true";
+
       // qn param: 112=1080p, 116=1080p60, 120=4K (needs membership). Default 116.
       const qn = parseInt(String(req.query.qn || "116"), 10);
       const validQn = [32, 64, 80, 112, 116, 120].includes(qn) ? qn : 116;
 
-      const streams = await resolveStreams(bvid, info.cid, sessdata, validQn);
+      // "仅音频" mode: stream the best DASH audio track as m4a.
+      if (audioOnly) {
+        const audioUrl = await resolveAudioStream(bvid, cid, sessdata);
+        if (!audioUrl) {
+          res.status(400).json({ success: false, error: "未能获取到音频流（可能需登录）" });
+          return;
+        }
+        res.setHeader("Content-Type", "audio/mp4");
+        res.setHeader("Content-Disposition", contentDisposition(`${slugify(info.title)}.m4a`));
+        proxyStream(req, res, audioUrl);
+        return;
+      }
+
+      const streams = await resolveStreams(bvid, cid, sessdata, validQn);
       if (!streams) {
         res.status(400).json({ success: false, error: "未能获取到可下载的视频流（可能需登录或该视频不可下载）" });
         return;

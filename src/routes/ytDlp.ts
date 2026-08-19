@@ -1,5 +1,4 @@
 import { Router, Request, Response } from "express";
-import Database from "better-sqlite3";
 import { isYtDlpAvailable, getYtDlpVersion } from "../common/YtDlpExtractor";
 
 export function createYtDlpRouter(): Router {

@@ -1,6 +1,6 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Sparkles, X, Zap, Download, Clock, ChevronRight, Users } from 'lucide-react';
-import type { AppConfig, LibraryItem } from '@/lib/api';
+import type { LibraryItem } from '@/lib/api';
 import { getLibrary, downloadBiliVideo, downloadXiaoyuzhou, listUploaderVideos } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
 
@@ -39,11 +39,11 @@ const QUICK_TAGS = [
 ];
 
 interface HomePageProps {
-  config: AppConfig;
   isLoggedIn: boolean;
   onSubmit: (url: string, mode: SummaryMode) => void;
   onOpenItem: (item: LibraryItem) => void;
   refreshKey: number;
+  onShowToast: (msg: string, type: 'ok' | 'error' | 'info') => void;
 }
 
 export type SummaryMode = 'brief' | 'detailed' | 'timeline' | 'knowledge';
@@ -55,7 +55,7 @@ const SUMMARY_MODES: { value: SummaryMode; label: string }[] = [
   { value: 'knowledge', label: '卡片' },
 ];
 
-export function HomePage({ config, isLoggedIn, onSubmit, onOpenItem, refreshKey }: HomePageProps) {
+export function HomePage({ isLoggedIn, onSubmit, onOpenItem, refreshKey, onShowToast }: HomePageProps) {
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [recent, setRecent] = useState<LibraryItem[]>([]);
@@ -66,6 +66,8 @@ export function HomePage({ config, isLoggedIn, onSubmit, onOpenItem, refreshKey 
   const [uploaderName, setUploaderName] = useState('');
   const [uploaderVideos, setUploaderVideos] = useState<Array<{ title: string; bvid: string; duration?: number }>>([]);
   const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set());
+  const [batchDownloading, setBatchDownloading] = useState(false);
+  const [batchProgress, setBatchProgress] = useState('');
 
   useEffect(() => {
     if (!isLoggedIn) { setRecent([]); return; }
@@ -83,26 +85,23 @@ export function HomePage({ config, isLoggedIn, onSubmit, onOpenItem, refreshKey 
     onSubmit(trimmed, mode);
   }
 
-  function handleDownload() {
+  async function handleDownload() {
     const trimmed = query.trim();
     if (!trimmed) { setHint('请输入 B 站视频链接'); return; }
     if (!isLoggedIn) { setHint('请先登录后下载视频'); return; }
-    const bv = trimmed.match(/BV[a-zA-Z0-9]{10,}/);
     setHint(null);
-    if (bv) {
-      downloadBiliVideo(bv[0]);
-    } else if (/bilibili\.com|b23\.tv/i.test(trimmed)) {
-      // b23.tv short links need server-side redirect resolution; pass the URL.
-      const a = document.createElement('a');
-      a.href = '/api/download/bilibili?url=' + encodeURIComponent(trimmed);
-      a.rel = 'noopener';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } else if (/xiaoyuzhoufm|xiaoyuzhou\.fm|xyz\.fm/i.test(trimmed)) {
-      downloadXiaoyuzhou(trimmed);
-    } else {
-      setHint('仅支持 B 站视频链接或 BV 号');
+    const isBili = /BV[a-zA-Z0-9]{10,}/.test(trimmed) || /bilibili\.com|b23\.tv/i.test(trimmed);
+    const isXyz = /xiaoyuzhoufm|xiaoyuzhou\.fm|xyz\.fm/i.test(trimmed);
+    if (!isBili && !isXyz) { setHint('仅支持 B 站视频链接或 BV 号'); return; }
+    try {
+      setHint(isBili ? '正在下载视频…' : '正在下载音频…');
+      if (isBili) await downloadBiliVideo(trimmed);
+      else await downloadXiaoyuzhou(trimmed);
+      setHint(null);
+      onShowToast('下载完成', 'ok');
+    } catch (err: any) {
+      setHint('下载失败：' + (err.message || ''));
+      onShowToast('下载失败：' + (err.message || ''), 'error');
     }
   }
 
@@ -130,6 +129,26 @@ export function HomePage({ config, isLoggedIn, onSubmit, onOpenItem, refreshKey 
     } finally {
       setUploaderLoading(false);
     }
+  }
+
+  async function handleBatchDownload() {
+    const targets = uploaderVideos.filter((v) => selectedVideos.has(v.bvid));
+    if (!targets.length) return;
+    setBatchDownloading(true);
+    let ok = 0;
+    for (let i = 0; i < targets.length; i++) {
+      const v = targets[i];
+      setBatchProgress('正在下载 ' + (i + 1) + '/' + targets.length + '：' + v.title);
+      try {
+        await downloadBiliVideo(v.bvid);
+        ok++;
+      } catch (err: any) {
+        onShowToast('下载失败（' + v.title + '）：' + (err.message || ''), 'error');
+      }
+    }
+    setBatchDownloading(false);
+    setBatchProgress('');
+    onShowToast('批量下载完成：成功 ' + ok + '/' + targets.length, ok === targets.length ? 'ok' : 'info');
   }
 
   return (
@@ -244,11 +263,12 @@ export function HomePage({ config, isLoggedIn, onSubmit, onOpenItem, refreshKey 
                     <button type="button" onClick={() => setSelectedVideos(new Set())} className="text-xs px-2 py-1 rounded-full font-medium" style={{ color: 'var(--steel)', background: 'var(--surface)', border: '1px solid var(--hairline)' }}>清空</button>
                     <button
                       type="button"
-                      onClick={() => uploaderVideos.forEach((v) => { if (selectedVideos.has(v.bvid)) downloadBiliVideo(v.bvid); })}
+                      onClick={handleBatchDownload}
+                      disabled={batchDownloading}
                       className="text-xs px-3 py-1.5 rounded-full font-semibold"
-                      style={{ background: 'var(--primary)', color: 'var(--on-primary)' }}
+                      style={{ background: 'var(--primary)', color: 'var(--on-primary)', opacity: batchDownloading ? 0.6 : 1 }}
                     >
-                      下载所选（{selectedVideos.size}）
+                      {batchDownloading ? (batchProgress || '下载中…') : '下载所选（' + selectedVideos.size + '）'}
                     </button>
                   </div>
                 </div>

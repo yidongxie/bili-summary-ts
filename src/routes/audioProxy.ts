@@ -1,5 +1,4 @@
 import { Router, Request, Response } from "express";
-import Database from "better-sqlite3";
 import { enforceRateLimit } from "../common/rateLimit";
 import { isAllowedAudioProxyUrl } from "./utils";
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { AmbientBackdrop } from './components/AmbientBackdrop';
-import { Library, FileText, Settings, User, GraduationCap, Sun, Moon } from 'lucide-react';
-import { ThemeProvider, useTheme } from './lib/theme';
+import { Library, FileText, Settings, User, GraduationCap } from 'lucide-react';
+import { ThemeProvider } from './lib/theme';
 import { Sidebar, type NavKey } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { GlobalSearch } from './components/GlobalSearch';
@@ -32,7 +32,6 @@ type View =
   | { kind: 'learning' }
   | { kind: 'admin' }
   | { kind: 'settings' };
-
 
 function libraryItemToSummaryResult(item: LibraryItem): SummaryResult {
   // Prefer the real subtitle segments persisted at save time; fall back to
@@ -225,11 +224,11 @@ export default function App() {
           {view.kind === 'home' && (
             <ErrorBoundary onReset={() => setView({ kind: 'home' })}>
               <HomePage
-                config={config}
                 isLoggedIn={!!user}
                 refreshKey={refreshKey}
                 onSubmit={handleSubmitSummary}
                 onOpenItem={openLibraryItem}
+                onShowToast={showToast}
               />
             </ErrorBoundary>
           )}

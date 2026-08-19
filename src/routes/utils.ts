@@ -1,6 +1,5 @@
 /** Shared utilities used across route modules. */
 
-import type { LibraryItem } from "../db/libraryStore";
 import { formatDuration } from "../common/date";
 
 // Re-export so existing callers of routes/utils keep working.

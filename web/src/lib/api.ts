@@ -1,4 +1,4 @@
-﻿// Centralised API client. All requests go through `api()` so we never miss
+// Centralised API client. All requests go through `api()` so we never miss
 // `credentials: 'include'` (the express-session cookie matters for /api/auth).
 //
 // Backend routes are documented in UI_FUNCTIONAL_SPEC.md §13 and implemented
@@ -565,23 +565,82 @@ export async function fetchAndDownload(url: string) {
   await downloadResponse(r);
 }
 
-export function downloadXiaoyuzhou(urlOrId: string) {
-  const a = document.createElement('a');
-  a.href = '/api/download/xiaoyuzhou?url=' + encodeURIComponent(urlOrId);
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+export type BiliPage = { cid: number; page: number; part?: string; duration?: number };
+
+export function listBiliPages(bvid: string) {
+  return request<{ success: boolean; title?: string; author?: string; pic?: string; pages?: BiliPage[] }>(
+    '/api/download/bilibili/pages?bvid=' + encodeURIComponent(bvid),
+  );
 }
-export function downloadBiliVideo(bvid: string) {
-  // Browser-native download: navigating to the URL streams the file straight
-  // to disk instead of buffering it into a blob first (much faster + resumable).
+
+function filenameFromDisposition(cd: string | null): string {
+  if (!cd) return 'download';
+  const starMatch = cd.match(/filename\*\s*=\s*([^;]+)/i);
+  if (starMatch) {
+    let v = starMatch[1].trim();
+    const idx = v.indexOf("''");
+    if (idx >= 0) v = v.slice(idx + 2);
+    try { return decodeURIComponent(v); } catch { return v; }
+  }
+  const plainMatch = cd.match(/filename\s*=\s*"?([^";]+)"?/i);
+  if (plainMatch) return plainMatch[1].trim();
+  return 'download';
+}
+
+function triggerDownload(blob: Blob, name: string): void {
   const a = document.createElement('a');
-  a.href = '/api/download/bilibili?bvid=' + encodeURIComponent(bvid);
-  a.rel = 'noopener';
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
   document.body.appendChild(a);
   a.click();
-  a.remove();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
+}
+
+/**
+ * Fetch a streamed download and save it to disk, surfacing JSON errors and
+ * reporting progress (0-100) when the server sends Content-Length.
+ */
+export async function streamDownload(url: string, onProgress?: (pct: number) => void): Promise<void> {
+  const r = await fetch(url, { credentials: 'include' });
+  const ctype = (r.headers.get('content-type') || '').toLowerCase();
+  if (!r.ok || ctype.includes('application/json')) {
+    const text = await r.text().catch(() => r.statusText);
+    let msg = text || r.statusText;
+    try { const j = JSON.parse(text); if (j?.error) msg = j.error; } catch { /* keep raw */ }
+    throw new Error(msg);
+  }
+  const total = Number(r.headers.get('content-length') || 0);
+  const reader = r.body?.getReader();
+  const chunks: BlobPart[] = [];
+  let received = 0;
+  if (reader) {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) { chunks.push(value); received += value.length; }
+      if (onProgress && total > 0) onProgress(Math.min(100, Math.round((received / total) * 100)));
+    }
+  }
+  onProgress?.(100);
+  const blob = new Blob(chunks, { type: r.headers.get('content-type') || 'application/octet-stream' });
+  triggerDownload(blob, filenameFromDisposition(r.headers.get('content-disposition')));
+}
+
+export function downloadXiaoyuzhou(urlOrId: string, opts: { onProgress?: (pct: number) => void } = {}) {
+  return streamDownload('/api/download/xiaoyuzhou?url=' + encodeURIComponent(urlOrId), opts.onProgress);
+}
+
+export function downloadBiliVideo(
+  bvidOrUrl: string,
+  opts: { cid?: number; qn?: number; audio?: boolean; onProgress?: (pct: number) => void } = {},
+) {
+  const q = new URLSearchParams();
+  if (/BV[a-zA-Z0-9]{10,}/.test(bvidOrUrl)) q.set('bvid', bvidOrUrl);
+  else q.set('url', bvidOrUrl);
+  if (opts.cid) q.set('cid', String(opts.cid));
+  if (opts.qn) q.set('qn', String(opts.qn));
+  if (opts.audio) q.set('audio', '1');
+  return streamDownload('/api/download/bilibili?' + q.toString(), opts.onProgress);
 }
 
 export function listUploaderVideos(url: string) {

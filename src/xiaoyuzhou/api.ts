@@ -30,29 +30,6 @@ const XIAOYUZHOU_HEADERS: Record<string, string> = {
 
 // ── HTTP helpers ────────────────────────────────────────────────────
 
-function requestJson<T>(url: string, headers?: Record<string, string>, timeout = 15000): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
-    const mod = parsed.protocol === 'https:' ? https : http;
-    const req = mod.get(url, { headers, timeout }, (res) => {
-      const chunks: Buffer[] = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => {
-        try {
-          resolve(JSON.parse(Buffer.concat(chunks).toString('utf-8')));
-        } catch (e) {
-          reject(new Error(`JSON parse error: ${e}`));
-        }
-      });
-    });
-    req.on('error', reject);
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Request timeout'));
-    });
-  });
-}
-
 function requestHtml(url: string, headers?: Record<string, string>, timeout = 15000): Promise<string> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);

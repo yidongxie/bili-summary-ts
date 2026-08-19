@@ -1,4 +1,4 @@
-﻿/** Bilibili API – video info, page list, paragraph grouping */
+/** Bilibili API – video info, page list, paragraph grouping */
 
 import http from 'http';
 import https from 'https';
@@ -57,37 +57,6 @@ function requestJson<T>(url: string, headers?: Record<string, string>, timeout =
     });
     req.on('error', reject);
     req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
-  });
-}
-
-function postJson<T>(url: string, body: unknown, headers?: Record<string, string>, timeout = 120000): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
-    const mod = parsed.protocol === 'https:' ? https : http;
-    const payload = Buffer.from(JSON.stringify(body), 'utf-8');
-    const req = mod.request(
-      parsed,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length, ...headers },
-        timeout,
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on('data', (c) => chunks.push(c));
-        res.on('end', () => {
-          try {
-            resolve(JSON.parse(Buffer.concat(chunks).toString('utf-8')));
-          } catch (e) {
-            reject(new Error(`JSON parse error: ${e}`));
-          }
-        });
-      },
-    );
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
-    req.write(payload);
-    req.end();
   });
 }
 
@@ -159,14 +128,14 @@ interface PageListResponse {
   data: { cid: number; page: number; part: string; duration: number }[];
 }
 
-export async function fetchPageList(bvid: string): Promise<{ cid: number; page: number }[]> {
+export async function fetchPageList(bvid: string): Promise<{ cid: number; page: number; part: string; duration: number }[]> {
   try {
     const res = await requestJson<PageListResponse>(
       `https://api.bilibili.com/x/player/pagelist?bvid=${bvid}`,
       BILI_HEADERS,
     );
     if (res.code === 0 && Array.isArray(res.data) && res.data.length) {
-      return res.data.map((p) => ({ cid: p.cid, page: p.page }));
+      return res.data.map((p) => ({ cid: p.cid, page: p.page, part: p.part, duration: p.duration }));
     }
   } catch { /* fallback */ }
   return [];
@@ -196,4 +165,3 @@ export function segmentsToParagraphs(segments: SubtitleSegment[], maxGap = 3): P
   }
   return groups.map((g) => ({ from: g.from, to: g.to, content: g.texts.join('\uff0c') }));
 }
-

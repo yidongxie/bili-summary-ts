@@ -1,4 +1,4 @@
-﻿/** AES-256-GCM encryption for sensitive config fields */
+/** AES-256-GCM encryption for sensitive config fields */
 
 import crypto from "crypto";
 
@@ -13,7 +13,6 @@ function getKey(): Buffer {
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
-const TAG_LENGTH = 16;
 
 export function encrypt(plaintext: string): string {
   if (!plaintext) return "";

@@ -1,12 +1,10 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, BookOpen, ExternalLink, Trash2, FileDown, FileText, BookMarked, CheckSquare, Square, RefreshCw, Tags, Download } from 'lucide-react';
 import {
   getLibrary,
   getLibraryItem,
   deleteLibrary,
   fetchAndDownload,
-  downloadBiliVideo,
-  downloadXiaoyuzhou,
   getObsidianPayload,
   reindexLibrary,
   bulkAddTags,
@@ -18,9 +16,9 @@ import {
   type AppConfig,
 } from '@/lib/api';
 import { formatDate, markdownToHtml } from '@/lib/format';
-import { EmptyState, GlassCard } from '@/components/ui';
 import { TagManagerModal } from '@/components/modals/TagManagerModal';
-import { ObsidianExportModal, type ObsidianModalState } from '@/components/modals/ObsidianExportModal';
+import { ObsidianExportModal } from '@/components/modals/ObsidianExportModal';
+import { DownloadModal } from '@/components/modals/DownloadModal';
 
 interface FavoritesPageProps {
   isLoggedIn: boolean;
@@ -123,6 +121,7 @@ export function FavoritesPage({
   const pageSize = 20;
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
+  const [downloadTarget, setDownloadTarget] = useState<{ kind: 'bilibili' | 'xiaoyuzhou'; bvid?: string; urlOrId?: string; title?: string } | null>(null);
   const requestSeq = useRef(0);
   // Obsidian export state — see handleObsidian() for the flow.
   const [obsidianModal, setObsidianModal] = useState<{
@@ -731,7 +730,7 @@ export function FavoritesPage({
               {openItem.bvid && !openItem.bvid.startsWith('http') && (
                 <button
                   type="button"
-                  onClick={() => { downloadBiliVideo(openItem.bvid!); }}
+                  onClick={() => setDownloadTarget({ kind: 'bilibili', bvid: openItem.bvid!, title: openItem.title })}
                   className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition-all "
                   style={{
                     background: 'var(--primary)',
@@ -745,7 +744,7 @@ export function FavoritesPage({
               {openItem.bvid && openItem.bvid.startsWith('http') && (
                 <button
                   type="button"
-                  onClick={() => { downloadXiaoyuzhou(openItem.bvid!); }}
+                  onClick={() => setDownloadTarget({ kind: 'xiaoyuzhou', urlOrId: openItem.bvid!, title: openItem.title })}
                   className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition-all "
                   style={{
                     background: 'var(--primary)',
@@ -883,6 +882,18 @@ export function FavoritesPage({
         <ObsidianExportModal
           state={obsidianModal}
           onClose={() => setObsidianModal(null)}
+          onShowToast={onShowToast}
+        />
+      )}
+
+      {downloadTarget && (
+        <DownloadModal
+          open={!!downloadTarget}
+          onClose={() => setDownloadTarget(null)}
+          kind={downloadTarget.kind}
+          bvid={downloadTarget.bvid}
+          urlOrId={downloadTarget.urlOrId}
+          title={downloadTarget.title}
           onShowToast={onShowToast}
         />
       )}

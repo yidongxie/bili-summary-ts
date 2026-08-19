@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   ArrowLeft,
   Bot,
@@ -24,16 +24,15 @@ import {
   subscribeTask,
   saveLibrary,
   checkLibraryByBvid,
-  downloadBiliVideo,
-  downloadXiaoyuzhou,
   type SummaryResult,
   type SubtitleSegment,
+  type AppConfig,
   chatApi,
-  rewriteApi,
 } from '@/lib/api';
 import { copyText } from '@/lib/clipboard';
 import { formatDuration, formatTimelineTime, markdownToHtml } from '@/lib/format';
 import { MarkmapMindMap, mindNodeToMarkdown } from '@/components/MarkmapMindMap';
+import { DownloadModal } from '@/components/modals/DownloadModal';
 
 type Phase = 'submitting' | 'progress' | 'success' | 'error';
 type TabKey = 'summary' | 'subtitles' | 'mindmap' | 'chat';
@@ -68,7 +67,6 @@ const border = 'var(--hairline)';
 const fg = 'var(--ink)';
 const muted = 'var(--steel)';
 const primary = 'var(--primary)';
-const accent = 'var(--brand-green)';
 
 const darkCardStyle: CSSProperties = {
   background: cardBg,
@@ -103,7 +101,7 @@ function splitSentences(text: string) {
 const KEY_INSIGHT_MARKERS = /(核心|关键|重要|建议|总结|结论|方法|策略|原理|本质|要点|启示|实践|行动)/;
 const SKIP_SENTENCE_PATTERN = /^(AI|总结|笔记|以下是|根据视频|本文)/;
 
-function buildKeyPoints(summary: string, tags: string[] = []) {
+function buildKeyPoints(summary: string) {
   // Strategy: extract the most insightful sentences from the summary,
   // NOT just strip bullet markers (which duplicates the structured notes).
   // 1) Priority: sentences with key insight markers from the summary body
@@ -281,7 +279,6 @@ function buildSrt(segments: SubtitleSegment[] = []) {
     .map((seg, i) => `${i + 1}\n${secondsToSrtTime(seg.from)} --> ${secondsToSrtTime(seg.to || seg.from + 3)}\n${seg.content}\n`)
     .join('\n');
 }
-
 
 type FormattedSubtitleLine = { from: number; text: string };
 
@@ -463,45 +460,6 @@ function getPlatformLabel(result: SummaryResult) {
   return result.type || '视频';
 }
 
-
-function buildOverview(summary: string) {
-  return {
-    oneLiner: summary.split(/[。！？\n]/).filter(Boolean)[0]?.slice(0, 80) || '无内容',
-    audience: summary.includes('项目管理') || summary.includes('技术') ? '开发者、项目经理' : summary.includes('阅读') || summary.includes('学习') ? '知识工作者、学生' : summary.includes('投资') || summary.includes('经济') ? '投资者、创业者' : '对此方向感兴趣的人',
-    takeaways: splitSentences(plainMarkdown(summary)).slice(0, 3).map((s) => s.length > 48 ? s.slice(0, 48) + '…' : s),
-    action: summary.includes('阅读') ? '今天开始每天阅读1小时' : summary.includes('学习') ? '建立结构化学习系统' : summary.includes('投资') ? '开始定投学习' : '回顾并实践',
-  };
-}
-
-function buildTimestampedMarkdown(summary: string, chapters: { timestamp: string; title: string }[], segments: SubtitleSegment[]) {
-  const chap = chapters.map((c) => `## [${c.timestamp}] ${c.title}`).join('\n');
-  const subs = segments.map((s) => `[${formatTimelineTime(s.from)}] ${s.content}`).join('\n');
-  return `# 视频笔记\n\n${summary}\n\n## 章节\n\n${chap}\n\n## 字幕\n\n${subs}`;
-}
-
-function buildMermaidMindmap(node: MindNode): string {
-  const lines = ['mindmap', '  root((视频学习笔记))'];
-  function collect(n: MindNode, depth: number) {
-    const indent = '  '.repeat(depth + 2);
-    (n.children || []).forEach((c) => {
-      lines.push(`${indent}${c.label.replace(/[()]/g, '')}`);
-      collect(c, depth + 1);
-    });
-  }
-  collect(node, 0);
-  return lines.join('\n');
-}
-
-function highlightText(text: string, query: string) {
-  const q = query.trim();
-  if (!q) return text;
-  const escaped = q.replace(new RegExp('[-/\^$*+?.()|[\]{}]', 'g'), '\$&');
-  return text.split(new RegExp(`(${escaped})`, 'gi')).map((part, i) =>
-    part.toLowerCase() === q.toLowerCase()
-      ? <mark key={i} className="rounded px-0.5" style={{ background: 'rgba(0,212,164,0.18)', color: 'var(--ink)' }}>{part}</mark>
-      : part
-  );
-}
 function getHost(link?: string) {
   try {
     return link ? new URL(link).hostname.replace(/^www\./, '') : '未知来源';
@@ -534,6 +492,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
   const [error, setError] = useState('');
   const [result, setResult] = useState<SummaryResult | null>(initialResult || null);
   const [saved, setSaved] = useState(!!initialSaved);
+  const [downloadTarget, setDownloadTarget] = useState<{ kind: 'bilibili' | 'xiaoyuzhou'; bvid?: string; urlOrId?: string; title?: string } | null>(null);
   const [savedItemId, setSavedItemId] = useState(initialResult?.id || '');
   const [runId, setRunId] = useState(0);
   const [reRunKey, setReRunKey] = useState(0);
@@ -625,7 +584,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
   }, [runId, initialResult, initialSaved, reRunKey]);
 
   const meta = result?.video || result?.podcast;
-  const keyPoints = useMemo(() => buildKeyPoints(result?.summary || '', result?.suggested_tags || []), [result]);
+  const keyPoints = useMemo(() => buildKeyPoints(result?.summary || ''), [result]);
   const chapters = useMemo(() => buildChapters(result?.subtitle_segments, result?.summary || ''), [result]);
   const notes = result?.summary || '';
   const subtitles = useMemo(() => {
@@ -747,10 +706,10 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
           <span className="rounded-full px-2 py-1 text-xs" style={{ background: mutedBg, color: 'var(--ink)' }}>{getPlatformLabel(result)}</span>
           <DarkButton variant="primary" onClick={() => setReRunKey((n) => n + 1)}><RefreshCw className="w-4 h-4" />重新总结</DarkButton>
           {result.type === 'bilibili' && result.video?.bvid && !result.video.bvid.startsWith('http') && (
-            <DarkButton onClick={() => { downloadBiliVideo(result.video!.bvid); }}><Download className="w-4 h-4" />下载视频</DarkButton>
+            <DarkButton onClick={() => setDownloadTarget({ kind: 'bilibili', bvid: result.video!.bvid, title: result.video!.title })}><Download className="w-4 h-4" />下载视频</DarkButton>
           )}
           {result.type === 'xiaoyuzhou' && (result.podcast?.audioUrl || result.podcast?.id) && (
-            <DarkButton onClick={() => { downloadXiaoyuzhou(result.podcast?.id || result.podcast?.audioUrl || ''); }}><Download className="w-4 h-4" />下载音频</DarkButton>
+            <DarkButton onClick={() => setDownloadTarget({ kind: 'xiaoyuzhou', urlOrId: result.podcast?.id || result.podcast?.audioUrl || '', title: result.podcast?.title })}><Download className="w-4 h-4" />下载音频</DarkButton>
           )}
           {meta.link && <a href={meta.link} target="_blank" rel="noreferrer" className="hidden sm:inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm" style={darkSubtleStyle}><ExternalLink className="w-4 h-4" />查看原视频</a>}
         </div>
@@ -811,6 +770,17 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
           </section>
         </div>
       </div>
+      {downloadTarget && (
+        <DownloadModal
+          open={!!downloadTarget}
+          onClose={() => setDownloadTarget(null)}
+          kind={downloadTarget.kind}
+          bvid={downloadTarget.bvid}
+          urlOrId={downloadTarget.urlOrId}
+          title={downloadTarget.title}
+          onShowToast={onShowToast}
+        />
+      )}
     </main>
   );
 }
@@ -904,13 +874,6 @@ function SubtitlesTab({ segments, duration, language, setLanguage, translating, 
   const txt = formattedSubtitleText(formatted);
   const markdown = `# 字幕\n\n${txt}`;
   return <Panel title="字幕"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => copyText(txt)}><Copy className="w-4 h-4" />复制全部</DarkButton><DarkButton onClick={() => downloadText('subtitles.srt', buildSrt(timed))}><Download className="w-4 h-4" />导出 SRT</DarkButton><DarkButton onClick={() => downloadText('subtitles.md', markdown, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><select value={language} onChange={(e) => setLanguage(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'var(--canvas)', color: fg, border: `1px solid ${border}` }}><option>English</option><option>日本語</option><option>한국어</option><option>繁體中文</option><option>Français</option><option>Deutsch</option><option>Español</option></select><DarkButton variant="primary" onClick={onTranslate} disabled={translating}>{translating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}开始翻译</DarkButton></div>{translation && <div className="mb-4 rounded-lg p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{translation}</div>}<div className="max-h-[500px] overflow-y-auto divide-y" style={{ borderColor: border }}>{formatted.map((line, i) => <div key={i} className="flex items-start gap-4 px-4 py-3"><span className="w-24 shrink-0 font-mono text-xs tabular-nums" style={{ color: muted }}>[{subtitleTimestamp(line.from)}]</span><span className="min-w-0 flex-1 text-sm leading-relaxed" style={{ color: fg }}>{line.text}</span></div>)}</div></Panel>;
-}
-
-function MindNodeView({ node, expanded, setExpanded, depth = 0 }: any) {
-  const has = node.children?.length;
-  const open = expanded.has(node.label);
-  const style = depth === 0 ? { background: `var(--surface)`, border: `1px solid ${primary}33`, fontWeight: 700 } : depth === 1 ? { background: `${primary}0d`, fontWeight: 600 } : {};
-  return <div className={depth ? "ml-5 border-l-2 pl-3" : ''} style={{ borderColor: `${primary}26` }}><button onClick={() => has && setExpanded((s: Set<string>) => { const n = new Set(s); open ? n.delete(node.label) : n.add(node.label); return n; })} className="my-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left" style={style}>{has ? (open ? '▼' : '▶') : '●'}<span className={depth === 0 ? 'text-base' : depth === 1 ? 'text-sm' : 'text-xs'}>{node.label}</span>{has && <span className="ml-auto rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: 'rgba(255,255,255,.62)' }}>{node.children.length}</span>}</button>{has && open && <div>{node.children.map((c: MindNode) => <MindNodeView key={c.label} node={c} expanded={expanded} setExpanded={setExpanded} depth={depth + 1} />)}</div>}</div>;
 }
 
 function MindMapTab({ node, expanded, setExpanded, full, setFull }: any) {
