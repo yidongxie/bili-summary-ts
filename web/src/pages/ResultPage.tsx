@@ -34,6 +34,26 @@ import { formatDuration, formatTimelineTime, markdownToHtml } from '@/lib/format
 import { MarkmapMindMap, mindNodeToMarkdown } from '@/components/MarkmapMindMap';
 import { DownloadModal } from '@/components/modals/DownloadModal';
 
+let ytApiPromise: Promise<any> | null = null;
+function loadYouTubeApi(): Promise<any> {
+  const w = window as any;
+  if (w.YT && w.YT.Player) return Promise.resolve(w.YT);
+  if (ytApiPromise) return ytApiPromise;
+  ytApiPromise = new Promise((resolve) => {
+    const prev = w.onYouTubeIframeAPIReady;
+    w.onYouTubeIframeAPIReady = () => {
+      if (typeof prev === 'function') prev();
+      resolve(w.YT);
+    };
+    if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+      const s = document.createElement('script');
+      s.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(s);
+    }
+  });
+  return ytApiPromise;
+}
+
 type Phase = 'submitting' | 'progress' | 'success' | 'error';
 type TabKey = 'summary' | 'subtitles' | 'mindmap' | 'chat';
 type MindNode = { label: string; children?: MindNode[] };
@@ -514,6 +534,10 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
   const [highlightTime, setHighlightTime] = useState<number | null>(null);
   const [mindView, setMindView] = useState<'tree' | 'cards'>('tree');
   const [subtitleView, setSubtitleView] = useState<'original' | 'translated' | 'bilingual'>('original');
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const youtubeContainerRef = useRef<HTMLDivElement | null>(null);
+  const youtubePlayerRef = useRef<any>(null);
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
 
   useEffect(() => {
     if (initialResult && !reRunKey) {
@@ -611,9 +635,63 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
     try { localStorage.setItem(chatKey, JSON.stringify(messages)); } catch { /* ignore */ }
   }, [chatKey, messages, result]);
 
+  function seekVideo(seconds: number) {
+    const v = videoRef.current;
+    if (v) {
+      v.currentTime = seconds;
+      v.play().catch(() => {});
+      return;
+    }
+    const yt = youtubePlayerRef.current;
+    if (yt) {
+      try {
+        yt.seekTo(seconds, true);
+        yt.playVideo();
+      } catch { /* ignore */ }
+    }
+  }
+
+  useEffect(() => {
+    const link = result?.video?.link;
+    if (result?.type !== 'youtube' || !link) return;
+    const videoId = extractYouTubeId(link);
+    if (!videoId) return;
+    let disposed = false;
+    let player: any = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
+    loadYouTubeApi().then((YT) => {
+      if (disposed) return;
+      player = new YT.Player(youtubeContainerRef.current, {
+        width: '100%',
+        height: '100%',
+        videoId,
+        playerVars: { autoplay: 0, rel: 0 },
+        events: {
+          onReady: () => {
+            if (disposed) return;
+            youtubePlayerRef.current = player;
+            interval = setInterval(() => {
+              try {
+                const t = player.getCurrentTime?.();
+                if (typeof t === 'number') setVideoCurrentTime(Math.floor(t));
+              } catch { /* ignore */ }
+            }, 500);
+          },
+        },
+      });
+    });
+    return () => {
+      disposed = true;
+      if (interval) clearInterval(interval);
+      youtubePlayerRef.current = null;
+      if (player) { try { player.destroy?.(); } catch { /* ignore */ } }
+    };
+  }, [result?.type, result?.video?.link]);
+
   function jumpToSubtitle(time: number) {
     setActiveTab('subtitles');
     setHighlightTime(time);
+    seekVideo(time);
     setTimeout(() => document.getElementById(`subtitle-${Math.floor(time)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
     setTimeout(() => setHighlightTime(null), 2200);
   }
@@ -720,22 +798,16 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
               <div className="rounded-lg overflow-hidden" style={darkCardStyle}>
                 <div className="aspect-video overflow-hidden flex items-center justify-center" style={{ background: `var(--surface)` }}>
                   {result.video?.bvid && result.type === 'bilibili' && !result.video.bvid.startsWith('http') ? (
-                    <iframe
-                      src={`https://player.bilibili.com/player.html?bvid=${result.video.bvid}&autoplay=0&high_quality=1`}
-                      frameBorder={0}
-                      allowFullScreen
-                      loading="lazy"
+                    <video
+                      ref={videoRef}
+                      controls
+                      playsInline
                       className="w-full h-full"
+                      src={`/api/stream/bilibili?bvid=${result.video.bvid}`}
+                      onTimeUpdate={(e) => setVideoCurrentTime(Math.floor(e.currentTarget.currentTime))}
                     />
                   ) : result.type === 'youtube' && result.video?.link ? (
-                    <iframe
-                      src={`https://www.youtube.com/embed/${extractYouTubeId(result.video.link)}`}
-                      frameBorder={0}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                      loading="lazy"
-                      className="w-full h-full"
-                    />
+                    <div ref={youtubeContainerRef} className="w-full h-full" />
                   ) : result.video?.bvid?.startsWith('http') || result.podcast?.audioUrl ? (
                     <div className="w-full p-5 flex flex-col items-center gap-4">
                       {(result.video?.pic || result.podcast?.cover) && <img src={result.video?.pic || result.podcast?.cover} alt="封面" className="w-36 h-36 object-cover rounded-lg shadow-lg" />}
@@ -764,7 +836,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
           <section className="lg:col-span-3 space-y-4">
             <TabBar active={activeTab} onChange={setActiveTab} />
             {activeTab === 'summary' && <SummaryTab notes={notes} copied={copiedNotes} setCopied={setCopiedNotes} rewritePlatform={rewritePlatform} setRewritePlatform={setRewritePlatform} rewriteText={rewriteText} onRewrite={() => streamText(`【${rewritePlatform}改写】\n${plainMarkdown(notes).slice(0, 500)}\n\n适合发布到${rewritePlatform}，保留核心观点并增强可读性。`, setRewriteText, 30, 3)} />}
-            {activeTab === 'subtitles' && <SubtitlesTab segments={subtitles} duration={meta?.duration || 0} search={subtitleSearch} setSearch={setSubtitleSearch} highlightTime={highlightTime} language={language} setLanguage={setLanguage} translating={translating} translation={translation} view={subtitleView} setView={setSubtitleView} onAskSelected={askSelectedText} onTranslate={() => { setTranslating(true); const raw = subtitles.map((s) => s.content).join('\n'); streamText(`翻译为 ${language}:\n${raw.slice(0, 800)}`, setTranslation, 15, 1, () => setTranslating(false)); }} />}
+            {activeTab === 'subtitles' && <SubtitlesTab segments={subtitles} duration={meta?.duration || 0} search={subtitleSearch} setSearch={setSubtitleSearch} highlightTime={highlightTime} language={language} setLanguage={setLanguage} translating={translating} translation={translation} view={subtitleView} setView={setSubtitleView} onAskSelected={askSelectedText} seek={seekVideo} currentTime={videoCurrentTime} onTranslate={() => { setTranslating(true); const raw = subtitles.map((s) => s.content).join('\n'); streamText(`翻译为 ${language}:\n${raw.slice(0, 800)}`, setTranslation, 15, 1, () => setTranslating(false)); }} />}
             {activeTab === 'mindmap' && <MindMapTab node={mindMap} expanded={expanded} setExpanded={setExpanded} full={mindFull} setFull={setMindFull} view={mindView} setView={setMindView} />}
             {activeTab === 'chat' && <ChatTab messages={messages} streaming={streaming} input={chatInput} setInput={setChatInput} send={sendChat} jump={jumpToSubtitle} />}
           </section>
@@ -868,12 +940,26 @@ function SummaryTab({ notes, copied, setCopied, rewritePlatform, setRewritePlatf
   return <div className="space-y-6"><div className="summary rounded-lg p-4 text-sm" style={{ background: 'var(--surface)' }} dangerouslySetInnerHTML={{ __html: markdownToHtml(notes) }} /><div className="mt-4 flex flex-wrap items-center gap-2"><DarkButton onClick={copyNotes}>{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{copied ? '已复制' : '复制笔记'}</DarkButton><DarkButton onClick={() => downloadText('summary.md', notes, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><div className="ml-auto flex gap-2"><select value={rewritePlatform} onChange={(e) => setRewritePlatform(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'var(--canvas)', color: fg, border: `1px solid ${border}` }}><option>公众号</option><option>小红书</option><option>微博</option><option>博客</option></select><DarkButton variant="primary" onClick={onRewrite}>改写</DarkButton></div></div>{rewriteText && <div className="mt-4 rounded-lg p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{rewriteText}</div>}</div>;
 }
 
-function SubtitlesTab({ segments, duration, language, setLanguage, translating, translation, onTranslate }: any) {
+function SubtitlesTab({ segments, duration, language, setLanguage, translating, translation, onTranslate, seek, currentTime }: any) {
   const timed = ensureTimedSegments(segments, duration);
   const formatted = formatSubtitleSegments(timed);
   const txt = formattedSubtitleText(formatted);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const lastActiveRef = useRef(-1);
+  let activeIdx = -1;
+  if (currentTime != null) {
+    for (let i = 0; i < formatted.length; i++) {
+      if (currentTime >= formatted[i].from) activeIdx = i;
+    }
+  }
+  useEffect(() => {
+    if (activeIdx >= 0 && activeIdx !== lastActiveRef.current) {
+      lastActiveRef.current = activeIdx;
+      listRef.current?.querySelector('[data-idx="' + activeIdx + '"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [activeIdx]);
   const markdown = `# 字幕\n\n${txt}`;
-  return <Panel title="字幕"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => copyText(txt)}><Copy className="w-4 h-4" />复制全部</DarkButton><DarkButton onClick={() => downloadText('subtitles.srt', buildSrt(timed))}><Download className="w-4 h-4" />导出 SRT</DarkButton><DarkButton onClick={() => downloadText('subtitles.md', markdown, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><select value={language} onChange={(e) => setLanguage(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'var(--canvas)', color: fg, border: `1px solid ${border}` }}><option>English</option><option>日本語</option><option>한국어</option><option>繁體中文</option><option>Français</option><option>Deutsch</option><option>Español</option></select><DarkButton variant="primary" onClick={onTranslate} disabled={translating}>{translating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}开始翻译</DarkButton></div>{translation && <div className="mb-4 rounded-lg p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{translation}</div>}<div className="max-h-[500px] overflow-y-auto divide-y" style={{ borderColor: border }}>{formatted.map((line, i) => <div key={i} className="flex items-start gap-4 px-4 py-3"><span className="w-24 shrink-0 font-mono text-xs tabular-nums" style={{ color: muted }}>[{subtitleTimestamp(line.from)}]</span><span className="min-w-0 flex-1 text-sm leading-relaxed" style={{ color: fg }}>{line.text}</span></div>)}</div></Panel>;
+  return <Panel title="字幕"><div className="mb-4 flex flex-wrap gap-2"><DarkButton onClick={() => copyText(txt)}><Copy className="w-4 h-4" />复制全部</DarkButton><DarkButton onClick={() => downloadText('subtitles.srt', buildSrt(timed))}><Download className="w-4 h-4" />导出 SRT</DarkButton><DarkButton onClick={() => downloadText('subtitles.md', markdown, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton><select value={language} onChange={(e) => setLanguage(e.target.value)} className="rounded-lg px-2 py-2 text-sm" style={{ background: 'var(--canvas)', color: fg, border: `1px solid ${border}` }}><option>English</option><option>日本語</option><option>한국어</option><option>繁體中文</option><option>Français</option><option>Deutsch</option><option>Español</option></select><DarkButton variant="primary" onClick={onTranslate} disabled={translating}>{translating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}开始翻译</DarkButton></div>{translation && <div className="mb-4 rounded-lg p-4 text-sm whitespace-pre-wrap" style={darkSubtleStyle}>{translation}</div>}<div ref={listRef} className="max-h-[500px] overflow-y-auto divide-y" style={{ borderColor: border }}>{formatted.map((line, i) => <div key={i} id={'subtitle-' + Math.floor(line.from)} data-idx={i} onClick={(e) => { const sel = window.getSelection(); if (sel && sel.rangeCount > 0 && !sel.isCollapsed) return; seek?.(line.from); }} className="flex items-start gap-4 px-4 py-3 cursor-pointer transition-colors" style={{ background: i === activeIdx ? 'rgba(0,212,164,0.12)' : undefined }}><span className="w-24 shrink-0 font-mono text-xs tabular-nums" style={{ color: muted }}>[{subtitleTimestamp(line.from)}]</span><span className="min-w-0 flex-1 text-sm leading-relaxed" style={{ color: fg }}>{line.text}</span></div>)}</div></Panel>;
 }
 
 function MindMapTab({ node, expanded, setExpanded, full, setFull }: any) {

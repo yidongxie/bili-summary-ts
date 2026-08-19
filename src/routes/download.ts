@@ -148,8 +148,23 @@ async function resolveAudioStream(bvid: string, cid: number, sessdata: string): 
   return null;
 }
 
+/** Resolve a seekable combined-MP4 (durl) stream URL for inline <video> playback. */
+async function resolveCombinedStream(bvid: string, cid: number, sessdata: string): Promise<{ url: string; size?: number } | null> {
+  const headers = { ...BILI_HEADERS };
+  if (sessdata?.trim()) headers.Cookie = `SESSDATA=${sessdata.trim()}`;
+  const res = await requestJson<PlayUrlResponse>(
+    `https://api.bilibili.com/x/player/playurl?bvid=${bvid}&cid=${cid}&qn=64&fnval=0&fnver=0&fourk=1`,
+    headers,
+  );
+  if (res.code === 0 && res.data?.durl?.length) {
+    const first = res.data.durl[0];
+    return { url: first.url, size: first.size };
+  }
+  return null;
+}
+
 /** Stream an upstream response to res, forwarding Range for resumable downloads. */
-function proxyStream(req: Request, res: Response, upstreamUrl: string, headers: Record<string, string> = BILI_HEADERS, platform = "B站"): void {
+function proxyStream(req: Request, res: Response, upstreamUrl: string, headers: Record<string, string> = BILI_HEADERS, platform = "B站", contentType?: string): void {
   const parsed = new URL(upstreamUrl);
   const mod = parsed.protocol === "https:" ? https : http;
   const range = req.headers.range || undefined;
@@ -167,6 +182,7 @@ function proxyStream(req: Request, res: Response, upstreamUrl: string, headers: 
         const v = upstream.headers[h];
         if (v) res.setHeader(h, v);
       });
+      if (contentType) res.setHeader("Content-Type", contentType);
       res.setHeader("X-Accel-Buffering", "no");
       let aborted = false;
       res.on("close", () => { aborted = true; upstreamReq.destroy(); });
@@ -444,6 +460,35 @@ export function createDownloadRouter(db: Database.Database): Router {
     } catch (err: any) {
       console.error("[uploader] failed", err.message);
       if (!res.headersSent) res.status(500).json({ success: false, error: err.message || "获取视频列表失败" });
+    }
+  });
+
+  // Stream a Bilibili video inline (seekable, Range-capable) for the <video> player.
+  router.get("/api/stream/bilibili", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+
+    const raw = String(req.query.bvid || "").trim();
+    const bvid = raw.match(/BV[a-zA-Z0-9]{10,}/)?.[0] || "";
+    if (!bvid) { res.status(400).json({ success: false, error: "缺少 bvid" }); return; }
+
+    try {
+      const info = await fetchVideoInfo(bvid);
+      const config = getDecryptedConfig(db, userId);
+      const sessdata = extractSessdata(config.yt_dlp_cookies || "");
+      const cidParam = parseInt(String(req.query.cid || ""), 10);
+      const cid = Number.isFinite(cidParam) && cidParam > 0 ? cidParam : info.cid;
+
+      const stream = await resolveCombinedStream(bvid, cid, sessdata);
+      if (!stream) {
+        res.status(400).json({ success: false, error: "该视频暂不支持在线播放（可能需登录或仅提供 DASH 流），可改用下载" });
+        return;
+      }
+      res.setHeader("Cache-Control", "no-store");
+      proxyStream(req, res, stream.url, BILI_HEADERS, "B站", "video/mp4");
+    } catch (err: any) {
+      console.error("[stream] failed", err.message);
+      if (!res.headersSent) res.status(500).json({ success: false, error: err.message || "获取视频流失败" });
     }
   });
 
