@@ -61,7 +61,7 @@ export function TagManagerModal({ tags, onClose, onRefresh, onShowToast }: TagMa
             </div>
           )) : <EmptyState title="暂无标签" desc="收藏内容添加标签后会出现在这里。" />}
         </div>
-        <button type="button" onClick={onClose} className="self-end text-sm px-3 py-1.5 rounded-md" style={{ background: 'rgba(255,255,255,0.7)', color: 'var(--brand-tag)', border: '1px solid var(--hairline)' }}>完成</button>
+        <button type="button" onClick={onClose} className="self-end text-sm px-3 py-1.5 rounded-md" style={{ background: 'var(--surface)', color: 'var(--brand-tag)', border: '1px solid var(--hairline)' }}>完成</button>
       </div>
     </div>
   );

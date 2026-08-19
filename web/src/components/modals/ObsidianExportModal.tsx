@@ -91,7 +91,7 @@ export function ObsidianExportModal({ state, onClose, onShowToast }: ObsidianExp
             onClick={copyAgain}
             className="text-sm px-3 py-1.5 rounded-full font-medium transition-all"
             style={{
-              background: 'rgba(255,255,255,0.7)',
+              background: 'var(--surface)',
               color: 'var(--brand-tag)',
               border: '1px solid var(--hairline)',
             }}
@@ -114,7 +114,7 @@ export function ObsidianExportModal({ state, onClose, onShowToast }: ObsidianExp
             onClick={onClose}
             className="ml-auto text-sm px-3 py-1.5 rounded-md transition-all"
             style={{
-              background: 'rgba(255,255,255,0.5)',
+              background: 'var(--surface)',
               color: 'var(--steel)',
               border: '1px solid var(--hairline)',
             }}
@@ -130,7 +130,7 @@ export function ObsidianExportModal({ state, onClose, onShowToast }: ObsidianExp
             value={state.md}
             className="mt-2 w-full font-mono text-xs outline-none"
             style={{
-              background: 'rgba(255,255,255,0.7)',
+              background: 'var(--surface)',
               border: '1px solid var(--hairline)',
               color: 'var(--ink)',
               borderRadius: '0.625rem',

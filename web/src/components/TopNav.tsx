@@ -11,6 +11,8 @@ interface TopNavProps {
   onLogout: () => void;
 }
 
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
 export const TopNav = React.memo(function TopNav({ onNewSummary, onOpenSearch, user, onLogin, onLogout }: TopNavProps) {
   const { theme, toggle } = useTheme();
   return (
@@ -37,7 +39,7 @@ export const TopNav = React.memo(function TopNav({ onNewSummary, onOpenSearch, u
           <Search className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">全局搜索</span>
           <span className="px-1.5 py-0.5 rounded-xs text-[10px] font-mono" style={{ background: 'var(--canvas)', color: 'var(--stone)', border: '1px solid var(--hairline)' }}>
-            ⌘K
+            {IS_MAC ? '⌘K' : 'Ctrl K'}
           </span>
         </button>
       </div>

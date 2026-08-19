@@ -32,7 +32,7 @@ export const Toast = React.memo(function Toast({ toast, onClose }: ToastProps) {
       className="fixed top-5 right-5 z-50 max-w-sm rounded-lg px-4 py-3 text-sm font-medium"
       style={{ background: 'var(--canvas)', color: tone.color, border: `1px solid ${tone.border}`, boxShadow: 'rgba(0,0,0,0.08) 0px 4px 12px' }}
       onClick={onClose}
-      role="status"
+      role={toast.type === 'error' ? 'alert' : 'status'}
     >
       <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ background: tone.marker }} />
       <span>{toast.msg}</span>

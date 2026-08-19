@@ -33,6 +33,33 @@ type View =
   | { kind: 'admin' }
   | { kind: 'settings' };
 
+/** Serialize a navigable view to a URL hash. Transient views (result) map to null. */
+function viewToHash(view: View): string | null {
+  switch (view.kind) {
+    case 'home': return '#/';
+    case 'library': return view.openId ? '#/item/' + encodeURIComponent(view.openId) : '#/library';
+    case 'learning': return '#/learning';
+    case 'admin': return '#/admin';
+    case 'settings': return '#/settings';
+    case 'result': return null;
+  }
+}
+
+/** Parse a URL hash back into a view (used on load + hashchange for back/forward). */
+function hashToView(hash: string): View | null {
+  const path = (hash || '').replace(/^#/, '').split('?')[0];
+  const itemMatch = path.match(/^\/item\/(.+)$/);
+  if (itemMatch) return { kind: 'library', openId: decodeURIComponent(itemMatch[1]) };
+  switch (path) {
+    case '': case '/': return { kind: 'home' };
+    case '/library': return { kind: 'library' };
+    case '/learning': return { kind: 'learning' };
+    case '/admin': return { kind: 'admin' };
+    case '/settings': return { kind: 'settings' };
+    default: return null;
+  }
+}
+
 function libraryItemToSummaryResult(item: LibraryItem): SummaryResult {
   // Prefer the real subtitle segments persisted at save time; fall back to
   // parsing the stored transcript (plain text) into estimated timestamps.
@@ -100,7 +127,7 @@ function parseTranscriptToSegments(text: string): SubtitleSegment[] | undefined 
 export default function App() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [config, setConfig] = useState<AppConfig>({});
-  const [view, setView] = useState<View>({ kind: 'home' });
+  const [view, setView] = useState<View>(() => hashToView(window.location.hash) || { kind: 'home' });
   const [loginOpen, setLoginOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
@@ -114,6 +141,26 @@ export default function App() {
   useEffect(() => {
     getMe().then(setUser);
     getConfig().then(setConfig);
+  }, []);
+
+  // Keep the URL hash in sync with the current view so refresh / back / forward
+  // work for the main pages (result is transient and intentionally not persisted).
+  useEffect(() => {
+    const h = viewToHash(view);
+    if (h == null) return;
+    if (window.location.hash !== h) {
+      if (!window.location.hash) window.history.replaceState(null, '', h);
+      else window.location.hash = h;
+    }
+  }, [view]);
+
+  useEffect(() => {
+    const onHash = () => {
+      const v = hashToView(window.location.hash);
+      if (v) setView(v);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
   // ⌘K / Ctrl+K opens global search anywhere in the app.

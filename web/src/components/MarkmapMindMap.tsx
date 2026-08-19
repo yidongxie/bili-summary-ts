@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Transformer } from 'markmap-lib';
 import { Markmap } from 'markmap-view';
-
-type MindNode = { label: string; children?: MindNode[] };
+import { mindNodeToMarkdown, type MindNode } from '@/lib/mindmap';
 
 interface MarkmapMindMapProps {
   node: MindNode;
@@ -10,21 +9,6 @@ interface MarkmapMindMapProps {
 }
 
 const transformer = new Transformer();
-
-function escapeMarkdown(text: string): string {
-  return String(text || '')
-    .replace(/\r?\n/g, ' ')
-    .replace(/^#+\s*/g, '')
-    .replace(/[\[\]]/g, '')
-    .trim();
-}
-
-export function mindNodeToMarkdown(node: MindNode, depth = 1): string {
-  const prefix = '#'.repeat(Math.min(depth, 6));
-  const label = escapeMarkdown(node.label || '未命名节点');
-  const children = (node.children || []).map((child) => mindNodeToMarkdown(child, depth + 1)).join('\n');
-  return `${prefix} ${label}${children ? '\n' + children : ''}`;
-}
 
 export function MarkmapMindMap({ node, height = 560 }: MarkmapMindMapProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Save, Check, Eye, EyeOff, Zap, Loader2 } from 'lucide-react';
+import { ConfirmModal } from '@/components/modals/ConfirmModal';
 import {
   getConfig,
   saveConfig,
@@ -108,6 +109,7 @@ export function SettingsPage({
   const [showWhisperKey, setShowWhisperKey] = useState(false);
   const [testingDeepseek, setTestingDeepseek] = useState(false);
   const [testingWhisper, setTestingWhisper] = useState(false);
+  const [confirmClearCookies, setConfirmClearCookies] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,13 +176,16 @@ export function SettingsPage({
   }
 
 
-  async function handleClearYtDlpCookies() {
+  function handleClearYtDlpCookies() {
     if (!isLoggedIn) {
       setStatus({ msg: '请先登录', type: 'error' });
       onRequireLogin();
       return;
     }
-    if (!window.confirm('确定清空已保存的 yt-dlp Cookies 吗？')) return;
+    setConfirmClearCookies(true);
+  }
+
+  async function doClearYtDlpCookies() {
     setSaving(true);
     setStatus(null);
     try {
@@ -558,6 +563,16 @@ export function SettingsPage({
           {saving ? '保存中…' : '保存设置'}
         </button>
       </div>
+
+      <ConfirmModal
+        open={confirmClearCookies}
+        title="清空 Cookies"
+        message="确定清空已保存的 yt-dlp Cookies 吗？"
+        confirmLabel="清空"
+        danger
+        onConfirm={doClearYtDlpCookies}
+        onClose={() => setConfirmClearCookies(false)}
+      />
     </div>
   );
 }

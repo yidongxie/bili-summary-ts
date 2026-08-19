@@ -18,6 +18,19 @@ export default defineConfig({
     outDir: path.resolve(__dirname, 'public/dist'),
     emptyOutDir: true,
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        // Split heavy vendor deps into their own chunks so the app shell loads
+        // fast and markmap/d3 is only fetched when needed.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (/[\\/]react(-dom)?[\\/]|[\\/]scheduler[\\/]/.test(id)) return 'react-vendor';
+          if (/markmap|katex|highlight\.js|prismjs|markdown-it|@vscode|@babel\/runtime|[\\/]d3-|[\\/]d3[\\/]|[\\/]yaml[\\/]/.test(id)) return 'markmap';
+          if (/lucide-react/.test(id)) return 'icons';
+          return 'vendor';
+        },
+      },
+    },
   },
   server: {
     port: 5173,

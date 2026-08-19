@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   ArrowLeft,
   Bot,
@@ -28,11 +28,19 @@ import {
   type SubtitleSegment,
   type AppConfig,
   chatApi,
+  translateApi,
+  rewriteApi,
 } from '@/lib/api';
 import { copyText } from '@/lib/clipboard';
 import { formatDuration, formatTimelineTime, markdownToHtml } from '@/lib/format';
-import { MarkmapMindMap, mindNodeToMarkdown } from '@/components/MarkmapMindMap';
+import { mindNodeToMarkdown } from '@/lib/mindmap';
 import { DownloadModal } from '@/components/modals/DownloadModal';
+
+// Lazy-load the mind-map renderer (markmap + d3 + katex ≈ 600KB) so it only
+// downloads when the user actually opens the mindmap tab.
+const MarkmapMindMap = lazy(() =>
+  import('@/components/MarkmapMindMap').then((m) => ({ default: m.MarkmapMindMap })),
+);
 
 let ytApiPromise: Promise<any> | null = null;
 function loadYouTubeApi(): Promise<any> {
@@ -437,14 +445,11 @@ function downloadText(filename: string, text: string, type = 'text/plain;charset
   URL.revokeObjectURL(u);
 }
 
-function buildMindMap(keyPoints: string[], chapters: { timestamp: string; title: string }[], notes: string): MindNode {
-  const headers = Array.from(notes.matchAll(/^#{1,3}\s+(.+)$/gm)).map((m) => m[1].trim()).slice(0, 8);
+function buildMindMap(keyPoints: string[]): MindNode {
   return {
     label: '视频学习笔记',
     children: [
-      { label: '章节结构', children: chapters.map((c) => ({ label: `${c.timestamp} ${c.title}` })) },
       { label: '核心要点', children: keyPoints.map((p) => ({ label: p.slice(0, 48) })) },
-      { label: '笔记大纲', children: (headers.length ? headers : ['结构化笔记', '行动清单']).map((h) => ({ label: h })) },
     ],
   };
 }
@@ -525,7 +530,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
   const [translating, setTranslating] = useState(false);
   const [translation, setTranslation] = useState('');
   const [language, setLanguage] = useState('English');
-  const [expanded, setExpanded] = useState<Set<string>>(new Set(['视频学习笔记', '章节结构', '核心要点', '笔记大纲']));
+  const [expanded, setExpanded] = useState<Set<string>>(new Set(['视频学习笔记', '核心要点']));
   const [mindFull, setMindFull] = useState(false);
   const [messages, setMessages] = useState<Array<ChatMessage & { citations?: Array<{ time: number; text: string }> }>>([]);
   const [chatInput, setChatInput] = useState('');
@@ -620,7 +625,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
     }
     return [];
   }, [result]);
-  const mindMap = useMemo(() => buildMindMap(keyPoints, chapters, notes), [keyPoints, chapters, notes]);
+  const mindMap = useMemo(() => buildMindMap(keyPoints), [keyPoints]);
   const chatKey = useMemo(() => `bilistudy:chat:${meta?.link || (meta && 'bvid' in meta ? meta.bvid : undefined) || url}`, [meta, url]);
 
   useEffect(() => {
@@ -776,6 +781,31 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
     }
   }
 
+  async function handleTranslate() {
+    setTranslating(true);
+    setTranslation('');
+    const raw = subtitles.map((s) => s.content).join('\n').trim();
+    if (!raw) { setTranslating(false); onShowToast('暂无字幕可翻译', 'info'); return; }
+    try {
+      const data = await translateApi({ text: raw, target: language });
+      streamText(data.text || '', setTranslation, 12, 6, () => setTranslating(false));
+    } catch (e: any) {
+      setTranslating(false);
+      onShowToast(e?.message || '翻译失败，请检查 API Key 或稍后重试', 'error');
+    }
+  }
+
+  async function handleRewrite() {
+    const summary = plainMarkdown(notes).trim();
+    if (!summary) { onShowToast('暂无内容可改写', 'info'); return; }
+    try {
+      const data = await rewriteApi({ platform: rewritePlatform, summary });
+      streamText(data.text || '', setRewriteText, 15, 4);
+    } catch (e: any) {
+      onShowToast(e?.message || '改写失败，请检查 API Key 或稍后重试', 'error');
+    }
+  }
+
   if (phase === 'submitting' || phase === 'progress') return <LoadingState progress={progress} onBack={onBack} />;
   if (phase === 'error') return <ErrorState error={error} onBack={onBack} onRetry={() => setRunId((n) => n + 1)} onCopy={() => copyText(error).then(() => onShowToast('错误信息已复制', 'ok'))} />;
   if (!result || !meta || (!result.summary && !result.transcript && !subtitles.length)) return <NoDataState onBack={onBack} link={meta?.link} />;
@@ -786,8 +816,11 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
         <div className="flex items-center gap-3 rounded-lg px-4 py-3 " style={darkCardStyle}>
           <DarkButton onClick={onBack}><ArrowLeft className="w-4 h-4" />返回</DarkButton>
           <div className="min-w-0 flex-1"><div className="truncate text-lg font-semibold">{meta.title || '视频总结'}</div></div>
-          <span className="rounded-full px-2 py-1 text-xs" style={{ background: mutedBg, color: 'var(--ink)' }}>{getPlatformLabel(result)}</span>
-          <DarkButton variant="primary" onClick={() => setReRunKey((n) => n + 1)}><RefreshCw className="w-4 h-4" />重新总结</DarkButton>
+            <span className="rounded-full px-2 py-1 text-xs" style={{ background: mutedBg, color: 'var(--ink)' }}>{getPlatformLabel(result)}</span>
+            {savedItemId && (
+              <DarkButton onClick={() => { copyText(window.location.origin + window.location.pathname + '#/item/' + savedItemId).then(() => onShowToast('链接已复制', 'ok')); }}><Copy className="w-4 h-4" />复制链接</DarkButton>
+            )}
+            <DarkButton variant="primary" onClick={() => setReRunKey((n) => n + 1)}><RefreshCw className="w-4 h-4" />重新总结</DarkButton>
           {result.type === 'bilibili' && result.video?.bvid && !result.video.bvid.startsWith('http') && (
             <DarkButton onClick={() => setDownloadTarget({ kind: 'bilibili', bvid: result.video!.bvid, title: result.video!.title })}><Download className="w-4 h-4" />下载视频</DarkButton>
           )}
@@ -850,8 +883,8 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
 
           <section className="lg:col-span-3 space-y-4">
             <TabBar active={activeTab} onChange={setActiveTab} />
-            {activeTab === 'summary' && <SummaryTab notes={notes} copied={copiedNotes} setCopied={setCopiedNotes} rewritePlatform={rewritePlatform} setRewritePlatform={setRewritePlatform} rewriteText={rewriteText} onRewrite={() => streamText(`【${rewritePlatform}改写】\n${plainMarkdown(notes).slice(0, 500)}\n\n适合发布到${rewritePlatform}，保留核心观点并增强可读性。`, setRewriteText, 30, 3)} />}
-            {activeTab === 'subtitles' && <SubtitlesTab segments={subtitles} duration={meta?.duration || 0} search={subtitleSearch} setSearch={setSubtitleSearch} highlightTime={highlightTime} language={language} setLanguage={setLanguage} translating={translating} translation={translation} view={subtitleView} setView={setSubtitleView} onAskSelected={askSelectedText} seek={seekVideo} currentTime={videoCurrentTime} onTranslate={() => { setTranslating(true); const raw = subtitles.map((s) => s.content).join('\n'); streamText(`翻译为 ${language}:\n${raw.slice(0, 800)}`, setTranslation, 15, 1, () => setTranslating(false)); }} />}
+            {activeTab === 'summary' && <SummaryTab notes={notes} copied={copiedNotes} setCopied={setCopiedNotes} rewritePlatform={rewritePlatform} setRewritePlatform={setRewritePlatform} rewriteText={rewriteText} onRewrite={handleRewrite} />}
+            {activeTab === 'subtitles' && <SubtitlesTab segments={subtitles} duration={meta?.duration || 0} search={subtitleSearch} setSearch={setSubtitleSearch} highlightTime={highlightTime} language={language} setLanguage={setLanguage} translating={translating} translation={translation} view={subtitleView} setView={setSubtitleView} onAskSelected={askSelectedText} seek={seekVideo} currentTime={videoCurrentTime} onTranslate={handleTranslate} />}
             {activeTab === 'mindmap' && <MindMapTab node={mindMap} expanded={expanded} setExpanded={setExpanded} full={mindFull} setFull={setMindFull} view={mindView} setView={setMindView} />}
             {activeTab === 'chat' && <ChatTab messages={messages} streaming={streaming} input={chatInput} setInput={setChatInput} send={sendChat} jump={jumpToSubtitle} />}
           </section>
@@ -989,7 +1022,9 @@ function MindMapTab({ node, expanded, setExpanded, full, setFull }: any) {
         <DarkButton onClick={() => downloadText('mindmap.md', markdown, 'text/markdown;charset=utf-8')}><Download className="w-4 h-4" />导出 Markdown</DarkButton>
         <DarkButton variant="primary" onClick={() => setFull(!full)}><Fullscreen className="w-4 h-4" />{full ? '退出全屏' : '全屏'}</DarkButton>
       </div>
-      <MarkmapMindMap node={node} height={full ? 760 : 560} />
+      <Suspense fallback={<div className="flex items-center justify-center" style={{ height: full ? 760 : 560, color: 'var(--steel)' }}>思维导图加载中…</div>}>
+        <MarkmapMindMap node={node} height={full ? 760 : 560} />
+      </Suspense>
     </Panel>
   );
   return full ? <div className="fixed inset-4 z-50 overflow-y-auto rounded-lg" style={{ background: pageBg }}>{box}</div> : box;

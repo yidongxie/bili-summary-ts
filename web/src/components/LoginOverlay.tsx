@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X as CloseIcon } from 'lucide-react';
 import { LogoMark } from './AmbientBackdrop';
 import { login as apiLogin, register as apiRegister } from '@/lib/api';
@@ -33,6 +33,15 @@ export function LoginOverlay({ open, onClose, onSuccess }: LoginOverlayProps) {
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
 
   if (!open) return null;
 

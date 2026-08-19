@@ -96,8 +96,19 @@ body {
   transition: background var(--transition-base), color var(--transition-base);
 }
 
-* { scrollbar-width: none; }
-*::-webkit-scrollbar { display: none; }
+/* Thin, themed scrollbars (visible so long lists read as scrollable). */
+* { scrollbar-width: thin; scrollbar-color: var(--hairline) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 9999px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--stone); }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* Keyboard focus visibility (accessibility). */
+:focus-visible {
+  outline: 2px solid var(--brand-green);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
 
 input::placeholder, textarea::placeholder { color: var(--muted); }
 

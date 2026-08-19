@@ -262,6 +262,13 @@ export function rewriteApi(payload: { platform: string; summary: string; keyPoin
   });
 }
 
+export function translateApi(payload: { text: string; target: string }) {
+  return request<{ success: boolean; text: string }>('/api/llm/translate', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 // ---- summarize task ------------------------------------------------------
 
 export type SummarizePayload = {

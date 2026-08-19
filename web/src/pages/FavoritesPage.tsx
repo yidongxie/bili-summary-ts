@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, BookOpen, ExternalLink, Trash2, FileDown, FileText, BookMarked, CheckSquare, Square, RefreshCw, Tags, Download } from 'lucide-react';
+import { Search, BookOpen, Trash2, CheckSquare, Square, RefreshCw, Tags } from 'lucide-react';
 import {
   getLibrary,
   getLibraryItem,
@@ -15,10 +15,12 @@ import {
   type LibraryItem,
   type AppConfig,
 } from '@/lib/api';
-import { formatDate, markdownToHtml } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 import { TagManagerModal } from '@/components/modals/TagManagerModal';
 import { ObsidianExportModal } from '@/components/modals/ObsidianExportModal';
 import { DownloadModal } from '@/components/modals/DownloadModal';
+import { ConfirmModal } from '@/components/modals/ConfirmModal';
+import { PromptModal } from '@/components/modals/PromptModal';
 
 interface FavoritesPageProps {
   isLoggedIn: boolean;
@@ -114,7 +116,6 @@ export function FavoritesPage({
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
-  const [openItem, setOpenItem] = useState<LibraryItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -130,6 +131,8 @@ export function FavoritesPage({
     filePath: string;
     copied: boolean;
   } | null>(null);
+  const [confirmState, setConfirmState] = useState<{ title: string; message: string; confirmLabel?: string; danger?: boolean; onConfirm: () => void } | null>(null);
+  const [promptState, setPromptState] = useState<{ title: string; label?: string; defaultValue?: string; placeholder?: string; confirmLabel?: string; onConfirm: (v: string) => void } | null>(null);
 
   const reload = useMemo(
     () => async (q: string, cat: string, t: string, nextPage = 1, nextSort = sort) => {
@@ -172,10 +175,7 @@ export function FavoritesPage({
     let cancelled = false;
     getLibraryItem(initialOpenId)
       .then((data) => {
-        if (!cancelled && data?.item) {
-          if (onOpenItem) onOpenItem(data.item);
-          else setOpenItem(data.item);
-        }
+        if (!cancelled && data?.item && onOpenItem) onOpenItem(data.item);
       })
       .catch(() => {})
       .finally(() => {
@@ -213,34 +213,28 @@ export function FavoritesPage({
   async function handleOpen(id: string) {
     try {
       const data = await getLibraryItem(id);
-      if (data?.item) {
-        if (onOpenItem) {
-          onOpenItem(data.item);
-          return;
-        }
-        setOpenItem(data.item);
-        // Scroll the detail panel into view next tick.
-        setTimeout(() => {
-          document
-            .getElementById('library-detail')
-            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 50);
-      }
+      if (data?.item && onOpenItem) onOpenItem(data.item);
     } catch (err: any) {
       onShowToast('打开失败：' + (err.message || ''), 'error');
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!window.confirm('确定删除这条收藏吗？')) return;
-    try {
-      await deleteLibrary(id);
-      if (openItem?.id === id) setOpenItem(null);
-      bumpRefreshKey();
-      onShowToast('已删除', 'ok');
-    } catch (err: any) {
-      onShowToast('删除失败：' + (err.message || ''), 'error');
-    }
+  function handleDelete(id: string) {
+    setConfirmState({
+      title: '删除收藏',
+      message: '确定删除这条收藏吗？此操作不可撤销。',
+      confirmLabel: '删除',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await deleteLibrary(id);
+          bumpRefreshKey();
+          onShowToast('已删除', 'ok');
+        } catch (err: any) {
+          onShowToast('删除失败：' + (err.message || ''), 'error');
+        }
+      },
+    });
   }
 
   function toggleSelect(id: string) {
@@ -271,48 +265,72 @@ export function FavoritesPage({
     return raw.split(/[,，\s#]+/).map((s) => s.trim()).filter(Boolean);
   }
 
-  async function handleBulkAddTags() {
-    const raw = window.prompt('输入要添加的标签，多个用空格或逗号分隔');
-    if (!raw) return;
-    try {
-      const data = await bulkAddTags({ ids: selectedIds, tags: parseTagInput(raw) });
-      await refreshAfterBulk(`已更新 ${data.changed || 0} 条收藏`);
-    } catch (err: any) {
-      onShowToast('批量添加标签失败：' + (err.message || ''), 'error');
-    }
+  function handleBulkAddTags() {
+    setPromptState({
+      title: '添加标签',
+      label: '输入要添加的标签，多个用空格或逗号分隔',
+      placeholder: '例如：AI 效率',
+      confirmLabel: '添加',
+      onConfirm: async (raw) => {
+        try {
+          const data = await bulkAddTags({ ids: selectedIds, tags: parseTagInput(raw) });
+          await refreshAfterBulk(`已更新 ${data.changed || 0} 条收藏`);
+        } catch (err: any) {
+          onShowToast('批量添加标签失败：' + (err.message || ''), 'error');
+        }
+      },
+    });
   }
 
-  async function handleBulkRemoveTags() {
-    const raw = window.prompt('输入要移除的标签，多个用空格或逗号分隔');
-    if (!raw) return;
-    try {
-      const data = await bulkRemoveTags({ ids: selectedIds, tags: parseTagInput(raw) });
-      await refreshAfterBulk(`已更新 ${data.changed || 0} 条收藏`);
-    } catch (err: any) {
-      onShowToast('批量移除标签失败：' + (err.message || ''), 'error');
-    }
+  function handleBulkRemoveTags() {
+    setPromptState({
+      title: '移除标签',
+      label: '输入要移除的标签，多个用空格或逗号分隔',
+      placeholder: '例如：AI 效率',
+      confirmLabel: '移除',
+      onConfirm: async (raw) => {
+        try {
+          const data = await bulkRemoveTags({ ids: selectedIds, tags: parseTagInput(raw) });
+          await refreshAfterBulk(`已更新 ${data.changed || 0} 条收藏`);
+        } catch (err: any) {
+          onShowToast('批量移除标签失败：' + (err.message || ''), 'error');
+        }
+      },
+    });
   }
 
-  async function handleBulkCategory() {
-    const next = window.prompt('输入新的分类', category || '待整理');
-    if (!next) return;
-    try {
-      const data = await bulkSetCategory({ ids: selectedIds, category: next.trim() || '待整理' });
-      await refreshAfterBulk(`已更新 ${data.changed || 0} 条收藏`);
-    } catch (err: any) {
-      onShowToast('批量修改分类失败：' + (err.message || ''), 'error');
-    }
+  function handleBulkCategory() {
+    setPromptState({
+      title: '修改分类',
+      label: '输入新的分类名称',
+      defaultValue: category || '待整理',
+      confirmLabel: '修改',
+      onConfirm: async (raw) => {
+        try {
+          const data = await bulkSetCategory({ ids: selectedIds, category: raw || '待整理' });
+          await refreshAfterBulk(`已更新 ${data.changed || 0} 条收藏`);
+        } catch (err: any) {
+          onShowToast('批量修改分类失败：' + (err.message || ''), 'error');
+        }
+      },
+    });
   }
 
-  async function handleBulkDelete() {
-    if (!window.confirm(`确定删除选中的 ${selectedIds.length} 条收藏吗？`)) return;
-    try {
-      const data = await bulkDeleteLibrary({ ids: selectedIds });
-      if (openItem && selectedIds.includes(openItem.id)) setOpenItem(null);
-      await refreshAfterBulk(`已删除 ${data.changed || 0} 条收藏`);
-    } catch (err: any) {
-      onShowToast('批量删除失败：' + (err.message || ''), 'error');
-    }
+  function handleBulkDelete() {
+    setConfirmState({
+      title: '批量删除',
+      message: `确定删除选中的 ${selectedIds.length} 条收藏吗？此操作不可撤销。`,
+      confirmLabel: '删除',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const data = await bulkDeleteLibrary({ ids: selectedIds });
+          await refreshAfterBulk(`已删除 ${data.changed || 0} 条收藏`);
+        } catch (err: any) {
+          onShowToast('批量删除失败：' + (err.message || ''), 'error');
+        }
+      },
+    });
   }
 
   async function handleBulkExport(kind: 'markdown' | 'json') {
@@ -604,7 +622,7 @@ export function FavoritesPage({
                     onClick={() => handleOpen(item.id)}
                     className="text-xs px-2.5 py-1 rounded-full font-medium transition-all "
                     style={{
-                      background: 'rgba(255,255,255,0.7)',
+                      background: 'var(--surface)',
                       color: 'var(--brand-tag)',
                       border: '1px solid var(--hairline)',
                     }}
@@ -616,7 +634,7 @@ export function FavoritesPage({
                     onClick={() => fetchAndDownload('/api/export/' + item.id + '.pdf')}
                     className="text-xs px-2.5 py-1 rounded-lg transition-all "
                     style={{
-                      background: 'rgba(255,255,255,0.5)',
+                      background: 'var(--surface)',
                       color: 'var(--steel)',
                       border: '1px solid var(--hairline)',
                     }}
@@ -628,7 +646,7 @@ export function FavoritesPage({
                     onClick={() => fetchAndDownload('/api/export/' + item.id + '.md')}
                     className="text-xs px-2.5 py-1 rounded-lg transition-all "
                     style={{
-                      background: 'rgba(255,255,255,0.5)',
+                      background: 'var(--surface)',
                       color: 'var(--steel)',
                       border: '1px solid var(--hairline)',
                     }}
@@ -674,7 +692,7 @@ export function FavoritesPage({
             disabled={page <= 1 || loading}
             onClick={() => handlePage(page - 1)}
             className="px-3 py-1.5 rounded-full font-medium disabled:opacity-50"
-            style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid var(--hairline)' }}
+            style={{ background: 'var(--surface)', border: '1px solid var(--hairline)' }}
           >
             上一页
           </button>
@@ -686,183 +704,10 @@ export function FavoritesPage({
             disabled={page >= Math.ceil(total / pageSize) || loading}
             onClick={() => handlePage(page + 1)}
             className="px-3 py-1.5 rounded-full font-medium disabled:opacity-50"
-            style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid var(--hairline)' }}
+            style={{ background: 'var(--surface)', border: '1px solid var(--hairline)' }}
           >
             下一页
           </button>
-        </div>
-      )}
-
-      {/* Detail */}
-      {openItem && (
-        <div
-          id="library-detail"
-          className="max-w-5xl mt-6 rounded-lg p-6 flex flex-col gap-4"
-          style={cardStyle}
-        >
-          <div className="flex items-start gap-3 justify-between flex-wrap">
-            <div className="flex-1 min-w-0">
-              <h3 className="text-lg font-bold" style={{ color: 'var(--ink)' }}>
-                {openItem.title}
-              </h3>
-              <div className="text-xs mt-1" style={{ color: 'var(--stone)' }}>
-                {openItem.author} · {openItem.category || '待整理'} ·{' '}
-                {formatDate(openItem.created_at)}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {openItem.link && (
-                <a
-                  href={openItem.link}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition-all "
-                  style={{
-                    background: 'rgba(255,255,255,0.7)',
-                    color: 'var(--brand-tag)',
-                    border: '1px solid var(--hairline)',
-                  }}
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  {openItem.bvid?.startsWith('http') ? '打开原链接' : '打开原视频'}
-                </a>
-              )}
-              {openItem.bvid && !openItem.bvid.startsWith('http') && (
-                <button
-                  type="button"
-                  onClick={() => setDownloadTarget({ kind: 'bilibili', bvid: openItem.bvid!, title: openItem.title })}
-                  className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition-all "
-                  style={{
-                    background: 'var(--primary)',
-                    color: 'var(--on-primary)',
-                  }}
-                >
-                  <FileDown className="w-3 h-3" />
-                  下载视频
-                </button>
-              )}
-              {openItem.bvid && openItem.bvid.startsWith('http') && (
-                <button
-                  type="button"
-                  onClick={() => setDownloadTarget({ kind: 'xiaoyuzhou', urlOrId: openItem.bvid!, title: openItem.title })}
-                  className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition-all "
-                  style={{
-                    background: 'var(--primary)',
-                    color: 'var(--on-primary)',
-                  }}
-                >
-                  <Download className="w-3 h-3" />
-                  下载音频
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => fetchAndDownload('/api/export/' + openItem.id + '.pdf')}
-                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg transition-all "
-                style={{
-                  background: 'rgba(255,255,255,0.5)',
-                  color: 'var(--steel)',
-                  border: '1px solid var(--hairline)',
-                }}
-              >
-                <FileText className="w-3 h-3" />
-                PDF
-              </button>
-              <button
-                type="button"
-                onClick={() => fetchAndDownload('/api/export/' + openItem.id + '.md')}
-                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg transition-all "
-                style={{
-                  background: 'rgba(255,255,255,0.5)',
-                  color: 'var(--steel)',
-                  border: '1px solid var(--hairline)',
-                }}
-              >
-                <FileDown className="w-3 h-3" />
-                Markdown
-              </button>
-              <button
-                type="button"
-                onClick={() => handleObsidian(openItem.id)}
-                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition-all "
-                style={{
-                  background: 'var(--primary)',
-                  color: 'var(--on-primary)',
-                  boxShadow: '0 2px 8px rgba(124,58,237,0.25)',
-                }}
-              >
-                <BookMarked className="w-3 h-3" />
-                Obsidian
-              </button>
-            </div>
-          </div>
-
-          {openItem.tags && openItem.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {openItem.tags.map((t) => (
-                <span
-                  key={t}
-                  className="text-xs px-2 py-0.5 rounded-full"
-                  style={{
-                    background: 'rgba(55,114,207,0.15)',
-                    color: 'var(--brand-tag)',
-                    border: '1px solid var(--hairline)',
-                  }}
-                >
-                  #{t}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {openItem.bvid && !openItem.bvid.startsWith('http') && (
-            <div
-              className="relative w-full rounded-md overflow-hidden"
-              style={{ paddingBottom: '56.25%', background: '#05070d' }}
-            >
-              <iframe
-                src={`https://player.bilibili.com/player.html?bvid=${openItem.bvid}&autoplay=0&high_quality=1`}
-                frameBorder={0}
-                allowFullScreen
-                className="absolute inset-0 w-full h-full"
-              />
-            </div>
-          )}
-          {/* Podcast cover and audio player (for Xiaoyuzhou podcasts) */}
-          {openItem.bvid && openItem.bvid.startsWith('http') && openItem.pic && (
-            <div className="flex flex-col items-center gap-4 p-6 rounded-md" style={{ background: 'linear-gradient(180deg, #f0f9ff 0%, var(--surface) 100%)' }}>
-              <img
-                src={openItem.pic}
-                alt="播客封面"
-                className="w-40 h-40 object-cover rounded-md shadow-lg"
-              />
-              <audio
-                controls
-                className="w-full max-w-md"
-                style={{ borderRadius: '8px' }}
-                src={`/api/proxy/audio?url=${encodeURIComponent(openItem.bvid)}`}
-                preload="metadata"
-                crossOrigin="anonymous"
-              />
-            </div>
-          )}
-
-          <div
-            className="summary"
-            dangerouslySetInnerHTML={{ __html: markdownToHtml(openItem.summary) }}
-          />
-
-          {openItem.notes && (
-            <div>
-              <h4 className="text-sm font-bold mb-2" style={{ color: 'var(--ink)' }}>
-                我的笔记
-              </h4>
-              <div
-                className="summary"
-                dangerouslySetInnerHTML={{ __html: markdownToHtml(openItem.notes) }}
-              />
-            </div>
-          )}
         </div>
       )}
 
@@ -897,6 +742,27 @@ export function FavoritesPage({
           onShowToast={onShowToast}
         />
       )}
+
+      <ConfirmModal
+        open={!!confirmState}
+        title={confirmState?.title || ''}
+        message={confirmState?.message || ''}
+        confirmLabel={confirmState?.confirmLabel}
+        danger={confirmState?.danger}
+        onConfirm={() => confirmState?.onConfirm()}
+        onClose={() => setConfirmState(null)}
+      />
+
+      <PromptModal
+        open={!!promptState}
+        title={promptState?.title || ''}
+        label={promptState?.label}
+        defaultValue={promptState?.defaultValue}
+        placeholder={promptState?.placeholder}
+        confirmLabel={promptState?.confirmLabel}
+        onConfirm={(v) => promptState?.onConfirm(v)}
+        onClose={() => setPromptState(null)}
+      />
     </div>
   );
 }

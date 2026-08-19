@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Sparkles, X, Zap, Download, Clock, ChevronRight, Users } from 'lucide-react';
 import type { LibraryItem } from '@/lib/api';
-import { getLibrary, downloadBiliVideo, downloadXiaoyuzhou, listUploaderVideos } from '@/lib/api';
+import { getLibrary, downloadBiliVideo, downloadXiaoyuzhou } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
+import { UploaderModal } from '@/components/modals/UploaderModal';
+import { Button } from '@/components/ui';
 
 const PLATFORMS = [
   {
@@ -21,21 +23,12 @@ const PLATFORMS = [
     name: '小宇宙', color: '#ff6b35', bg: 'rgba(255,107,53,0.08)', border: 'rgba(255,107,53,0.22)', enabled: true,
     icon: <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5c-.55 0-1-.45-1-1v-5c0-.55.45-1 1-1s1 .45 1 1v5c0 .55-.45 1-1 1zm4 0c-.55 0-1-.45-1-1v-5c0-.55.45-1 1-1s1 .45 1 1v5c0 .55-.45 1-1 1zm-8 0c-.55 0-1-.45-1-1v-5c0-.55.45-1 1-1s1 .45 1 1v5c0 .55-.45 1-1 1z" /></svg>,
   },
-  {
-    name: '小红书', color: '#ff2442', bg: 'rgba(255,36,66,0.08)', border: 'rgba(255,36,66,0.22)', enabled: false,
-    icon: <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.16 8.4h-2.64v.96h2.64v.96h-2.64v.96h2.64V14.4c0 .528-.432.96-.96.96h-3.84a.96.96 0 0 1-.96-.96v-3.12H9v-.96h1.44v-.96H9v-.96h1.44V7.44h5.76c.528 0 .96.432.96.96V8.4z" /></svg>,
-  },
-  {
-    name: '抖音', color: '#1c1c1e', bg: 'rgba(28,28,30,0.07)', border: 'rgba(28,28,30,0.18)', enabled: false,
-    icon: <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.75a4.85 4.85 0 0 1-1.01-.06z" /></svg>,
-  },
 ];
 
 const QUICK_TAGS = [
   { label: '🏄 刷刷热门', sample: 'https://www.bilibili.com/video/BV1Pr4y1z7Yi' },
   { label: '📚 学术论文', sample: 'https://www.bilibili.com/video/BV1uv411q7Mv' },
   { label: '🎙️ 播客摘要', sample: '' },
-  { label: '批量总结', sample: '' },
 ];
 
 interface HomePageProps {
@@ -48,26 +41,13 @@ interface HomePageProps {
 
 export type SummaryMode = 'brief' | 'detailed' | 'timeline' | 'knowledge';
 
-const SUMMARY_MODES: { value: SummaryMode; label: string }[] = [
-  { value: 'brief', label: '简洁' },
-  { value: 'detailed', label: '详细' },
-  { value: 'timeline', label: '时间线' },
-  { value: 'knowledge', label: '卡片' },
-];
-
 export function HomePage({ isLoggedIn, onSubmit, onOpenItem, refreshKey, onShowToast }: HomePageProps) {
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [recent, setRecent] = useState<LibraryItem[]>([]);
   const [hint, setHint] = useState<string | null>(null);
-  const [mode, setMode] = useState<SummaryMode>('brief');
-  const [uploaderLoading, setUploaderLoading] = useState(false);
-  const [uploaderError, setUploaderError] = useState<string | null>(null);
-  const [uploaderName, setUploaderName] = useState('');
-  const [uploaderVideos, setUploaderVideos] = useState<Array<{ title: string; bvid: string; duration?: number }>>([]);
-  const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set());
-  const [batchDownloading, setBatchDownloading] = useState(false);
-  const [batchProgress, setBatchProgress] = useState('');
+  const [showUploaderModal, setShowUploaderModal] = useState(false);
+  const [uploaderUrl, setUploaderUrl] = useState('');
 
   useEffect(() => {
     if (!isLoggedIn) { setRecent([]); return; }
@@ -82,7 +62,7 @@ export function HomePage({ isLoggedIn, onSubmit, onOpenItem, refreshKey, onShowT
     const trimmed = query.trim();
     if (!trimmed) { setHint('请输入视频或播客链接'); return; }
     setHint(null);
-    onSubmit(trimmed, mode);
+    onSubmit(trimmed, 'brief');
   }
 
   async function handleDownload() {
@@ -105,50 +85,17 @@ export function HomePage({ isLoggedIn, onSubmit, onOpenItem, refreshKey, onShowT
     }
   }
 
-  async function handleFetchUploader() {
+  function handleOpenUploader() {
     const trimmed = query.trim();
     if (!trimmed) { setHint('请输入博主空间链接'); return; }
     if (!isLoggedIn) { setHint('请先登录后使用批量下载'); return; }
-    const uidMatch = trimmed.match(/(?:space\.bilibili\.com\/)(\d+)/);
-    if (!uidMatch && !/space\.bilibili\.com/i.test(trimmed)) {
+    if (!/space\.bilibili\.com/i.test(trimmed)) {
       setHint('请输入博主空间链接（如 https://space.bilibili.com/123456）');
       return;
     }
     setHint(null);
-    setUploaderLoading(true);
-    setUploaderError(null);
-    try {
-      const data = await listUploaderVideos(trimmed);
-      if (!data.success || !data.videos?.length) throw new Error(data.error || '未获取到视频');
-      setUploaderName(data.uploader || '');
-      setUploaderVideos(data.videos);
-      setSelectedVideos(new Set(data.videos.map((v) => v.bvid)));
-    } catch (err: any) {
-      setUploaderError(err.message || '获取失败');
-      setUploaderVideos([]);
-    } finally {
-      setUploaderLoading(false);
-    }
-  }
-
-  async function handleBatchDownload() {
-    const targets = uploaderVideos.filter((v) => selectedVideos.has(v.bvid));
-    if (!targets.length) return;
-    setBatchDownloading(true);
-    let ok = 0;
-    for (let i = 0; i < targets.length; i++) {
-      const v = targets[i];
-      setBatchProgress('正在下载 ' + (i + 1) + '/' + targets.length + '：' + v.title);
-      try {
-        await downloadBiliVideo(v.bvid);
-        ok++;
-      } catch (err: any) {
-        onShowToast('下载失败（' + v.title + '）：' + (err.message || ''), 'error');
-      }
-    }
-    setBatchDownloading(false);
-    setBatchProgress('');
-    onShowToast('批量下载完成：成功 ' + ok + '/' + targets.length, ok === targets.length ? 'ok' : 'info');
+    setUploaderUrl(trimmed);
+    setShowUploaderModal(true);
   }
 
   return (
@@ -168,17 +115,14 @@ export function HomePage({ isLoggedIn, onSubmit, onOpenItem, refreshKey, onShowT
       {/* Platform badges */}
       <div className="flex items-center gap-2 flex-wrap justify-center">
         {PLATFORMS.map((p) => (
-          <button
+          <span
             key={p.name}
-            type="button"
-            disabled={!p.enabled}
-            onClick={() => { if (!p.enabled) setHint(`${p.name} 接入即将上线，目前仅支持 Bilibili 链接`); }}
             className="platform-btn"
             style={{ color: p.color, background: p.bg, border: `1px solid ${p.border}` }}
           >
             <span>{p.icon}</span>
             {p.name}
-          </button>
+          </span>
         ))}
       </div>
 
@@ -203,15 +147,9 @@ export function HomePage({ isLoggedIn, onSubmit, onOpenItem, refreshKey, onShowT
                 <X className="w-4 h-4" style={{ color: 'var(--ink)' }} />
               </button>
             )}
-            <button type="button" onClick={handleDownload} className="btn-secondary shrink-0 flex items-center gap-2">
-              <Download className="w-4 h-4" /> 一键下载
-            </button>
-            <button type="button" onClick={handleSubmit} className="btn-primary shrink-0 flex items-center gap-2">
+            <Button variant="primary" onClick={handleSubmit} className="shrink-0">
               <Zap className="w-4 h-4" /> 一键总结
-            </button>
-            <button type="button" onClick={handleFetchUploader} className="btn-secondary shrink-0 flex items-center gap-2">
-              <Users className="w-4 h-4" /> 博主合集
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -221,88 +159,30 @@ export function HomePage({ isLoggedIn, onSubmit, onOpenItem, refreshKey, onShowT
           </div>
         )}
 
+        {/* Secondary tools */}
+        <div className="flex items-center gap-2 mt-3 flex-wrap">
+          <span className="section-label">工具</span>
+          <Button size="sm" onClick={handleDownload}>
+            <Download className="w-3.5 h-3.5" /> 下载
+          </Button>
+          <Button size="sm" onClick={handleOpenUploader}>
+            <Users className="w-3.5 h-3.5" /> 博主合集
+          </Button>
+        </div>
+
         {/* Quick tags */}
         <div className="flex items-center gap-2 mt-3 flex-wrap">
           <span className="section-label">快捷</span>
           {QUICK_TAGS.map((tag) => (
-            <button key={tag.label} type="button" onClick={() => { if (tag.sample) { setQuery(tag.sample); } else { setHint(tag.label === '批量总结' ? '一行一个链接，按 Enter 顺序提交。批量队列后续上线。' : '该入口暂未上线，先用粘贴链接的方式总结一个吧。'); } }}
+            <button key={tag.label} type="button" onClick={() => { if (tag.sample) { setQuery(tag.sample); } else { setHint('该入口暂未上线，先用粘贴链接的方式总结一个吧。'); } }}
               className="btn-secondary text-xs px-3 py-1.5">
               {tag.label}
             </button>
           ))}
         </div>
-
-        {/* Mode picker */}
-        <div className="flex items-center gap-2 mt-2 flex-wrap">
-          <span className="section-label">模式</span>
-          {SUMMARY_MODES.map((m) => (
-            <button key={m.value} type="button" onClick={() => setMode(m.value)} className={`mode-chip${m.value === mode ? ' active' : ''}`}>
-              {m.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Uploader batch download */}
-        {(uploaderLoading || uploaderError || uploaderVideos.length > 0) && (
-          <div className="mt-3 rounded-lg p-4" style={{ background: 'var(--canvas)', border: '1px solid var(--hairline)' }}>
-            {uploaderLoading && (
-              <div className="text-xs" style={{ color: 'var(--steel)' }}>正在获取博主视频列表…</div>
-            )}
-            {uploaderError && (
-              <div className="text-xs" style={{ color: 'var(--brand-error)' }}>{uploaderError}</div>
-            )}
-            {!uploaderLoading && !uploaderError && uploaderVideos.length > 0 && (
-              <>
-                <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                  <div className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
-                    {uploaderName ? `${uploaderName} 的视频` : '博主视频'}（共 {uploaderVideos.length} 个）
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs" style={{ color: 'var(--steel)' }}>已选 {selectedVideos.size}</span>
-                    <button type="button" onClick={() => setSelectedVideos(new Set(uploaderVideos.map((v) => v.bvid)))} className="text-xs px-2 py-1 rounded-full font-medium" style={{ color: 'var(--brand-tag)', background: 'rgba(55,114,207,0.10)', border: '1px solid rgba(55,114,207,0.22)' }}>全选</button>
-                    <button type="button" onClick={() => setSelectedVideos(new Set())} className="text-xs px-2 py-1 rounded-full font-medium" style={{ color: 'var(--steel)', background: 'var(--surface)', border: '1px solid var(--hairline)' }}>清空</button>
-                    <button
-                      type="button"
-                      onClick={handleBatchDownload}
-                      disabled={batchDownloading}
-                      className="text-xs px-3 py-1.5 rounded-full font-semibold"
-                      style={{ background: 'var(--primary)', color: 'var(--on-primary)', opacity: batchDownloading ? 0.6 : 1 }}
-                    >
-                      {batchDownloading ? (batchProgress || '下载中…') : '下载所选（' + selectedVideos.size + '）'}
-                    </button>
-                  </div>
-                </div>
-                <div className="max-h-64 overflow-y-auto divide-y" style={{ borderColor: 'var(--hairline-soft)' }}>
-                  {uploaderVideos.map((v, idx) => (
-                    <label key={v.bvid} className="flex items-start gap-2 py-1.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedVideos.has(v.bvid)}
-                        onChange={(e) => {
-                          setSelectedVideos((prev) => {
-                            const next = new Set(prev);
-                            if (e.target.checked) next.add(v.bvid); else next.delete(v.bvid);
-                            return next;
-                          });
-                        }}
-                        className="mt-0.5 shrink-0"
-                      />
-                      <span className="min-w-0 flex-1 text-xs leading-snug" style={{ color: 'var(--ink)' }}>
-                        <span className="mr-1.5 opacity-50">{idx + 1}.</span>{v.title}
-                      </span>
-                      {v.duration ? (
-                        <span className="text-[11px] shrink-0 font-mono" style={{ color: 'var(--muted)' }}>
-                          {Math.floor(v.duration / 60)}:{String(v.duration % 60).padStart(2, '0')}
-                        </span>
-                      ) : null}
-                    </label>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
       </div>
+
+      <UploaderModal open={showUploaderModal} url={uploaderUrl} onClose={() => setShowUploaderModal(false)} onShowToast={onShowToast} />
 
       {/* Recent summaries */}
       {recent.length > 0 && (
