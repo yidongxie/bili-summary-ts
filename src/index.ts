@@ -165,9 +165,8 @@ app.get("/sitemap.xml", (req: Request, res: Response) => {
 // Static files (frontend)
 //
 // The frontend is built by Vite into public/dist/ (see vite.config.ts).
-// We serve that directory at the root. The legacy public/index.legacy.html
-// is intentionally kept around but NOT served by default — it lives at the
-// project root only for emergency rollback.
+// We serve that directory at the root; public/ is a fallback for the static
+// assets (favicon, brand-icon) that live alongside the built bundle.
 const distDir = path.resolve(__dirname, "..", "public", "dist");
 const legacyDir = path.resolve(__dirname, "..", "public");
 // Immutable long-term cache for hashed Vite build artifacts and anything under
