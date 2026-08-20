@@ -92,6 +92,7 @@ export function SettingsPage({
   const [whisperKey, setWhisperKey] = useState('');
   const [whisperApiUrl, setWhisperApiUrl] = useState('https://api.siliconflow.cn/v1');
   const [whisperModel, setWhisperModel] = useState('TeleAI/TeleSpeechASR');
+  const [embeddingModel, setEmbeddingModel] = useState('BAAI/bge-m3');
   const [defaultCategory, setDefaultCategory] = useState('待整理');
   const [ytDlpCookies, setYtDlpCookies] = useState('');
   const [obsidianVault, setObsidianVault] = useState('');
@@ -119,6 +120,7 @@ export function SettingsPage({
       setDeepseekApiUrl(cfg.deepseek_base_url || 'https://api.deepseek.com/v1');
       setWhisperApiUrl(cfg.whisper_base_url || 'https://api.siliconflow.cn/v1');
       setWhisperModel(cfg.whisper_model || 'TeleAI/TeleSpeechASR');
+      setEmbeddingModel(cfg.embedding_model || 'BAAI/bge-m3');
       setDefaultCategory(cfg.default_category || '待整理');
       setObsidianVault(cfg.obsidian_vault_name || '');
       setObsidianSubfolder(cfg.obsidian_folder || 'BiliStudy');
@@ -240,6 +242,7 @@ export function SettingsPage({
         deepseek_base_url: deepseekApiUrl.trim(),
         whisper_base_url: whisperApiUrl.trim() || 'https://api.siliconflow.cn/v1',
         whisper_model: whisperModel.trim() || 'TeleAI/TeleSpeechASR',
+        embedding_model: embeddingModel.trim() || 'BAAI/bge-m3',
         default_category: defaultCategory.trim() || '待整理',
         obsidian_vault_name: obsidianVault.trim(),
         obsidian_folder: obsidianSubfolder.trim() || 'BiliStudy',
@@ -407,6 +410,16 @@ export function SettingsPage({
                   onChange={(e) => setWhisperModel(e.target.value)}
                 />
               </div>
+            </div>
+            <div className="mt-3">
+              <label style={labelStyle}>Embedding 模型（语义搜索）</label>
+              <input
+                style={inputStyle}
+                type="text"
+                value={embeddingModel}
+                onChange={(e) => setEmbeddingModel(e.target.value)}
+                placeholder="BAAI/bge-m3"
+              />
             </div>
           </div>
         </div>

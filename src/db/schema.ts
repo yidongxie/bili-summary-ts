@@ -276,6 +276,24 @@ export function createDb(dataDir: string): Database.Database {
       vector TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS segment_embeddings (
+      id TEXT PRIMARY KEY,
+      library_item_id TEXT NOT NULL REFERENCES library_items(id) ON DELETE CASCADE,
+      start_sec REAL NOT NULL DEFAULT 0,
+      text TEXT NOT NULL DEFAULT '',
+      vector TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS ask_history (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      question TEXT NOT NULL DEFAULT '',
+      answer TEXT NOT NULL DEFAULT '',
+      citations_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Migration: add indexes for hot lookups and cleanup jobs.
@@ -296,6 +314,8 @@ export function createDb(dataDir: string): Database.Database {
       CREATE INDEX IF NOT EXISTS idx_themes_user ON themes(user_id, updated_at);
       CREATE INDEX IF NOT EXISTS idx_theme_items_theme ON theme_items(theme_id);
       CREATE INDEX IF NOT EXISTS idx_theme_items_item ON theme_items(library_item_id);
+      CREATE INDEX IF NOT EXISTS idx_segment_embeddings_item ON segment_embeddings(library_item_id);
+      CREATE INDEX IF NOT EXISTS idx_ask_history_user ON ask_history(user_id, created_at);
     `);
   } catch { /* ignore */ }
 
@@ -313,6 +333,9 @@ export function createDb(dataDir: string): Database.Database {
   if (!have.has("yt_dlp_cookies_enc")) {
     db.exec("ALTER TABLE user_configs ADD COLUMN yt_dlp_cookies_enc TEXT NOT NULL DEFAULT ''");
   }
+  if (!have.has("embedding_model")) {
+    db.exec("ALTER TABLE user_configs ADD COLUMN embedding_model TEXT NOT NULL DEFAULT 'BAAI/bge-m3'");
+  }
 
   // Migration: add pic column for cover image
   const libCols = db.prepare("PRAGMA table_info(library_items)").all() as Array<{ name: string }>;
@@ -322,6 +345,13 @@ export function createDb(dataDir: string): Database.Database {
   }
   if (!haveLib.has("subtitle_segments")) {
     db.exec("ALTER TABLE library_items ADD COLUMN subtitle_segments TEXT NOT NULL DEFAULT ''");
+  }
+
+  // Migration: themes.synthesis (persisted cross-video synthesis)
+  const themeCols = db.prepare("PRAGMA table_info(themes)").all() as Array<{ name: string }>;
+  const haveTheme = new Set(themeCols.map((c) => c.name));
+  if (!haveTheme.has("synthesis")) {
+    db.exec("ALTER TABLE themes ADD COLUMN synthesis TEXT NOT NULL DEFAULT ''");
   }
 
   // Optional FTS5 index. Some SQLite builds may not include FTS5, so startup must remain safe.

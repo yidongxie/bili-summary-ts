@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, Sparkles, Loader2, MessageCircle } from 'lucide-react';
-import { askApi, type AskCitation } from '@/lib/api';
+import { Send, Sparkles, Loader2, MessageCircle, Trash2 } from 'lucide-react';
+import { askStream, getAskHistory, clearAskHistory, type AskCitation } from '@/lib/api';
 import { markdownToHtml, formatDuration } from '@/lib/format';
 
 interface AskPageProps {
@@ -22,42 +22,83 @@ export function AskPage({ onOpenCitation, onShowToast }: AskPageProps) {
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  async function submit(q?: string) {
-    const question = (q ?? input).trim();
-    if (!question || loading) return;
-    setInput('');
-    setLoading(true);
-    setQa((prev) => [...prev, { question, answer: '', citations: [] }]);
-    try {
-      const data = await askApi(question);
-      setQa((prev) => {
-        const next = [...prev];
-        next[next.length - 1] = { question, answer: data.answer || '', citations: data.citations || [] };
-        return next;
-      });
-    } catch (e: any) {
-      setQa((prev) => {
-        const next = [...prev];
-        next[next.length - 1] = { ...next[next.length - 1], error: e?.message || '问答失败' };
-        return next;
-      });
-    } finally {
-      setLoading(false);
-    }
-  }
+  useEffect(() => {
+    getAskHistory()
+      .then((d) => {
+        if (d.history?.length) {
+          setQa(d.history.slice().reverse().map((h) => ({ question: h.question, answer: h.answer, citations: h.citations || [] })));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [qa, loading]);
 
+  function updateQa(idx: number, patch: Partial<QA>) {
+    setQa((prev) => prev.map((item, i) => (i === idx ? { ...item, ...patch } : item)));
+  }
+
+  function appendAnswer(idx: number, text: string) {
+    setQa((prev) => prev.map((item, i) => (i === idx ? { ...item, answer: item.answer + text } : item)));
+  }
+
+  function buildHistory(): Array<{ role: string; content: string }> {
+    const out: Array<{ role: string; content: string }> = [];
+    for (const item of qa.slice(-6)) {
+      out.push({ role: 'user', content: item.question });
+      if (item.answer) out.push({ role: 'assistant', content: item.answer.slice(0, 2000) });
+    }
+    return out;
+  }
+
+  async function submit(q?: string) {
+    const question = (q ?? input).trim();
+    if (!question || loading) return;
+    setInput('');
+    setLoading(true);
+    const history = buildHistory();
+    const idx = qa.length;
+    setQa((prev) => [...prev, { question, answer: '', citations: [] }]);
+    try {
+      await askStream(question, history, {
+        onCitations: (c) => updateQa(idx, { citations: c }),
+        onDelta: (t) => appendAnswer(idx, t),
+        onError: (e) => updateQa(idx, { error: e }),
+      });
+    } catch (e: any) {
+      updateQa(idx, { error: e?.message || '问答失败' });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleClear() {
+    try {
+      await clearAskHistory();
+      setQa([]);
+      onShowToast('已清空问答历史', 'ok');
+    } catch (e: any) {
+      onShowToast('清空失败：' + (e?.message || ''), 'error');
+    }
+  }
+
   return (
     <div className="flex flex-col h-full overflow-y-auto px-4 sm:px-8 py-6 sm:py-8">
       <div className="max-w-3xl mx-auto w-full flex flex-col flex-1">
-        <div className="mb-6">
-          <h2 className="text-xl font-bold" style={{ color: 'var(--ink)' }}>问知识库</h2>
-          <p className="text-sm mt-0.5" style={{ color: 'var(--stone)' }}>
-            基于你收藏的视频，直接提问，AI 会综合回答并标注出处。
-          </p>
+        <div className="mb-6 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold" style={{ color: 'var(--ink)' }}>问知识库</h2>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--stone)' }}>
+              基于你收藏的视频，直接提问，AI 会综合回答并标注出处。
+            </p>
+          </div>
+          {qa.length > 0 && (
+            <button type="button" onClick={handleClear} className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full" style={{ color: 'var(--brand-error)', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.20)' }}>
+              <Trash2 className="w-3.5 h-3.5" /> 清空
+            </button>
+          )}
         </div>
 
         <div className="flex-1 space-y-5">

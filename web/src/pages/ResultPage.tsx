@@ -24,9 +24,11 @@ import {
   subscribeTask,
   saveLibrary,
   checkLibraryByBvid,
+  getSimilarItems,
   type SummaryResult,
   type SubtitleSegment,
   type AppConfig,
+  type LibraryItem,
   chatApi,
   translateApi,
   rewriteApi,
@@ -74,6 +76,7 @@ interface ResultPageProps {
   initialResult?: SummaryResult;
   initialSaved?: boolean;
   initialSeek?: number;
+  onOpenItem?: (item: LibraryItem) => void;
   onBack: () => void;
   onSaved: () => void;
   onShowToast: (msg: string, type: 'ok' | 'error' | 'info') => void;
@@ -512,7 +515,7 @@ function DarkButton({ children, onClick, variant = 'ghost', disabled }: { childr
   );
 }
 
-export function ResultPage({ url, mode, config, initialResult, initialSaved, initialSeek, onBack, onSaved, onShowToast, onRequireLogin }: ResultPageProps) {
+export function ResultPage({ url, mode, config, initialResult, initialSaved, initialSeek, onOpenItem, onBack, onSaved, onShowToast, onRequireLogin }: ResultPageProps) {
   const [phase, setPhase] = useState<Phase>(initialResult ? 'success' : 'submitting');
   const [progress, setProgress] = useState('正在提交任务…');
   const [error, setError] = useState('');
@@ -520,6 +523,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, ini
   const [saved, setSaved] = useState(!!initialSaved);
   const [downloadTarget, setDownloadTarget] = useState<{ kind: 'bilibili' | 'xiaoyuzhou'; bvid?: string; urlOrId?: string; title?: string } | null>(null);
   const [savedItemId, setSavedItemId] = useState(initialResult?.id || '');
+  const [similarItems, setSimilarItems] = useState<LibraryItem[]>([]);
   const [runId, setRunId] = useState(0);
   const [reRunKey, setReRunKey] = useState(0);
   const closeRef = useRef<(() => void) | null>(null);
@@ -551,6 +555,16 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, ini
   useEffect(() => {
     if (initialSeek != null && initialSeek > 0) pendingSeekRef.current = initialSeek;
   }, [initialSeek]);
+
+  // Similar videos (recommendations) for the saved item.
+  useEffect(() => {
+    if (!savedItemId) { setSimilarItems([]); return; }
+    let cancelled = false;
+    getSimilarItems(savedItemId)
+      .then((d) => { if (!cancelled) setSimilarItems(d.items || []); })
+      .catch(() => { if (!cancelled) setSimilarItems([]); });
+    return () => { cancelled = true; };
+  }, [savedItemId]);
 
   useEffect(() => {
     if (initialResult && !reRunKey) {
@@ -760,6 +774,9 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, ini
     setSaved(true);
     onSaved();
     onShowToast(isUpdate ? `已更新：${data.item.title}` : `已保存：${data.item.title}`, 'ok');
+    if (data.duplicates?.length) {
+      onShowToast('发现相似收藏：' + data.duplicates.map((d) => d.title).join('、'), 'info');
+    }
   }
 
   // Auto-save a freshly-generated summary so nothing is lost if the user
@@ -789,6 +806,9 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, ini
       setSaved(true);
       onSaved();
       onShowToast('已自动保存到收藏库', 'info');
+      if (saved.duplicates?.length) {
+        onShowToast('发现相似收藏：' + saved.duplicates.map((d) => d.title).join('、'), 'info');
+      }
     } catch {
       // keep saved=false so the user can still save manually
     }
@@ -934,6 +954,17 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, ini
                 </div>
               </div>
               <DarkButton variant="primary" onClick={handleSave} disabled={saved}><Save className="w-4 h-4" />{saved ? '已收藏' : savedItemId ? '更新收藏' : '保存到收藏库'}</DarkButton>
+
+              {onOpenItem && similarItems.length > 0 && (
+                <div className="rounded-lg p-4 space-y-1.5" style={darkCardStyle}>
+                  <div className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>相关视频</div>
+                  {similarItems.map((it) => (
+                    <button key={it.id} type="button" onClick={() => onOpenItem(it)} className="w-full text-left text-xs px-2.5 py-1.5 rounded-md transition-colors" style={{ color: 'var(--steel)', background: 'var(--surface)' }}>
+                      <span className="block truncate">{it.title}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </aside>
 

@@ -9,6 +9,7 @@ export interface PublicConfig {
   deepseek_model: string;
   whisper_base_url: string;
   whisper_model: string;
+  embedding_model: string;
   obsidian_folder: string;
   obsidian_vault_name: string;
   api_key_set: boolean;
@@ -22,6 +23,7 @@ export interface FullConfig {
   yt_dlp_cookies: string;
   whisper_base_url: string;
   whisper_model: string;
+  embedding_model: string;
   deepseek_base_url: string;
   deepseek_model: string;
   obsidian_folder: string;
@@ -38,6 +40,7 @@ export function getPublicConfig(db: Database.Database, userId: number): PublicCo
       deepseek_model: "deepseek-v4-flash",
       whisper_base_url: "https://api.siliconflow.cn/v1",
       whisper_model: "TeleAI/TeleSpeechASR",
+      embedding_model: "BAAI/bge-m3",
       obsidian_folder: "BiliStudy",
       obsidian_vault_name: "",
       api_key_set: false,
@@ -51,6 +54,7 @@ export function getPublicConfig(db: Database.Database, userId: number): PublicCo
     deepseek_model: row.deepseek_model || "deepseek-v4-flash",
     whisper_base_url: row.whisper_base_url || "https://api.siliconflow.cn/v1",
     whisper_model: row.whisper_model || "TeleAI/TeleSpeechASR",
+    embedding_model: row.embedding_model || "BAAI/bge-m3",
     obsidian_folder: row.obsidian_folder || "BiliStudy",
     obsidian_vault_name: row.obsidian_vault_name || "",
     api_key_set: !!row.api_key_enc,
@@ -68,6 +72,7 @@ export function getDecryptedConfig(db: Database.Database, userId: number): FullC
       yt_dlp_cookies: "",
       whisper_base_url: "https://api.siliconflow.cn/v1",
       whisper_model: "TeleAI/TeleSpeechASR",
+      embedding_model: "BAAI/bge-m3",
       deepseek_base_url: "https://api.deepseek.com/v1",
       deepseek_model: "deepseek-v4-flash",
       obsidian_folder: "BiliStudy",
@@ -81,6 +86,7 @@ export function getDecryptedConfig(db: Database.Database, userId: number): FullC
     yt_dlp_cookies: decrypt(row.yt_dlp_cookies_enc),
     whisper_base_url: row.whisper_base_url || "https://api.siliconflow.cn/v1",
     whisper_model: row.whisper_model || "TeleAI/TeleSpeechASR",
+    embedding_model: row.embedding_model || "BAAI/bge-m3",
     deepseek_base_url: row.deepseek_base_url || "https://api.deepseek.com/v1",
     deepseek_model: row.deepseek_model || "deepseek-v4-flash",
     obsidian_folder: row.obsidian_folder || "BiliStudy",
@@ -136,6 +142,7 @@ export function saveConfig(
   if ("clear_yt_dlp_cookies" in patch && patch.clear_yt_dlp_cookies) { updates.push("yt_dlp_cookies_enc = ''"); }
   if ("whisper_base_url" in patch) { updates.push("whisper_base_url = @whisper_base_url"); params.whisper_base_url = patch.whisper_base_url; }
   if ("whisper_model" in patch) { updates.push("whisper_model = @whisper_model"); params.whisper_model = patch.whisper_model; }
+  if ("embedding_model" in patch) { updates.push("embedding_model = @embedding_model"); params.embedding_model = patch.embedding_model; }
   if ("deepseek_base_url" in patch) { updates.push("deepseek_base_url = @deepseek_base_url"); params.deepseek_base_url = patch.deepseek_base_url; }
   if ("deepseek_model" in patch) { updates.push("deepseek_model = @deepseek_model"); params.deepseek_model = patch.deepseek_model; }
   if ("obsidian_folder" in patch) { updates.push("obsidian_folder = @obsidian_folder"); params.obsidian_folder = patch.obsidian_folder; }

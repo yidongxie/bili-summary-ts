@@ -308,6 +308,7 @@ export default function App() {
                 initialResult={view.initialResult}
                 initialSaved={view.initialSaved}
                 initialSeek={view.seekTo}
+                onOpenItem={openLibraryItem}
                 onBack={() => setView({ kind: 'home' })}
                 onSaved={() => setRefreshKey((n) => n + 1)}
                 onShowToast={showToast}

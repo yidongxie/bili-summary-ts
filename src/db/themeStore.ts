@@ -10,6 +10,7 @@ export interface Theme {
   user_id: number;
   name: string;
   description: string;
+  synthesis: string;
   created_at: string;
   updated_at: string;
   item_count: number;
@@ -21,6 +22,7 @@ function rowToTheme(row: any): Theme {
     user_id: row.user_id,
     name: row.name,
     description: row.description || "",
+    synthesis: row.synthesis || "",
     created_at: row.created_at,
     updated_at: row.updated_at,
     item_count: Number(row.item_count || 0),
@@ -111,4 +113,11 @@ export function isItemThemed(db: Database.Database, userId: number, itemId: stri
     .prepare("SELECT 1 FROM theme_items ti JOIN themes t ON t.id = ti.theme_id WHERE ti.library_item_id = ? AND t.user_id = ?")
     .get(itemId, userId);
   return !!row;
+}
+
+export function saveSynthesis(db: Database.Database, userId: number, themeId: string, markdown: string): boolean {
+  const theme = getTheme(db, userId, themeId);
+  if (!theme) return false;
+  db.prepare("UPDATE themes SET synthesis = ?, updated_at = ? WHERE id = ?").run(markdown, nowSql(), themeId);
+  return true;
 }

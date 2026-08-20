@@ -58,6 +58,52 @@ export async function chatCompletion(
   return res.choices[0].message.content;
 }
 
+/**
+ * Streaming chat completion (SSE). Calls `onChunk` with each delta of text
+ * as it arrives from the provider's `stream: true` response.
+ */
+export async function chatCompletionStream(
+  config: LlmConfig,
+  messages: { role: string; content: string }[],
+  maxTokens: number,
+  onChunk: (text: string) => void,
+): Promise<void> {
+  const url = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const cleanApiKey = (config.apiKey || "").replace(/[\r\n\s]+/g, "").trim();
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${cleanApiKey}` },
+    body: JSON.stringify({ model: config.model, messages, temperature: 0.1, max_tokens: maxTokens, stream: true }),
+  });
+  if (!resp.ok || !resp.body) {
+    const text = await resp.text().catch(() => resp.statusText);
+    throw new Error(`HTTP ${resp.status}: ${text.slice(0, 200)}`);
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() || "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trim();
+      if (payload === "[DONE]") continue;
+      try {
+        const json = JSON.parse(payload);
+        const delta = json.choices?.[0]?.delta?.content;
+        if (delta) onChunk(delta);
+      } catch {
+        // ignore malformed chunk
+      }
+    }
+  }
+}
+
 // ── Public API ──────────────────────────────────────────────────────
 
 export async function summarizeText(

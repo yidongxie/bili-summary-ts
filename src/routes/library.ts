@@ -22,7 +22,7 @@ import {
   deleteSnippet,
 } from "../db/libraryStore";
 import { generateEmbeddingForItem, embedTexts, getEmbeddingConfig } from "../llm/embedding";
-import { searchLibrarySemantic } from "../db/embeddingStore";
+import { searchLibrarySemantic, searchSimilarItems, getItemVector, listMissingEmbeddingItems } from "../db/embeddingStore";
 
 function requireUser(req: Request, res: Response): number | null {
   const user = (req as any).user;
@@ -68,15 +68,17 @@ export function createLibraryRouter(db: Database.Database): Router {
     res.json({ success: true, indexed });
   });
 
-  // Backfill embeddings for items saved before semantic search existed.
+  // Backfill embeddings for items saved before semantic search existed (incremental).
   router.post("/api/library/reindex-embeddings", async (req: Request, res: Response) => {
     const userId = requireUser(req, res);
     if (!userId) return;
     const config = getEmbeddingConfig(db, userId);
     if (!config) { res.status(400).json({ success: false, error: "请先在设置中配置硅基流动 API Key（Whisper）" }); return; }
-    const rows = db.prepare("SELECT id, title, summary FROM library_items WHERE user_id = ?").all(userId) as Array<{ id: string; title: string; summary: string }>;
+    const rows = listMissingEmbeddingItems(db, userId);
     for (const row of rows) {
-      await generateEmbeddingForItem(db, userId, row);
+      let segs: any;
+      try { segs = JSON.parse(row.subtitle_segments || "[]"); } catch { segs = undefined; }
+      await generateEmbeddingForItem(db, userId, { id: row.id, title: row.title, summary: row.summary, subtitle_segments: Array.isArray(segs) ? segs : undefined });
     }
     res.json({ success: true, total: rows.length });
   });
@@ -104,6 +106,18 @@ export function createLibraryRouter(db: Database.Database): Router {
     } catch {
       res.json({ success: true, items: [] });
     }
+  });
+
+  // Similar videos by item-level embedding (for recommendations).
+  router.get("/api/library/:id/similar", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const item = findLibraryItem(db, userId, req.params.id);
+    if (!item) { res.status(404).json({ success: false, error: "未找到收藏" }); return; }
+    const vec = getItemVector(db, item.id);
+    if (!vec) { res.json({ success: true, items: [] }); return; }
+    const similar = searchSimilarItems(db, userId, vec, item.id, 6);
+    res.json({ success: true, items: similar.map((s) => ({ ...s.item, score: s.score })) });
   });
 
   router.get("/api/library/:id", (req: Request, res: Response) => {
@@ -138,11 +152,23 @@ export function createLibraryRouter(db: Database.Database): Router {
       notes: req.body.notes == null ? undefined : String(req.body.notes).trim(),
       mode: String(req.body.mode ?? "brief").trim() || "brief",
     });
-    res.json({ success: true, item });
-    // Best-effort semantic index (fire-and-forget; never blocks the response).
-    void generateEmbeddingForItem(db, userId, item).catch(() => {});
-  });
+    // Generate semantic index (bounded to 6s) so we can also detect semantic
+    // duplicates below. Never throws — embedding failures are swallowed.
+    await Promise.race([
+      generateEmbeddingForItem(db, userId, item),
+      new Promise((r) => setTimeout(r, 6000)),
+    ]).catch(() => {});
 
+    let duplicates: Array<{ id: string; title: string }> = [];
+    const vec = getItemVector(db, item.id);
+    if (vec) {
+      duplicates = searchSimilarItems(db, userId, vec, item.id, 3)
+        .filter((s) => s.score >= 0.92)
+        .map((s) => ({ id: s.item.id, title: s.item.title }));
+    }
+
+    res.json({ success: true, item, duplicates });
+  });
   router.delete("/api/library/:id", (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
     if (!userId) { res.status(401).json({ success: false, error: "请先登录" }); return; }

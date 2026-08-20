@@ -19,6 +19,7 @@ export type AppConfig = {
   deepseek_base_url?: string;
   whisper_base_url?: string;
   whisper_model?: string;
+  embedding_model?: string;
   default_category?: string;
   obsidian_vault_name?: string;
   obsidian_folder?: string;
@@ -278,11 +279,66 @@ export type AskCitation = {
   time: number;
 };
 
-export function askApi(question: string) {
-  return request<{ success: boolean; answer: string; citations?: AskCitation[] }>('/api/llm/ask', {
+export type AskHistoryItem = {
+  id: string;
+  question: string;
+  answer: string;
+  citations: AskCitation[];
+  created_at: string;
+};
+
+export async function askStream(
+  question: string,
+  history: Array<{ role: string; content: string }>,
+  callbacks: {
+    onCitations?: (c: AskCitation[]) => void;
+    onDelta?: (t: string) => void;
+    onDone?: () => void;
+    onError?: (e: string) => void;
+  },
+): Promise<void> {
+  const resp = await fetch('/api/llm/ask', {
     method: 'POST',
-    body: JSON.stringify({ question }),
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, history }),
   });
+  if (!resp.ok || !resp.body) {
+    const text = await resp.text().catch(() => resp.statusText);
+    throw new Error(text || resp.statusText);
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop() || '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const payload = trimmed.slice(5).trim();
+      try {
+        const obj = JSON.parse(payload);
+        if (obj.type === 'citations') callbacks.onCitations?.(obj.citations || []);
+        else if (obj.type === 'delta') callbacks.onDelta?.(obj.text || '');
+        else if (obj.type === 'done') callbacks.onDone?.();
+        else if (obj.type === 'error') callbacks.onError?.(obj.error || '问答失败');
+      } catch {
+        // ignore malformed event
+      }
+    }
+  }
+}
+
+export function getAskHistory() {
+  return request<{ success: boolean; history: AskHistoryItem[] }>('/api/llm/ask/history');
+}
+
+export function clearAskHistory() {
+  return request<{ success: boolean }>('/api/llm/ask/history', { method: 'DELETE' });
 }
 
 // ---- summarize task ------------------------------------------------------
@@ -390,7 +446,7 @@ export function saveLibrary(payload: {
   tags?: string[];
   notes?: string;
 }) {
-  return request<{ item: LibraryItem }>('/api/library', {
+  return request<{ item: LibraryItem; duplicates?: Array<{ id: string; title: string }> }>('/api/library', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -543,6 +599,7 @@ export type Theme = {
   id: string;
   name: string;
   description: string;
+  synthesis: string;
   created_at: string;
   updated_at: string;
   item_count: number;
@@ -594,6 +651,10 @@ export function classifyItemApi(itemId: string) {
 
 export function synthesizeThemeApi(id: string) {
   return request<{ success: boolean; markdown: string }>('/api/themes/' + encodeURIComponent(id) + '/summarize', { method: 'POST' });
+}
+
+export function getSimilarItems(id: string) {
+  return request<{ success: boolean; items: Array<LibraryItem & { score: number }> }>('/api/library/' + encodeURIComponent(id) + '/similar');
 }
 
 export async function fetchAndDownloadPost(url: string, payload: any) {

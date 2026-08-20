@@ -1,8 +1,11 @@
 /** Embedding storage + brute-force cosine search (fine for personal libraries). */
 
 import Database from "better-sqlite3";
+import crypto from "crypto";
 import { nowSql } from "../common/date";
 import { findLibraryItem, type LibraryItem } from "./libraryStore";
+
+// ── item-level (whole video topic) ────────────────────────────────────
 
 export function saveEmbedding(db: Database.Database, itemId: string, model: string, vector: number[]): void {
   db.prepare(
@@ -14,6 +17,42 @@ export function saveEmbedding(db: Database.Database, itemId: string, model: stri
 export function deleteEmbedding(db: Database.Database, itemId: string): void {
   db.prepare("DELETE FROM item_embeddings WHERE library_item_id = ?").run(itemId);
 }
+
+export function listMissingEmbeddingItems(db: Database.Database, userId: number): Array<{ id: string; title: string; summary: string; subtitle_segments: string }> {
+  return db
+    .prepare(
+      `SELECT li.id, li.title, li.summary, li.subtitle_segments FROM library_items li
+       LEFT JOIN item_embeddings ie ON ie.library_item_id = li.id
+       WHERE li.user_id = ? AND ie.library_item_id IS NULL`
+    )
+    .all(userId) as any[];
+}
+
+// ── segment-level (subtitle chunks, for precise timestamps) ───────────
+
+export function saveSegmentEmbeddings(
+  db: Database.Database,
+  itemId: string,
+  model: string,
+  chunks: Array<{ startSec: number; text: string; vector: number[] }>,
+): void {
+  deleteSegmentEmbeddings(db, itemId);
+  const insert = db.prepare(
+    "INSERT INTO segment_embeddings (id, library_item_id, start_sec, text, vector, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+  );
+  const tx = db.transaction((rows: typeof chunks) => {
+    for (const c of rows) {
+      insert.run(crypto.randomUUID(), itemId, c.startSec, c.text, JSON.stringify(c.vector), nowSql());
+    }
+  });
+  tx(chunks);
+}
+
+export function deleteSegmentEmbeddings(db: Database.Database, itemId: string): void {
+  db.prepare("DELETE FROM segment_embeddings WHERE library_item_id = ?").run(itemId);
+}
+
+// ── math ─────────────────────────────────────────────────────────────
 
 function normalize(v: number[]): number[] {
   const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
@@ -27,27 +66,32 @@ function dot(a: number[], b: number[]): number {
   return s;
 }
 
+// ── search ────────────────────────────────────────────────────────────
+
 export interface SemanticHit {
   item: LibraryItem;
   score: number;
+  startSec: number;
+  text: string;
 }
 
+/** Semantic search over segment embeddings — returns precise timestamps. */
 export function searchLibrarySemantic(db: Database.Database, userId: number, queryVector: number[], limit = 10): SemanticHit[] {
   const rows = db
     .prepare(
-      `SELECT e.library_item_id, e.vector FROM item_embeddings e
+      `SELECT e.library_item_id, e.start_sec, e.text, e.vector FROM segment_embeddings e
        JOIN library_items li ON li.id = e.library_item_id
        WHERE li.user_id = ?`
     )
-    .all(userId) as Array<{ library_item_id: string; vector: string }>;
+    .all(userId) as Array<{ library_item_id: string; start_sec: number; text: string; vector: string }>;
 
   const q = normalize(queryVector);
-  const scored: Array<{ id: string; score: number }> = [];
+  const scored: Array<{ itemId: string; startSec: number; text: string; score: number }> = [];
   for (const row of rows) {
     try {
       const v = normalize(JSON.parse(row.vector));
       if (!v.length) continue;
-      scored.push({ id: row.library_item_id, score: dot(q, v) });
+      scored.push({ itemId: row.library_item_id, startSec: Number(row.start_sec) || 0, text: row.text || "", score: dot(q, v) });
     } catch {
       // skip malformed vector
     }
@@ -57,11 +101,60 @@ export function searchLibrarySemantic(db: Database.Database, userId: number, que
   const out: SemanticHit[] = [];
   const seen = new Set<string>();
   for (const s of scored) {
-    if (seen.has(s.id)) continue;
-    seen.add(s.id);
-    const item = findLibraryItem(db, userId, s.id);
+    const item = findLibraryItem(db, userId, s.itemId);
+    if (!item) continue;
+    const key = s.itemId + ":" + s.startSec;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ item, score: s.score, startSec: s.startSec, text: s.text });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+export interface SimilarItem {
+  item: LibraryItem;
+  score: number;
+}
+
+/** Similar items by item-level (whole-video) embedding. */
+export function searchSimilarItems(db: Database.Database, userId: number, queryVector: number[], excludeId: string, limit = 6): SimilarItem[] {
+  const rows = db
+    .prepare(
+      `SELECT e.library_item_id, e.vector FROM item_embeddings e
+       JOIN library_items li ON li.id = e.library_item_id
+       WHERE li.user_id = ? AND e.library_item_id != ?`
+    )
+    .all(userId, excludeId) as Array<{ library_item_id: string; vector: string }>;
+
+  const q = normalize(queryVector);
+  const scored: Array<{ itemId: string; score: number }> = [];
+  for (const row of rows) {
+    try {
+      const v = normalize(JSON.parse(row.vector));
+      if (!v.length) continue;
+      scored.push({ itemId: row.library_item_id, score: dot(q, v) });
+    } catch {
+      // skip
+    }
+  }
+  scored.sort((a, b) => b.score - a.score);
+
+  const out: SimilarItem[] = [];
+  for (const s of scored) {
+    const item = findLibraryItem(db, userId, s.itemId);
     if (item) out.push({ item, score: s.score });
     if (out.length >= limit) break;
   }
   return out;
+}
+
+export function getItemVector(db: Database.Database, itemId: string): number[] | null {
+  const row = db.prepare("SELECT vector FROM item_embeddings WHERE library_item_id = ?").get(itemId) as { vector?: string } | undefined;
+  if (!row?.vector) return null;
+  try {
+    return JSON.parse(row.vector);
+  } catch {
+    return null;
+  }
 }

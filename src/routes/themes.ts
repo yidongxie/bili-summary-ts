@@ -14,6 +14,7 @@ import {
   addThemeItems,
   removeThemeItem,
   getThemeItems,
+  saveSynthesis,
 } from "../db/themeStore";
 import { chatCompletion } from "../llm/summarize";
 import {
@@ -162,6 +163,7 @@ export function createThemesRouter(db: Database.Database): Router {
       );
       const totalChars = blocks.reduce((n, b) => n + b.summary.length, 0);
       recordApiUsage(db, userId, { provider: "deepseek", model: llm.model, endpoint: "/api/themes/summarize", tokens_input: Math.ceil(totalChars / 4), tokens_output: Math.ceil(markdown.length / 4) });
+      saveSynthesis(db, userId, req.params.id, markdown);
       res.json({ success: true, markdown });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message || "生成综合总结失败" });

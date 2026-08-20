@@ -49,6 +49,7 @@ export function ThemeDetailModal({ themeId, onClose, onShowToast, onChanged }: T
         if (cancelled) return;
         setTheme(d.theme);
         setItems(d.items || []);
+        if (d.theme?.synthesis) setSynth(d.theme.synthesis);
       })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -143,7 +144,7 @@ export function ThemeDetailModal({ themeId, onClose, onShowToast, onChanged }: T
                 style={{ background: 'var(--primary)', color: 'var(--on-primary)', opacity: synthesizing || !items.length ? 0.6 : 1 }}
               >
                 {synthesizing ? <Loader2 className='w-3.5 h-3.5 animate-spin' /> : <Sparkles className='w-3.5 h-3.5' />}
-                生成主题综合总结
+                {synth ? '重新生成综合总结' : '生成主题综合总结'}
               </button>
               <button type='button' onClick={openAdd} className='flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium' style={{ color: 'var(--brand-tag)', background: 'rgba(55,114,207,0.10)', border: '1px solid rgba(55,114,207,0.22)' }}>
                 <Plus className='w-3.5 h-3.5' /> 添加视频
