@@ -101,6 +101,15 @@ export function buildRewriteUserPrompt(
 export const TRANSLATE_SYSTEM_PROMPT =
   '你是专业翻译助手。将用户提供的文本准确、自然地翻译成目标语言，忠实原文，不添加、不删减、不解释，只输出译文。';
 
+// ── Subtitle → article rewrite ───────────────────────────────────────
+
+export const ARTICLE_SYSTEM_PROMPT =
+  '你是内容编辑。把用户提供的字幕内容改写成一篇结构清晰、通顺易读的文章：去掉口语、语气词和重复，合并零散句子，用小标题组织，保留全部关键信息，不编造。用 Markdown 输出。';
+
+export function buildArticleUserPrompt(text: string): string {
+  return `请把下面的视频字幕改写成一篇文章：\n\n${text}`;
+}
+
 // ── Ask your knowledge base (RAG) ────────────────────────────────────
 
 export const ASK_SYSTEM_PROMPT =

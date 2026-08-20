@@ -17,6 +17,8 @@ import {
   buildRewriteUserPrompt,
   TRANSLATE_SYSTEM_PROMPT,
   ASK_SYSTEM_PROMPT,
+  ARTICLE_SYSTEM_PROMPT,
+  buildArticleUserPrompt,
 } from "../llm/prompts";
 
 function requireUser(req: Request, res: Response): number | null {
@@ -123,6 +125,34 @@ export function createLlmRouter(db: Database.Database): Router {
       res.json({ success: true, text: translated });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message || "翻译失败" });
+    }
+  });
+
+  // ── Subtitle → article rewrite ─────────────────────────────────────
+  router.post("/api/llm/article", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (!enforceRateLimit(req, res, "llm-article", 20, 60 * 60 * 1000, String(userId))) return;
+
+    const text = String(req.body.text || "").trim().slice(0, 20000);
+    if (!text) { res.status(400).json({ success: false, error: "缺少字幕内容" }); return; }
+
+    const llm = getLlmConfigWithFallback(db, userId);
+    if (!llm.apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
+
+    try {
+      const article = await chatCompletion(
+        { apiKey: llm.apiKey, baseUrl: llm.baseUrl, model: llm.model },
+        [
+          { role: "system", content: ARTICLE_SYSTEM_PROMPT },
+          { role: "user", content: buildArticleUserPrompt(text) },
+        ],
+        2400,
+      );
+      recordApiUsage(db, userId, { provider: "deepseek", model: llm.model, endpoint: "/api/llm/article", tokens_input: Math.ceil(text.length / 4), tokens_output: Math.ceil(article.length / 4) });
+      res.json({ success: true, article });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || "生成文章失败" });
     }
   });
 

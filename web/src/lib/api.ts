@@ -270,6 +270,13 @@ export function translateApi(payload: { text: string; target: string }) {
   });
 }
 
+export function articleApi(payload: { text: string }) {
+  return request<{ success: boolean; article: string }>('/api/llm/article', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export type AskCitation = {
   index: number;
   itemId: string;

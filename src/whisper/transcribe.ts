@@ -51,6 +51,9 @@ const BILI_HEADERS_FOR_MEDIA: Record<string, string> = {
 
 const MAX_AUDIO_DOWNLOAD_BYTES = parseInt(process.env.MAX_AUDIO_DOWNLOAD_BYTES || String(200 * 1024 * 1024), 10);
 const MAX_TRANSCRIBE_UPLOAD_BYTES = parseInt(process.env.MAX_TRANSCRIBE_UPLOAD_BYTES || String(50 * 1024 * 1024), 10);
+// Long audio is split into chunks of this many seconds and transcribed separately,
+// then merged back with correct time offsets (ASR providers often cap single-request length).
+const MAX_TRANSCRIBE_DURATION_SECONDS = parseInt(process.env.MAX_TRANSCRIBE_DURATION_SECONDS || "1800", 10);
 
 function assertUploadSize(filePath: string) {
   const size = fs.statSync(filePath).size;
@@ -154,8 +157,12 @@ function downloadToFile(url: string, dest: string, redirects = 5): Promise<void>
 
 /** Run ffmpeg to convert any input audio/video into a 16k mono mp3 (small + Whisper-friendly). */
 function ffmpegToMp3(input: string, output: string): Promise<void> {
+  return runFfmpeg(['-y', '-i', input, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k', output]);
+}
+
+/** Generic ffmpeg wrapper that resolves on exit 0 and rejects otherwise. */
+function runFfmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const args = ['-y', '-i', input, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k', output];
     const p = spawn(ffmpegBinary, args, { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     p.stderr.on('data', (c) => { stderr += c.toString(); });
@@ -165,6 +172,29 @@ function ffmpegToMp3(input: string, output: string): Promise<void> {
       else reject(new Error(`ffmpeg exit ${code}: ${stderr.slice(-500)}`));
     });
   });
+}
+
+/** Probe an audio file's duration in seconds (0 on failure). */
+function getAudioDuration(filePath: string): Promise<number> {
+  return new Promise((resolve) => {
+    const p = spawn(ffmpegBinary, ['-i', filePath, '-f', 'null', '-'], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    p.stderr.on('data', (c) => { stderr += c.toString(); });
+    p.on('close', () => {
+      const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      if (m) resolve(parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseFloat(m[3]));
+      else resolve(0);
+    });
+    p.on('error', () => resolve(0));
+  });
+}
+
+/** Split an audio file into fixed-length chunks (stream copy, no re-encode). */
+async function splitAudio(input: string, outDir: string, chunkSeconds: number): Promise<Array<{ file: string; start: number }>> {
+  const pattern = path.join(outDir, 'chunk_%03d.mp3');
+  await runFfmpeg(['-y', '-i', input, '-f', 'segment', '-segment_time', String(chunkSeconds), '-reset_timestamps', '1', '-c', 'copy', pattern]);
+  const files = fs.readdirSync(outDir).filter((f) => /^chunk_\d+\.mp3$/.test(f)).sort();
+  return files.map((f, i) => ({ file: path.join(outDir, f), start: i * chunkSeconds }));
 }
 
 interface WordTimestamp { word: string; start: number; end: number; }
@@ -302,6 +332,40 @@ async function postMultipartTranscribe(
   }
 }
 
+/**
+ * Transcribe a 16k-mono mp3, splitting long audio into chunks and merging the
+ * results with correct time offsets so 1-3h podcasts work even when the ASR
+ * provider caps single-request length.
+ */
+async function transcribeFileSmart(
+  filePath: string,
+  config: WhisperConfig,
+): Promise<{ text: string; segments?: TranscribedSegment[] }> {
+  const duration = await getAudioDuration(filePath);
+  if (duration <= MAX_TRANSCRIBE_DURATION_SECONDS) {
+    assertUploadSize(filePath);
+    return postMultipartTranscribe(filePath, config);
+  }
+
+  const chunksDir = path.join(path.dirname(filePath), 'chunks');
+  fs.mkdirSync(chunksDir, { recursive: true });
+  const chunks = await splitAudio(filePath, chunksDir, MAX_TRANSCRIBE_DURATION_SECONDS);
+  const segments: TranscribedSegment[] = [];
+  const texts: string[] = [];
+  for (const chunk of chunks) {
+    assertUploadSize(chunk.file);
+    const r = await postMultipartTranscribe(chunk.file, config);
+    texts.push(r.text);
+    if (r.segments?.length) {
+      for (const s of r.segments) {
+        segments.push({ from: s.from + chunk.start, to: s.to + chunk.start, content: s.content });
+      }
+    }
+  }
+  try { fs.rmSync(chunksDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  return { text: texts.join(''), segments };
+}
+
 export interface AudioTranscribeResult {
   text: string;
   segments: TranscribedSegment[];
@@ -360,8 +424,7 @@ export async function transcribeLocalMedia(
   const mp3File = path.join(tmpDir, 'audio.mp3');
   try {
     await ffmpegToMp3(mediaPath, mp3File);
-    assertUploadSize(mp3File);
-    const result = await postMultipartTranscribe(mp3File, whisper);
+    const result = await transcribeFileSmart(mp3File, whisper);
     return { text: result.text, segments: result.segments || [] };
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
@@ -382,8 +445,7 @@ export async function transcribeBilibiliAudio(
     const streamUrl = await getAudioStreamUrl(bvid, cid);
     await downloadToFile(streamUrl, rawFile);
     await ffmpegToMp3(rawFile, mp3File);
-    assertUploadSize(mp3File);
-    const result = await postMultipartTranscribe(mp3File, whisper);
+    const result = await transcribeFileSmart(mp3File, whisper);
     return { text: result.text, segments: result.segments || [] };
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
@@ -403,8 +465,7 @@ export async function transcribeAudioUrl(
   try {
     await downloadGenericAudio(audioUrl, rawFile, headers);
     await ffmpegToMp3(rawFile, mp3File);
-    assertUploadSize(mp3File);
-    const result = await postMultipartTranscribe(mp3File, whisper);
+    const result = await transcribeFileSmart(mp3File, whisper);
     return { text: result.text, segments: result.segments || [] };
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }

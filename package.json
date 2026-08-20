@@ -16,9 +16,7 @@
     "better-sqlite3": "^11.0.0",
     "compression": "^1.7.5",
     "express": "^4.21.0",
-    "express-session": "^1.18.0",
-    "markmap-lib": "^0.18.12",
-    "markmap-view": "^0.18.12"
+    "express-session": "^1.18.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
