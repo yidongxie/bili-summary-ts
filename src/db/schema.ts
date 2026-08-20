@@ -253,6 +253,29 @@ export function createDb(dataDir: string): Database.Database {
       citations_json TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS themes (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS theme_items (
+      theme_id TEXT NOT NULL REFERENCES themes(id) ON DELETE CASCADE,
+      library_item_id TEXT NOT NULL REFERENCES library_items(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (theme_id, library_item_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS item_embeddings (
+      library_item_id TEXT PRIMARY KEY REFERENCES library_items(id) ON DELETE CASCADE,
+      model TEXT NOT NULL DEFAULT '',
+      vector TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Migration: add indexes for hot lookups and cleanup jobs.
@@ -270,6 +293,9 @@ export function createDb(dataDir: string): Database.Database {
       CREATE INDEX IF NOT EXISTS idx_usage_user_time ON api_usage_logs(user_id, created_at);
       CREATE INDEX IF NOT EXISTS idx_chat_threads_user_target ON chat_threads(user_id, target_key);
       CREATE INDEX IF NOT EXISTS idx_chat_messages_thread ON chat_messages(thread_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_themes_user ON themes(user_id, updated_at);
+      CREATE INDEX IF NOT EXISTS idx_theme_items_theme ON theme_items(theme_id);
+      CREATE INDEX IF NOT EXISTS idx_theme_items_item ON theme_items(library_item_id);
     `);
   } catch { /* ignore */ }
 
@@ -299,7 +325,14 @@ export function createDb(dataDir: string): Database.Database {
   }
 
   // Optional FTS5 index. Some SQLite builds may not include FTS5, so startup must remain safe.
+  // We use the "trigram" tokenizer so Chinese substrings are searchable — the default
+  // unicode61 tokenizer treats a whole CJK run as a single token and breaks Chinese search.
   try {
+    const existing = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'library_items_fts'").get() as { sql?: string } | undefined;
+    const needsRebuild = !!existing && !/trigram/i.test(existing.sql || "");
+    if (needsRebuild) {
+      db.exec("DROP TABLE IF EXISTS library_items_fts");
+    }
     db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS library_items_fts USING fts5(
         id UNINDEXED,
@@ -310,11 +343,12 @@ export function createDb(dataDir: string): Database.Database {
         transcript,
         category,
         tags,
-        notes
+        notes,
+        tokenize = 'trigram'
       );
     `);
     const count = db.prepare("SELECT COUNT(*) AS count FROM library_items_fts").get() as { count: number };
-    if (!count.count) {
+    if (needsRebuild || !count.count) {
       const rows = db.prepare("SELECT id, user_id, title, author, summary, transcript, category, tags, notes FROM library_items").all() as any[];
       const insert = db.prepare(`INSERT INTO library_items_fts (id, user_id, title, author, summary, transcript, category, tags, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
       const tx = db.transaction((items: any[]) => {

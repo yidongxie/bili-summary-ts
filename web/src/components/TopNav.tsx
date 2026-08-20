@@ -1,11 +1,12 @@
 import React from 'react';
-import { Plus, Search, User, LogOut, Sun, Moon } from 'lucide-react';
+import { Plus, Search, MessageCircle, User, LogOut, Sun, Moon } from 'lucide-react';
 import type { CurrentUser } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 
 interface TopNavProps {
   onNewSummary: () => void;
   onOpenSearch: () => void;
+  onOpenAsk: () => void;
   user: CurrentUser | null;
   onLogin: () => void;
   onLogout: () => void;
@@ -13,7 +14,7 @@ interface TopNavProps {
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-export const TopNav = React.memo(function TopNav({ onNewSummary, onOpenSearch, user, onLogin, onLogout }: TopNavProps) {
+export const TopNav = React.memo(function TopNav({ onNewSummary, onOpenSearch, onOpenAsk, user, onLogin, onLogout }: TopNavProps) {
   const { theme, toggle } = useTheme();
   return (
     <nav
@@ -29,6 +30,15 @@ export const TopNav = React.memo(function TopNav({ onNewSummary, onOpenSearch, u
         >
           <Plus className="w-4 h-4" style={{ color: 'var(--ink)' }} />
           <span className="font-medium hidden sm:inline">新总结</span>
+        </button>
+        <button
+          type="button"
+          onClick={onOpenAsk}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm cursor-pointer transition-colors"
+          style={{ color: 'var(--ink)', border: '1px solid var(--hairline)', background: 'transparent' }}
+        >
+          <MessageCircle className="w-4 h-4" style={{ color: 'var(--brand-green)' }} />
+          <span className="font-medium hidden sm:inline">问知识库</span>
         </button>
         <button
           type="button"

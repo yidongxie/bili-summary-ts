@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, BookOpen, Trash2, CheckSquare, Square, RefreshCw, Tags } from 'lucide-react';
+import { Search, BookOpen, Trash2, CheckSquare, Square, RefreshCw, Tags, Layers } from 'lucide-react';
 import {
   getLibrary,
   getLibraryItem,
@@ -12,8 +12,13 @@ import {
   bulkSetCategory,
   bulkDeleteLibrary,
   downloadBulkExport,
+  getThemes,
+  createThemeApi,
+  classifyItemApi,
+  reindexEmbeddings,
   type LibraryItem,
   type AppConfig,
+  type Theme,
 } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { TagManagerModal } from '@/components/modals/TagManagerModal';
@@ -21,6 +26,7 @@ import { ObsidianExportModal } from '@/components/modals/ObsidianExportModal';
 import { DownloadModal } from '@/components/modals/DownloadModal';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
 import { PromptModal } from '@/components/modals/PromptModal';
+import { ThemeDetailModal } from '@/components/modals/ThemeDetailModal';
 
 interface FavoritesPageProps {
   isLoggedIn: boolean;
@@ -70,6 +76,14 @@ function normalizeCoverUrl(pic?: string): string {
 
 function titleInitial(title?: string): string {
   return String(title || '学').trim().slice(0, 1).toUpperCase() || '学';
+}
+
+function highlightText(text: string, query: string) {
+  const terms = query.trim().split(/\s+/).filter(Boolean).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!terms.length || !text) return text;
+  const re = new RegExp(`(${terms.join('|')})`, 'ig');
+  const parts = String(text).split(re);
+  return parts.map((p, i) => (i % 2 === 1 ? <mark key={i} className="search-hit">{p}</mark> : p));
 }
 
 function CoverFallback({ item }: { item: LibraryItem }) {
@@ -133,6 +147,55 @@ export function FavoritesPage({
   } | null>(null);
   const [confirmState, setConfirmState] = useState<{ title: string; message: string; confirmLabel?: string; danger?: boolean; onConfirm: () => void } | null>(null);
   const [promptState, setPromptState] = useState<{ title: string; label?: string; defaultValue?: string; placeholder?: string; confirmLabel?: string; onConfirm: (v: string) => void } | null>(null);
+  const [viewMode, setViewMode] = useState<'videos' | 'themes'>('videos');
+  const [themes, setThemes] = useState<Theme[]>([]);
+  const [themesLoading, setThemesLoading] = useState(false);
+  const [openThemeId, setOpenThemeId] = useState<string | null>(null);
+
+  async function reloadThemes() {
+    setThemesLoading(true);
+    try {
+      const d = await getThemes();
+      setThemes(d.themes || []);
+    } catch {
+      setThemes([]);
+    } finally {
+      setThemesLoading(false);
+    }
+  }
+
+  async function handleClassify(itemId: string) {
+    try {
+      const d = await classifyItemApi(itemId);
+      onShowToast(`已归入主题「${d.themeName}」${d.created ? '（新建）' : ''}`, 'ok');
+      if (viewMode === 'themes') reloadThemes();
+    } catch (err: any) {
+      onShowToast('归类失败：' + (err?.message || ''), 'error');
+    }
+  }
+
+  function handleCreateTheme() {
+    setPromptState({
+      title: '新建主题',
+      label: '输入主题名称（如「AI」「学习方法」）',
+      placeholder: '例如：深度学习',
+      confirmLabel: '创建',
+      onConfirm: async (raw) => {
+        try {
+          await createThemeApi(raw);
+          await reloadThemes();
+          onShowToast('主题已创建', 'ok');
+        } catch (err: any) {
+          onShowToast('创建失败：' + (err?.message || ''), 'error');
+        }
+      },
+    });
+  }
+
+  useEffect(() => {
+    if (viewMode === 'themes' && isLoggedIn) reloadThemes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, isLoggedIn, refreshKey]);
 
   const reload = useMemo(
     () => async (q: string, cat: string, t: string, nextPage = 1, nextSort = sort) => {
@@ -258,6 +321,15 @@ export function FavoritesPage({
       onShowToast(`已重建 ${data.indexed || 0} 条索引`, 'ok');
     } catch (err: any) {
       onShowToast('重建索引失败：' + (err.message || ''), 'error');
+    }
+  }
+
+  async function handleReindexEmbeddings() {
+    try {
+      const data = await reindexEmbeddings();
+      onShowToast(`已为 ${data.total || 0} 条收藏生成语义索引`, 'ok');
+    } catch (err: any) {
+      onShowToast('生成失败：' + (err.message || ''), 'error');
     }
   }
 
@@ -390,8 +462,43 @@ export function FavoritesPage({
         <p className="text-sm mt-0.5" style={{ color: 'var(--stone)' }}>
           搜索、筛选、打开和导出你的学习资料。
         </p>
+        <div className="flex items-center gap-2 mt-3">
+          <button type="button" onClick={() => setViewMode('videos')} className="text-sm px-3 py-1.5 rounded-full font-medium" style={{ background: viewMode === 'videos' ? 'var(--primary)' : 'var(--surface)', color: viewMode === 'videos' ? 'var(--on-primary)' : 'var(--steel)', border: '1px solid var(--hairline)' }}>视频</button>
+          <button type="button" onClick={() => setViewMode('themes')} className="text-sm px-3 py-1.5 rounded-full font-medium" style={{ background: viewMode === 'themes' ? 'var(--primary)' : 'var(--surface)', color: viewMode === 'themes' ? 'var(--on-primary)' : 'var(--steel)', border: '1px solid var(--hairline)' }}>主题</button>
+        </div>
       </div>
 
+      {viewMode === 'themes' ? (
+        <div className="max-w-5xl">
+          <div className="flex items-center gap-2 mb-3">
+            <button type="button" onClick={handleCreateTheme} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium" style={{ background: 'var(--primary)', color: 'var(--on-primary)' }}>
+              <Layers className="w-3.5 h-3.5" /> 新建主题
+            </button>
+          </div>
+          {themesLoading ? (
+            <div className="flex items-center justify-center py-16 rounded-lg" style={cardStyle}><div className="bs-spinner" /></div>
+          ) : themes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 rounded-lg" style={{ border: '1.5px dashed var(--hairline)', background: 'var(--surface)' }}>
+              <Layers className="w-10 h-10 mb-3" style={{ color: 'var(--muted)' }} />
+              <p className="text-sm text-center leading-relaxed" style={{ color: 'var(--stone)' }}>还没有主题。点「新建主题」创建，或在视频视图点「归类」让 AI 自动分组。</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {themes.map((th) => (
+                <button key={th.id} type="button" onClick={() => setOpenThemeId(th.id)} className="rounded-lg p-4 flex flex-col gap-2 text-left" style={cardStyle}>
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 shrink-0" style={{ color: 'var(--brand-green)' }} />
+                    <span className="text-sm font-bold truncate" style={{ color: 'var(--ink)' }}>{th.name}</span>
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--stone)' }}>{th.item_count} 个视频</div>
+                  {th.description && <div className="text-xs line-clamp-2" style={{ color: 'var(--steel)' }}>{th.description}</div>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
       {/* Search + filters */}
       <div className="flex items-center gap-3 max-w-5xl flex-wrap">
         <div
@@ -491,6 +598,9 @@ export function FavoritesPage({
           <button type="button" onClick={handleReindex} className="flex items-center gap-1 px-2.5 py-1 rounded-lg" style={{ background: 'var(--canvas)', color: 'var(--brand-tag)', border: '1px solid var(--hairline)' }}>
             <RefreshCw className="w-3 h-3" /> 重建索引
           </button>
+          <button type="button" onClick={handleReindexEmbeddings} className="flex items-center gap-1 px-2.5 py-1 rounded-lg" style={{ background: 'var(--canvas)', color: 'var(--brand-tag)', border: '1px solid var(--hairline)' }}>
+            <RefreshCw className="w-3 h-3" /> 重建语义索引
+          </button>
           <button type="button" onClick={() => setTagManagerOpen(true)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg" style={{ background: 'var(--canvas)', color: 'var(--brand-tag)', border: '1px solid var(--hairline)' }}>
             <Tags className="w-3 h-3" /> 标签管理
           </button>
@@ -585,7 +695,7 @@ export function FavoritesPage({
                   className="text-sm font-bold leading-snug line-clamp-2"
                   style={{ color: 'var(--ink)' }}
                 >
-                  {item.title}
+                  {highlightText(item.title, query)}
                 </h3>
                 <div className="flex flex-wrap gap-2 text-xs" style={{ color: 'var(--stone)' }}>
                   <span>{item.author}</span>
@@ -613,7 +723,7 @@ export function FavoritesPage({
                 )}
                 {(item.snippet || item.summary) && (
                   <p className="text-xs line-clamp-2" style={{ color: 'var(--steel)', lineHeight: 1.55 }}>
-                    {(item.snippet || item.summary).replace(/<\/?mark>/g, '').replace(/[#>*`_\-]/g, '').slice(0, 140)}...
+                    {highlightText((item.snippet || item.summary).replace(/<\/?mark>/g, '').replace(/[#>*`_\-]/g, '').slice(0, 140), query)}…
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2 mt-auto pt-2">
@@ -628,6 +738,18 @@ export function FavoritesPage({
                     }}
                   >
                     打开
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleClassify(item.id)}
+                    className="text-xs px-2.5 py-1 rounded-full font-medium transition-all "
+                    style={{
+                      background: 'rgba(55,114,207,0.10)',
+                      color: 'var(--brand-tag)',
+                      border: '1px solid rgba(55,114,207,0.22)',
+                    }}
+                  >
+                    归类
                   </button>
                   <button
                     type="button"
@@ -710,6 +832,8 @@ export function FavoritesPage({
           </button>
         </div>
       )}
+        </>
+      )}
 
       {/* Obsidian export modal — persistent banner so the user can re-copy
           if Obsidian was already open and didn't grab focus, and the URI
@@ -763,6 +887,15 @@ export function FavoritesPage({
         onConfirm={(v) => promptState?.onConfirm(v)}
         onClose={() => setPromptState(null)}
       />
+
+      {openThemeId && (
+        <ThemeDetailModal
+          themeId={openThemeId}
+          onClose={() => setOpenThemeId(null)}
+          onShowToast={onShowToast}
+          onChanged={reloadThemes}
+        />
+      )}
     </div>
   );
 }

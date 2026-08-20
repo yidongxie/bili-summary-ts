@@ -132,11 +132,13 @@ function searchLibraryItems(db: Database.Database, userId: number, q: string, al
 }
 
 function toFtsQuery(q: string): string {
+  // trigram tokenizer does substring matching natively for >=3-char terms, so
+  // we quote each term (phrase) and OR them together instead of using prefix "*".
   return q
     .split(/\s+/)
     .map((part) => part.replace(/["'`*:\-^~()]/g, "").trim())
     .filter(Boolean)
-    .map((part) => `${part}*`)
+    .map((part) => `"${part}"`)
     .join(" OR ");
 }
 
@@ -488,4 +490,89 @@ function cleanTag(tag: string): string {
 
 function safeIds(ids: string[]): string[] {
   return [...new Set((Array.isArray(ids) ? ids : []).map(String).map((s) => s.trim()).filter(Boolean))].slice(0, 100);
+}
+
+export interface AskCitation {
+  index: number;
+  itemId: string;
+  title: string;
+  bvid: string;
+  link: string;
+  time: number;
+  text: string;
+}
+
+function chunkText(text: string, size = 200): string[] {
+  const out: string[] = [];
+  const clean = String(text || "").trim();
+  for (let i = 0; i < clean.length; i += size) {
+    out.push(clean.slice(i, i + size));
+  }
+  return out;
+}
+
+/**
+ * Search the whole library for segments relevant to a natural-language question.
+ * Used by the "ask your knowledge base" endpoint (RAG). Returns top-matching
+ * segments with video + timestamp so answers can cite where they came from.
+ */
+export function searchLibraryForAsk(db: Database.Database, userId: number, question: string, limit = 6): AskCitation[] {
+  const qWords = question
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length > 0);
+
+  // 1. Candidate items via FTS (trigram), fall back to a substring scan.
+  let ids: string[] = [];
+  try {
+    const ftsQuery = toFtsQuery(question);
+    if (ftsQuery) {
+      ids = (db.prepare("SELECT id FROM library_items_fts WHERE user_id = ? AND library_items_fts MATCH ? LIMIT 40").all(String(userId), ftsQuery) as Array<{ id: string }>).map((r) => r.id);
+    }
+  } catch {
+    ids = [];
+  }
+  if (!ids.length) {
+    ids = loadLibrary(db, userId)
+      .filter((i) => itemMatches(i, question.toLowerCase()))
+      .map((i) => i.id)
+      .slice(0, 20);
+  }
+
+  // 2. Score segments by keyword overlap.
+  type Scored = { itemId: string; title: string; bvid: string; link: string; time: number; text: string; score: number };
+  const hits: Scored[] = [];
+  for (const id of ids) {
+    const row = db.prepare("SELECT id, title, bvid, link, subtitle_segments, transcript FROM library_items WHERE id = ? AND user_id = ?").get(id, userId) as any;
+    if (!row) continue;
+    const segs = parseSubtitleSegments(row.subtitle_segments);
+    if (segs && segs.length) {
+      for (const s of segs) {
+        const text = String(s.content || "").trim();
+        if (!text) continue;
+        const lower = text.toLowerCase();
+        const score = qWords.reduce((n, w) => n + (lower.includes(w) ? 1 : 0), 0);
+        if (score > 0) hits.push({ itemId: row.id, title: row.title || "", bvid: row.bvid || "", link: row.link || "", time: Math.max(0, Number(s.from) || 0), text: text.slice(0, 200), score });
+      }
+    } else if (row.transcript) {
+      for (const chunk of chunkText(row.transcript)) {
+        const lower = chunk.toLowerCase();
+        const score = qWords.reduce((n, w) => n + (lower.includes(w) ? 1 : 0), 0);
+        if (score > 0) hits.push({ itemId: row.id, title: row.title || "", bvid: row.bvid || "", link: row.link || "", time: 0, text: chunk.slice(0, 200), score });
+      }
+    }
+  }
+
+  // 3. Dedupe by item+time, sort by score, cap.
+  hits.sort((a, b) => b.score - a.score || a.time - b.time);
+  const seen = new Set<string>();
+  const out: AskCitation[] = [];
+  for (const h of hits) {
+    const key = h.itemId + ":" + h.time;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ index: out.length + 1, itemId: h.itemId, title: h.title, bvid: h.bvid, link: h.link, time: h.time, text: h.text });
+    if (out.length >= limit) break;
+  }
+  return out;
 }

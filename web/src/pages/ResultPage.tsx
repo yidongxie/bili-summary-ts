@@ -73,6 +73,7 @@ interface ResultPageProps {
   config: AppConfig;
   initialResult?: SummaryResult;
   initialSaved?: boolean;
+  initialSeek?: number;
   onBack: () => void;
   onSaved: () => void;
   onShowToast: (msg: string, type: 'ok' | 'error' | 'info') => void;
@@ -511,7 +512,7 @@ function DarkButton({ children, onClick, variant = 'ghost', disabled }: { childr
   );
 }
 
-export function ResultPage({ url, mode, config, initialResult, initialSaved, onBack, onSaved, onShowToast, onRequireLogin }: ResultPageProps) {
+export function ResultPage({ url, mode, config, initialResult, initialSaved, initialSeek, onBack, onSaved, onShowToast, onRequireLogin }: ResultPageProps) {
   const [phase, setPhase] = useState<Phase>(initialResult ? 'success' : 'submitting');
   const [progress, setProgress] = useState('正在提交任务…');
   const [error, setError] = useState('');
@@ -544,6 +545,12 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
   const youtubePlayerRef = useRef<any>(null);
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
   const [streamFailed, setStreamFailed] = useState(false);
+  const pendingSeekRef = useRef<number | null>(null);
+
+  // Seek the player once when the user arrives via a citation (initialSeek).
+  useEffect(() => {
+    if (initialSeek != null && initialSeek > 0) pendingSeekRef.current = initialSeek;
+  }, [initialSeek]);
 
   useEffect(() => {
     if (initialResult && !reRunKey) {
@@ -582,11 +589,20 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
             setResult(data);
             setPhase('success');
             const idToCheck = data.video?.bvid || data.podcast?.audioUrl || data.podcast?.id;
-            // The fresh result is not saved yet — enable the button. If the
-            // video is already in the library, keep its id so saving updates
-            // that item instead of creating a duplicate.
             setSaved(false);
-            if (idToCheck) checkLibraryByBvid(idToCheck).then((r) => setSavedItemId(r?.item?.id || '')).catch(() => {});
+            if (idToCheck) {
+              checkLibraryByBvid(idToCheck).then((r) => {
+                if (r?.item?.id) {
+                  // Already in the library (e.g. a re-run) — keep its id so the
+                  // "更新收藏" button updates it instead of creating a duplicate.
+                  setSavedItemId(r.item.id);
+                } else {
+                  // Fresh result not yet saved — auto-save to prevent loss.
+                  setSavedItemId('');
+                  void autoSave(data);
+                }
+              }).catch(() => {});
+            }
             closeRef.current?.();
             closeRef.current = null;
           } else if (e.type === 'network-error') setProgress(e.data?.error || '连接中断，正在等待重连…');
@@ -746,6 +762,38 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
     onShowToast(isUpdate ? `已更新：${data.item.title}` : `已保存：${data.item.title}`, 'ok');
   }
 
+  // Auto-save a freshly-generated summary so nothing is lost if the user
+  // forgets to click "保存". Best-effort — if it fails, the manual button stays.
+  async function autoSave(data: SummaryResult) {
+    const video = data.video || {
+      title: data.podcast?.title || '',
+      author: data.podcast?.author || '',
+      duration: data.podcast?.duration || 0,
+      bvid: data.podcast?.audioUrl || data.podcast?.id || '',
+      link: data.podcast?.link || '',
+      pic: data.podcast?.cover || '',
+    };
+    try {
+      const saved = await saveLibrary({
+        video,
+        summary: data.summary,
+        transcript: data.transcript || '',
+        subtitle_count: data.subtitle_count,
+        subtitle_segments: data.subtitle_segments || [],
+        mode: data.mode || mode,
+        category: config.default_category || '待整理',
+        tags: data.suggested_tags || [],
+        notes: '',
+      });
+      setSavedItemId(saved.item.id);
+      setSaved(true);
+      onSaved();
+      onShowToast('已自动保存到收藏库', 'info');
+    } catch {
+      // keep saved=false so the user can still save manually
+    }
+  }
+
   function streamText(text: string, setter: (s: string) => void, speed = 20, chunk = 2, done?: () => void) {
     setter('');
     let i = 0;
@@ -850,6 +898,14 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, onB
                         playsInline
                         className="w-full h-full"
                         src={`/api/stream/bilibili?bvid=${result.video.bvid}`}
+                        onLoadedMetadata={(e) => {
+                          const t = pendingSeekRef.current;
+                          if (t != null) {
+                            pendingSeekRef.current = null;
+                            e.currentTarget.currentTime = t;
+                            e.currentTarget.play().catch(() => {});
+                          }
+                        }}
                         onTimeUpdate={(e) => setVideoCurrentTime(Math.floor(e.currentTarget.currentTime))}
                         onError={() => setStreamFailed(true)}
                       />

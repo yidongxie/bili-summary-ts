@@ -5,6 +5,7 @@ import { ThemeProvider } from './lib/theme';
 import { Sidebar, type NavKey } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { GlobalSearch } from './components/GlobalSearch';
+import { AskModal } from './components/AskModal';
 import { LoginOverlay } from './components/LoginOverlay';
 import { Toast, type ToastState } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -17,17 +18,19 @@ import { SettingsPage } from './pages/SettingsPage';
 import {
   getMe,
   getConfig,
+  getLibraryItem,
   logout as apiLogout,
   type AppConfig,
   type CurrentUser,
   type LibraryItem,
   type SummaryResult,
   type SubtitleSegment,
+  type AskCitation,
 } from './lib/api';
 
 type View =
   | { kind: 'home' }
-  | { kind: 'result'; url: string; mode: string; initialResult?: SummaryResult; initialSaved?: boolean }
+  | { kind: 'result'; url: string; mode: string; initialResult?: SummaryResult; initialSaved?: boolean; seekTo?: number }
   | { kind: 'library'; openId?: string }
   | { kind: 'learning' }
   | { kind: 'admin' }
@@ -130,6 +133,7 @@ export default function App() {
   const [view, setView] = useState<View>(() => hashToView(window.location.hash) || { kind: 'home' });
   const [loginOpen, setLoginOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [askOpen, setAskOpen] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
   const [refreshKey, setRefreshKey] = useState(0); // bumps to force HomePage / FavoritesPage to reload
 
@@ -209,15 +213,25 @@ export default function App() {
     setView({ kind: 'result', url, mode });
   }, [user, config.api_key_set, config.api_key, showToast]);
 
-  const openLibraryItem = useCallback((item: LibraryItem) => {
+  const openLibraryItem = useCallback((item: LibraryItem, seekTo?: number) => {
     setView({
       kind: 'result',
       url: item.link || item.bvid || '',
       mode: item.mode || 'brief',
       initialResult: libraryItemToSummaryResult(item),
       initialSaved: true,
+      seekTo,
     });
   }, []);
+
+  const handleOpenCitation = useCallback(async (c: AskCitation) => {
+    try {
+      const data = await getLibraryItem(c.itemId);
+      if (data?.item) openLibraryItem(data.item, c.time);
+    } catch {
+      // ignore — user can still find it in the library
+    }
+  }, [openLibraryItem]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -263,6 +277,7 @@ export default function App() {
           <TopNav
             onNewSummary={() => setView({ kind: 'home' })}
             onOpenSearch={() => setSearchOpen(true)}
+            onOpenAsk={() => setAskOpen(true)}
             user={user}
             onLogin={() => setLoginOpen(true)}
             onLogout={handleLogout}
@@ -288,6 +303,7 @@ export default function App() {
                 config={config}
                 initialResult={view.initialResult}
                 initialSaved={view.initialSaved}
+                initialSeek={view.seekTo}
                 onBack={() => setView({ kind: 'home' })}
                 onSaved={() => setRefreshKey((n) => n + 1)}
                 onShowToast={showToast}
@@ -400,6 +416,12 @@ export default function App() {
         open={searchOpen}
         onClose={() => setSearchOpen(false)}
         onPick={(item) => openLibraryItem(item)}
+      />
+
+      <AskModal
+        open={askOpen}
+        onClose={() => setAskOpen(false)}
+        onOpenCitation={handleOpenCitation}
       />
 
       <Toast toast={toast} onClose={() => setToast(null)} />

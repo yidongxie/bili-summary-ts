@@ -312,6 +312,18 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   color: var(--steel);
 }
 
+/* Search keyword highlight */
+.search-hit {
+  background: rgba(251, 178, 60, 0.35);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+[data-theme="dark"] .search-hit {
+  background: rgba(240, 180, 75, 0.30);
+}
+
 /* ── Platform button ──────────────────────────────────────────────── */
 
 .platform-btn {

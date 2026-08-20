@@ -1,6 +1,10 @@
 import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
 import { getLlmConfigWithFallback } from "../db/configStore";
+import { searchLibraryForAsk, type AskCitation } from "../db/libraryStore";
+import { searchLibrarySemantic } from "../db/embeddingStore";
+import { getEmbeddingConfig, embedTexts } from "../llm/embedding";
+import { formatDuration } from "../common/date";
 import { enforceRateLimit } from "../common/rateLimit";
 import { chatCompletion, suggestTags } from "../llm/summarize";
 import { recordApiUsage } from "../db/usageStore";
@@ -11,6 +15,7 @@ import {
   REWRITE_STYLE_MAP,
   buildRewriteUserPrompt,
   TRANSLATE_SYSTEM_PROMPT,
+  ASK_SYSTEM_PROMPT,
 } from "../llm/prompts";
 
 function requireUser(req: Request, res: Response): number | null {
@@ -117,6 +122,82 @@ export function createLlmRouter(db: Database.Database): Router {
       res.json({ success: true, text: translated });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message || "翻译失败" });
+    }
+  });
+
+  // ── Ask your knowledge base (RAG) ─────────────────────────────────
+  router.post("/api/llm/ask", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (!enforceRateLimit(req, res, "llm-ask", 60, 60 * 60 * 1000, String(userId))) return;
+
+    const question = String(req.body.question || "").trim().slice(0, 500);
+    if (!question) { res.status(400).json({ success: false, error: "缺少问题" }); return; }
+
+    const llm = getLlmConfigWithFallback(db, userId);
+    if (!llm.apiKey) { res.status(400).json({ success: false, error: "请先在设置中填写 API Key" }); return; }
+
+    const keywordCitations = searchLibraryForAsk(db, userId, question, 8);
+
+    // Semantic retrieval (best-effort): pull semantically-similar items even
+    // when they don't keyword-match, and cite their summary.
+    let semanticCitations: AskCitation[] = [];
+    const embConfig = getEmbeddingConfig(db, userId);
+    if (embConfig) {
+      try {
+        const [vec] = await embedTexts([question], embConfig);
+        if (vec && vec.length) {
+          const hits = searchLibrarySemantic(db, userId, vec, 5);
+          const covered = new Set(keywordCitations.map((c) => c.itemId));
+          for (const h of hits) {
+            if (covered.has(h.item.id)) continue;
+            covered.add(h.item.id);
+            semanticCitations.push({
+              index: 0,
+              itemId: h.item.id,
+              title: h.item.title,
+              bvid: h.item.bvid || "",
+              link: h.item.link || "",
+              time: 0,
+              text: (h.item.summary || "").slice(0, 200),
+            });
+          }
+        }
+      } catch {
+        // ignore semantic failures — keyword citations still work
+      }
+    }
+
+    const citations = [...keywordCitations, ...semanticCitations]
+      .slice(0, 8)
+      .map((c, i) => ({ ...c, index: i + 1 }));
+
+    if (!citations.length) {
+      res.json({ success: true, answer: "你的知识库里暂时没有相关内容。先收藏几个视频，再来问我吧。", citations: [] });
+      return;
+    }
+
+    const context = citations
+      .map((c) => `[${c.index}] ${c.title}（${formatDuration(c.time)}）\n${c.text}`)
+      .join("\n\n");
+
+    try {
+      const answer = await chatCompletion(
+        { apiKey: llm.apiKey, baseUrl: llm.baseUrl, model: llm.model },
+        [
+          { role: "system", content: ASK_SYSTEM_PROMPT },
+          { role: "user", content: `问题：${question}\n\n资料片段：\n${context}` },
+        ],
+        1200,
+      );
+      recordApiUsage(db, userId, { provider: "deepseek", model: llm.model, endpoint: "/api/llm/ask", tokens_input: Math.ceil((question.length + context.length) / 4), tokens_output: Math.ceil(answer.length / 4) });
+      res.json({
+        success: true,
+        answer,
+        citations: citations.map(({ index, itemId, title, bvid, link, time }) => ({ index, itemId, title, bvid, link, time })),
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || "问答失败" });
     }
   });
 

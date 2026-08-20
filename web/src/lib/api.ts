@@ -269,6 +269,22 @@ export function translateApi(payload: { text: string; target: string }) {
   });
 }
 
+export type AskCitation = {
+  index: number;
+  itemId: string;
+  title: string;
+  bvid: string;
+  link: string;
+  time: number;
+};
+
+export function askApi(question: string) {
+  return request<{ success: boolean; answer: string; citations?: AskCitation[] }>('/api/llm/ask', {
+    method: 'POST',
+    body: JSON.stringify({ question }),
+  });
+}
+
 // ---- summarize task ------------------------------------------------------
 
 export type SummarizePayload = {
@@ -348,6 +364,14 @@ export function getLibrary(params: { q?: string; category?: string; tag?: string
 
 export function checkLibraryByBvid(bvid: string) {
   return request<{ saved: boolean; item?: LibraryItem }>('/api/library/check/' + encodeURIComponent(bvid));
+}
+
+export function semanticSearch(q: string) {
+  return request<{ success: boolean; items: LibraryItem[] }>('/api/library/semantic-search?q=' + encodeURIComponent(q));
+}
+
+export function reindexEmbeddings() {
+  return request<{ success: boolean; total: number; error?: string }>('/api/library/reindex-embeddings', { method: 'POST' });
 }
 
 export function getLibraryItem(id: string) {
@@ -511,6 +535,65 @@ export function suggestTags(payload: { title: string; author: string; summary: s
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+// ---- themes ---------------------------------------------------------------
+
+export type Theme = {
+  id: string;
+  name: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+  item_count: number;
+};
+
+export function getThemes() {
+  return request<{ success: boolean; themes: Theme[] }>('/api/themes');
+}
+
+export function createThemeApi(name: string) {
+  return request<{ success: boolean; theme: Theme }>('/api/themes', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function renameThemeApi(id: string, name: string) {
+  return request<{ success: boolean; theme: Theme }>('/api/themes/' + encodeURIComponent(id) + '/rename', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteThemeApi(id: string) {
+  return request<{ success: boolean }>('/api/themes/' + encodeURIComponent(id), { method: 'DELETE' });
+}
+
+export function getThemeItemsApi(id: string) {
+  return request<{ success: boolean; theme: Theme; items: LibraryItem[] }>('/api/themes/' + encodeURIComponent(id) + '/items');
+}
+
+export function addThemeItemsApi(id: string, ids: string[]) {
+  return request<{ success: boolean; added: number; theme: Theme }>('/api/themes/' + encodeURIComponent(id) + '/items', {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export function removeThemeItemApi(id: string, itemId: string) {
+  return request<{ success: boolean }>('/api/themes/' + encodeURIComponent(id) + '/items/' + encodeURIComponent(itemId), { method: 'DELETE' });
+}
+
+export function classifyItemApi(itemId: string) {
+  return request<{ success: boolean; themeId: string; themeName: string; created: boolean }>('/api/themes/classify', {
+    method: 'POST',
+    body: JSON.stringify({ itemId }),
+  });
+}
+
+export function synthesizeThemeApi(id: string) {
+  return request<{ success: boolean; markdown: string }>('/api/themes/' + encodeURIComponent(id) + '/summarize', { method: 'POST' });
 }
 
 export async function fetchAndDownloadPost(url: string, payload: any) {

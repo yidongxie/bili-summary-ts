@@ -101,6 +101,35 @@ export function buildRewriteUserPrompt(
 export const TRANSLATE_SYSTEM_PROMPT =
   '你是专业翻译助手。将用户提供的文本准确、自然地翻译成目标语言，忠实原文，不添加、不删减、不解释，只输出译文。';
 
+// ── Ask your knowledge base (RAG) ────────────────────────────────────
+
+export const ASK_SYSTEM_PROMPT =
+  '你是知识库问答助手。只能基于用户提供的资料片段回答问题，引用时用 [1] [2] 这样的编号标注出处。如果资料不足以回答，请明确说明「资料不足」。回答简洁、结构清晰、中文。';
+
+// ── Theme classification & synthesis ─────────────────────────────────
+
+export const CLASSIFY_SYSTEM_PROMPT =
+  '你是主题归类助手。根据视频标题和总结，把它归到一个学习主题。只输出一个简短的主题名（2-6 个中文字，如「AI」「学习方法」「经济学」）。优先使用下面给出的已有主题；若都不合适，再给一个新的主题名。只输出主题名本身，不要任何解释、标点或引号。';
+
+export function buildClassifyUserPrompt(title: string, summary: string, existing: string[]): string {
+  const existingBlock = existing.length ? existing.join('、') : '（暂无已有主题）';
+  return `已有主题：${existingBlock}\n\n视频标题：${title}\n\n视频总结：\n${summary.slice(0, 2000)}`;
+}
+
+export const THEME_SYNTHESIS_SYSTEM_PROMPT =
+  '你是知识整理助手。基于某个学习主题下多个视频的总结，生成一份跨视频的综合笔记，串起知识主线。只基于提供的总结，不编造。用 Markdown 输出，结构如下：\n' +
+  '## 主题概览\n' +
+  '## 知识主线\n' +
+  '## 关键结论\n' +
+  '## 可实践建议';
+
+export function buildThemeSynthesisUserPrompt(themeName: string, items: Array<{ title: string; summary: string }>): string {
+  const blocks = items
+    .map((it, i) => `【${i + 1}】${it.title}\n${it.summary.slice(0, 2000)}`)
+    .join('\n\n');
+  return `主题：${themeName}\n\n该主题下各视频的总结如下：\n\n${blocks}`;
+}
+
 // ── Quiz Generation ──────────────────────────────────────────────────
 
 export const QUIZ_SYSTEM_PROMPT =

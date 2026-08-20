@@ -21,6 +21,8 @@ import {
   updateSnippet,
   deleteSnippet,
 } from "../db/libraryStore";
+import { generateEmbeddingForItem, embedTexts, getEmbeddingConfig } from "../llm/embedding";
+import { searchLibrarySemantic } from "../db/embeddingStore";
 
 function requireUser(req: Request, res: Response): number | null {
   const user = (req as any).user;
@@ -66,11 +68,42 @@ export function createLibraryRouter(db: Database.Database): Router {
     res.json({ success: true, indexed });
   });
 
+  // Backfill embeddings for items saved before semantic search existed.
+  router.post("/api/library/reindex-embeddings", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const config = getEmbeddingConfig(db, userId);
+    if (!config) { res.status(400).json({ success: false, error: "请先在设置中配置硅基流动 API Key（Whisper）" }); return; }
+    const rows = db.prepare("SELECT id, title, summary FROM library_items WHERE user_id = ?").all(userId) as Array<{ id: string; title: string; summary: string }>;
+    for (const row of rows) {
+      await generateEmbeddingForItem(db, userId, row);
+    }
+    res.json({ success: true, total: rows.length });
+  });
+
   router.get("/api/library/check/:bvid", (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
     if (!userId) { res.json({ success: true, saved: false }); return; }
     const found = findLibraryItemByBvid(db, userId, req.params.bvid);
     res.json({ success: true, saved: !!found, item: found || undefined });
+  });
+
+  // Semantic search over stored embeddings (best-effort; empty when unconfigured).
+  router.get("/api/library/semantic-search", async (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    const q = String(req.query.q || "").trim();
+    if (!q) { res.json({ success: true, items: [] }); return; }
+    const config = getEmbeddingConfig(db, userId);
+    if (!config) { res.json({ success: true, items: [] }); return; }
+    try {
+      const [vec] = await embedTexts([q], config);
+      if (!vec || !vec.length) { res.json({ success: true, items: [] }); return; }
+      const hits = searchLibrarySemantic(db, userId, vec, 10);
+      res.json({ success: true, items: hits.map((h) => h.item) });
+    } catch {
+      res.json({ success: true, items: [] });
+    }
   });
 
   router.get("/api/library/:id", (req: Request, res: Response) => {
@@ -81,7 +114,7 @@ export function createLibraryRouter(db: Database.Database): Router {
     res.json({ success: true, item });
   });
 
-  router.post("/api/library", (req: Request, res: Response) => {
+  router.post("/api/library", async (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
     if (!userId) { res.status(401).json({ success: false, error: "请先登录" }); return; }
     const video = req.body.video ?? {};
@@ -106,6 +139,8 @@ export function createLibraryRouter(db: Database.Database): Router {
       mode: String(req.body.mode ?? "brief").trim() || "brief",
     });
     res.json({ success: true, item });
+    // Best-effort semantic index (fire-and-forget; never blocks the response).
+    void generateEmbeddingForItem(db, userId, item).catch(() => {});
   });
 
   router.delete("/api/library/:id", (req: Request, res: Response) => {
