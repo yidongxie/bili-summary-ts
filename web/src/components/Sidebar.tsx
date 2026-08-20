@@ -1,15 +1,16 @@
 import React from 'react';
-import { Library, FileText, Settings, User, Zap, GraduationCap } from 'lucide-react';
+import { Library, FileText, Settings, User, Zap, GraduationCap, MessageCircle } from 'lucide-react';
 import type { CurrentUser } from '@/lib/api';
 import { LogoMark } from './AmbientBackdrop';
 
-export type NavKey = 'home' | 'library' | 'learning' | 'admin' | 'settings';
+export type NavKey = 'home' | 'library' | 'ask' | 'learning' | 'admin' | 'settings';
 
 const ADMIN_EMAIL = '444925817@qq.com';
 
 const BASE_ITEMS: Array<{ key: NavKey; icon: typeof Library; label: string; sub?: string }> = [
   { key: 'home', icon: Library, label: '总结', sub: 'Home' },
   { key: 'library', icon: FileText, label: '收藏库', sub: 'Library' },
+  { key: 'ask', icon: MessageCircle, label: '问知识库', sub: 'Ask' },
   { key: 'learning', icon: GraduationCap, label: '学习中心', sub: 'Learn' },
   { key: 'settings', icon: Settings, label: '设置', sub: 'Settings' },
 ];
@@ -25,9 +26,9 @@ export const Sidebar = React.memo(function Sidebar({ active, onChange, user, onU
   const isAdmin = (user?.email || '').trim().toLowerCase() === ADMIN_EMAIL;
   const items = isAdmin
     ? [
-        ...BASE_ITEMS.slice(0, 3),
+        ...BASE_ITEMS.filter((i) => i.key !== 'settings'),
         { key: 'admin' as NavKey, icon: Settings, label: '管理后台', sub: 'Admin' },
-        BASE_ITEMS[3],
+        BASE_ITEMS.find((i) => i.key === 'settings')!,
       ]
     : BASE_ITEMS;
   return (

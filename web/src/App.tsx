@@ -1,16 +1,16 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { AmbientBackdrop } from './components/AmbientBackdrop';
-import { Library, FileText, Settings, User, GraduationCap } from 'lucide-react';
+import { Library, FileText, Settings, User, GraduationCap, MessageCircle } from 'lucide-react';
 import { ThemeProvider } from './lib/theme';
 import { Sidebar, type NavKey } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { GlobalSearch } from './components/GlobalSearch';
-import { AskModal } from './components/AskModal';
 import { LoginOverlay } from './components/LoginOverlay';
 import { Toast, type ToastState } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { HomePage, type SummaryMode } from './pages/HomePage';
 import { ResultPage } from './pages/ResultPage';
+import { AskPage } from './pages/AskPage';
 import { FavoritesPage } from './pages/FavoritesPage';
 import { LearningPage } from './pages/LearningPage';
 import { AdminPage } from './pages/AdminPage';
@@ -32,6 +32,7 @@ type View =
   | { kind: 'home' }
   | { kind: 'result'; url: string; mode: string; initialResult?: SummaryResult; initialSaved?: boolean; seekTo?: number }
   | { kind: 'library'; openId?: string }
+  | { kind: 'ask' }
   | { kind: 'learning' }
   | { kind: 'admin' }
   | { kind: 'settings' };
@@ -41,6 +42,7 @@ function viewToHash(view: View): string | null {
   switch (view.kind) {
     case 'home': return '#/';
     case 'library': return view.openId ? '#/item/' + encodeURIComponent(view.openId) : '#/library';
+    case 'ask': return '#/ask';
     case 'learning': return '#/learning';
     case 'admin': return '#/admin';
     case 'settings': return '#/settings';
@@ -56,6 +58,7 @@ function hashToView(hash: string): View | null {
   switch (path) {
     case '': case '/': return { kind: 'home' };
     case '/library': return { kind: 'library' };
+    case '/ask': return { kind: 'ask' };
     case '/learning': return { kind: 'learning' };
     case '/admin': return { kind: 'admin' };
     case '/settings': return { kind: 'settings' };
@@ -133,7 +136,6 @@ export default function App() {
   const [view, setView] = useState<View>(() => hashToView(window.location.hash) || { kind: 'home' });
   const [loginOpen, setLoginOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [askOpen, setAskOpen] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
   const [refreshKey, setRefreshKey] = useState(0); // bumps to force HomePage / FavoritesPage to reload
 
@@ -182,6 +184,7 @@ export default function App() {
   function navTo(key: NavKey) {
     if (key === 'home') setView({ kind: 'home' });
     else if (key === 'library') setView({ kind: 'library' });
+    else if (key === 'ask') setView({ kind: 'ask' });
     else if (key === 'learning') setView({ kind: 'learning' });
     else if (key === 'admin') setView({ kind: 'admin' });
     else if (key === 'settings') setView({ kind: 'settings' });
@@ -190,13 +193,15 @@ export default function App() {
   const navActive: NavKey = useMemo(() =>
     view.kind === 'library'
       ? 'library'
-      : view.kind === 'learning'
-        ? 'learning'
-        : view.kind === 'admin'
-          ? 'admin'
-          : view.kind === 'settings'
-            ? 'settings'
-            : 'home',
+      : view.kind === 'ask'
+        ? 'ask'
+        : view.kind === 'learning'
+          ? 'learning'
+          : view.kind === 'admin'
+            ? 'admin'
+            : view.kind === 'settings'
+              ? 'settings'
+              : 'home',
   [view.kind]);
 
   const handleSubmitSummary = useCallback((url: string, mode: SummaryMode) => {
@@ -277,7 +282,6 @@ export default function App() {
           <TopNav
             onNewSummary={() => setView({ kind: 'home' })}
             onOpenSearch={() => setSearchOpen(true)}
-            onOpenAsk={() => setAskOpen(true)}
             user={user}
             onLogin={() => setLoginOpen(true)}
             onLogout={handleLogout}
@@ -329,6 +333,15 @@ export default function App() {
             </ErrorBoundary>
           )}
 
+          {view.kind === 'ask' && (
+            <ErrorBoundary onReset={() => setView({ kind: 'home' })}>
+              <AskPage
+                onOpenCitation={handleOpenCitation}
+                onShowToast={showToast}
+              />
+            </ErrorBoundary>
+          )}
+
           {view.kind === 'learning' && (
             <ErrorBoundary onReset={() => setView({ kind: 'home' })}>
               <LearningPage
@@ -367,7 +380,7 @@ export default function App() {
         </div>
       </div>
       <nav
-        className="md:hidden fixed bottom-3 left-3 right-3 z-40 grid grid-cols-4 gap-1 rounded-lg p-1"
+        className="md:hidden fixed bottom-3 left-3 right-3 z-40 grid grid-cols-5 gap-1 rounded-lg p-1"
         style={{
           background: 'var(--canvas)',
           border: '1px solid var(--hairline)',
@@ -376,6 +389,7 @@ export default function App() {
         {[
           { key: 'home' as NavKey, label: '首页', icon: Library },
           { key: 'library' as NavKey, label: '收藏', icon: FileText },
+          { key: 'ask' as NavKey, label: '问库', icon: MessageCircle },
           { key: 'learning' as NavKey, label: '学习', icon: GraduationCap },
           ...(user?.email === '444925817@qq.com' ? [{ key: 'admin' as any, label: '管理', icon: Settings }] : []),
           { key: 'settings' as NavKey, label: '设置', icon: Settings },
@@ -416,12 +430,6 @@ export default function App() {
         open={searchOpen}
         onClose={() => setSearchOpen(false)}
         onPick={(item) => openLibraryItem(item)}
-      />
-
-      <AskModal
-        open={askOpen}
-        onClose={() => setAskOpen(false)}
-        onOpenCitation={handleOpenCitation}
       />
 
       <Toast toast={toast} onClose={() => setToast(null)} />
