@@ -5,7 +5,7 @@ import { getAdminStats, listAdminUsers, listAdminTasks, listAdminUsage } from ".
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "";
 
 function requireAdmin(req: Request, res: Response): boolean {
-  const user = (req as any).user;
+  const user = req.user;
   if (!user) { res.status(403).json({ success: false, error: "无管理员权限" }); return false; }
   if (user.is_admin) return true;
   if (ADMIN_EMAIL && String(user.email || "").trim().toLowerCase() === ADMIN_EMAIL) return true;

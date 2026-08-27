@@ -5,7 +5,7 @@ import { findLibraryItem } from "../db/libraryStore";
 import { contentDisposition, slugify, itemToMarkdown, itemToPrintableHtml } from "./utils";
 
 function requireUser(req: Request, res: Response): number | null {
-  const user = (req as any).user;
+  const user = req.user;
   if (!user) { res.status(401).json({ success: false, error: "请先登录" }); return null; }
   return user.id;
 }
@@ -15,7 +15,7 @@ export function createExportRouter(db: Database.Database): Router {
 
   // ── Single-item exports ─────────────────────────────────────────────
   router.get("/api/export/:id.pdf", (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId) { res.status(401).send("请先登录"); return; }
     const item = findLibraryItem(db, userId, req.params.id);
     if (!item) { res.status(404).send("未找到收藏"); return; }
@@ -32,7 +32,7 @@ export function createExportRouter(db: Database.Database): Router {
   });
 
   router.get("/api/export/:id.md", (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId) { res.status(401).json({ success: false, error: "请先登录" }); return; }
     const item = findLibraryItem(db, userId, req.params.id);
     if (!item) { res.status(404).json({ success: false, error: "未找到收藏" }); return; }
@@ -44,7 +44,7 @@ export function createExportRouter(db: Database.Database): Router {
   });
 
   router.get("/api/export/:id/obsidian-payload", (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId) { res.status(401).json({ success: false, error: "请先登录" }); return; }
     const item = findLibraryItem(db, userId, req.params.id);
     if (!item) { res.status(404).json({ success: false, error: "未找到收藏" }); return; }

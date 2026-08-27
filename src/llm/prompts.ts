@@ -54,6 +54,33 @@ export function buildSummarizeUserPrompt(
   return `总结要求：${instruction}\n\n${metaBlock}以下是该视频的内容文本，请据此生成总结：\n\n${input}`;
 }
 
+// ── Chapter generation ────────────────────────────────────────────────
+
+export const CHAPTER_SYSTEM_PROMPT =
+  '你是视频章节划分助手。根据带时间戳的字幕片段，把视频划分成 3 到 8 个章节。只返回一个 JSON 数组，每个元素形如 {"from": 起始秒数, "to": 结束秒数, "title": "章节名", "detail": "一句话概述"}。\n' +
+  '要求：\n' +
+  '1) from/to 为整数秒数，必须在视频时长范围内，章节之间不重叠且按时间顺序排列；\n' +
+  '2) title 简短（2-8 个字），概括该时间段主题；\n' +
+  '3) detail 用一句话说明该章节讲什么；\n' +
+  '4) 只输出 JSON 数组本身，不要 Markdown 代码块、不要任何解释。';
+
+export function buildChapterUserPrompt(segmentsText: string, duration: number): string {
+  return `视频总时长：${Math.floor(duration || 0)} 秒\n\n字幕片段（格式：[起-止秒] 内容）：\n${segmentsText}`;
+}
+
+// ── Visual understanding ──────────────────────────────────────────────
+
+export const VISION_SYSTEM_PROMPT =
+  '你是视频画面分析助手。根据提供的视频关键帧截图，用中文提炼画面呈现的关键信息。只输出简洁的要点式 Markdown，包括：\n' +
+  '1) 画面主体（讲者/场景/演示内容）；\n' +
+  '2) 屏幕上出现的文字、标题、图表、代码或数据要点；\n' +
+  '3) 画面与视频主题的关联。\n' +
+  '只基于截图内容，不编造、不补充。';
+
+export function buildVisionUserPrompt(meta: { title?: string; author?: string }): string {
+  return `视频标题：${meta.title || '未知'}\n作者：${meta.author || '未知'}\n\n请分析以下关键帧截图，提炼画面呈现的关键信息。`;
+}
+
 // ── Tag Suggestion ───────────────────────────────────────────────────
 
 export const TAG_SYSTEM_PROMPT =

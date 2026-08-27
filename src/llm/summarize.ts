@@ -1,12 +1,15 @@
 /** LLM summarization — OpenAI-compatible chat completions */
 
 import { postJson } from "../common/http";
+import { isSafeUpstreamUrl } from "../common/urlSafety";
 import {
   SUMMARY_PROMPTS,
   SUMMARIZE_SYSTEM_PROMPT,
   buildSummarizeUserPrompt,
   TAG_SYSTEM_PROMPT,
   buildTagSuggestUserPrompt,
+  CHAPTER_SYSTEM_PROMPT,
+  buildChapterUserPrompt,
 } from "./prompts";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -45,6 +48,7 @@ export async function chatCompletion(
 ): Promise<string> {
   const temp = mode ? temperatureForMode(mode) : 0.1;
   const url = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  if (!isSafeUpstreamUrl(config.baseUrl)) throw new Error("不允许连接到该地址");
   // Clean API key — remove newlines and whitespace from pasted keys
   const cleanApiKey = (config.apiKey || "").replace(/[\r\n\s]+/g, "").trim();
   const res = await postJson<ChatCompletionResponse>(
@@ -69,6 +73,7 @@ export async function chatCompletionStream(
   onChunk: (text: string) => void,
 ): Promise<void> {
   const url = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  if (!isSafeUpstreamUrl(config.baseUrl)) throw new Error("不允许连接到该地址");
   const cleanApiKey = (config.apiKey || "").replace(/[\r\n\s]+/g, "").trim();
   const resp = await fetch(url, {
     method: "POST",
@@ -175,6 +180,69 @@ export async function suggestTags(
     return normaliseTags(parseTagList(raw));
   } catch (e) {
     console.error("[suggestTags]", e);
+    return [];
+  }
+}
+
+// ── Chapter Generation ───────────────────────────────────────────────
+
+export interface Chapter {
+  from: number;
+  to: number;
+  title: string;
+  detail?: string;
+}
+
+function parseChapters(raw: string, duration: number): Chapter[] {
+  let text = raw.trim();
+  text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  const start = text.indexOf("[");
+  if (start < 0) return [];
+  const end = text.lastIndexOf("]");
+  if (end <= start) return [];
+  let arr: any[];
+  try {
+    arr = JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(arr)) return [];
+  const max = Math.max(1, Math.floor(duration || 0));
+  const chapters: Chapter[] = [];
+  for (const item of arr) {
+    const from = Math.max(0, Math.min(max, Math.floor(Number(item?.from) || 0)));
+    const to = Math.max(from, Math.min(max, Math.floor(Number(item?.to) || from + 60)));
+    const title = String(item?.title || "").trim().slice(0, 40);
+    if (!title) continue;
+    const detail = String(item?.detail || "").trim().slice(0, 120) || undefined;
+    chapters.push({ from, to, title, detail });
+  }
+  chapters.sort((a, b) => a.from - b.from);
+  return chapters.slice(0, 8);
+}
+
+export async function generateChapters(
+  segments: Array<{ from: number; to: number; content: string }>,
+  config: LlmConfig,
+  duration: number,
+): Promise<Chapter[]> {
+  const text = segments
+    .filter((s) => s.content?.trim())
+    .map((s) => `[${Math.floor(s.from || 0)}-${Math.floor(s.to || s.from || 0)}] ${s.content.trim()}`)
+    .join("\n");
+  if (!text.trim()) return [];
+  try {
+    const raw = await chatCompletion(
+      config,
+      [
+        { role: "system", content: CHAPTER_SYSTEM_PROMPT },
+        { role: "user", content: buildChapterUserPrompt(text, duration) },
+      ],
+      1200,
+    );
+    return parseChapters(raw, duration);
+  } catch (e) {
+    console.warn("[generateChapters] failed:", (e as Error)?.message || e);
     return [];
   }
 }

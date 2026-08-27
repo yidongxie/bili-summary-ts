@@ -33,7 +33,7 @@ function resolveFfmpegPath(): string {
 }
 
 function requireUser(req: Request, res: Response): number | null {
-  const user = (req as any).user;
+  const user = req.user;
   if (!user) { res.status(401).json({ success: false, error: "请先登录" }); return null; }
   return user.id;
 }
@@ -145,6 +145,14 @@ async function resolveAudioStream(bvid: string, cid: number, sessdata: string): 
     const audio = [...dash.data.dash.audio].sort((a, b) => (b.bandwidth || 0) - (a.bandwidth || 0))[0];
     return audio.baseUrl || audio.base_url || "";
   }
+  return null;
+}
+
+/** Resolve the best DASH video-only stream URL (for frame extraction / vision). */
+export async function resolveVideoStreamUrl(bvid: string, cid: number, sessdata: string): Promise<string | null> {
+  const streams = await resolveStreams(bvid, cid, sessdata, 116);
+  if (streams?.kind === "dash") return streams.videoUrl;
+  if (streams?.kind === "durl") return streams.url;
   return null;
 }
 
@@ -296,7 +304,17 @@ function muxDash(res: Response, videoUrl: string, audioUrl: string): void {
     res.end();
   });
   res.on("close", () => { p.kill(); });
-  p.stdout.pipe(res);
+  let muxedBytes = 0;
+  p.stdout.on("data", (c: Buffer) => {
+    muxedBytes += c.length;
+    if (muxedBytes > MAX_VIDEO_DOWNLOAD_BYTES) {
+      console.warn(`[download] DASH mux exceeded ${MAX_VIDEO_DOWNLOAD_BYTES} bytes, aborting`);
+      p.kill("SIGKILL");
+      res.destroy();
+      return;
+    }
+    res.write(c);
+  });
 }
 
 let ffmpegAvailable: boolean | null = null;

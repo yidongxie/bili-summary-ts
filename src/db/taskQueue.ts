@@ -5,13 +5,15 @@ import Database from "better-sqlite3";
 import crypto from "crypto";
 import { extractVideoId as extractBilibiliVideoId, fetchVideoInfo as fetchBilibiliVideoInfo, segmentsToParagraphs, fetchPageList, isBilibiliUrl } from "../bilibili/api";
 import { isXiaoyuzhouUrl, extractEpisodeId, fetchEpisodeInfo } from "../xiaoyuzhou/api";
-import { isYtDlpAvailable, extractVideoInfo as extractWithYtDlp, isUrlSupported, getPlatformName, validateUrl } from "../common/YtDlpExtractor";
+import { isYtDlpAvailable, extractVideoInfo as extractWithYtDlp, extractVideoStreamUrl, isUrlSupported, getPlatformName, validateUrl } from "../common/YtDlpExtractor";
 import { transcribeBilibiliAudio, transcribeAudioUrl, transcribeLocalMedia } from "../whisper/transcribe";
-import { summarizeText, suggestTags, SummaryMode } from "../llm/summarize";
+import { summarizeText, suggestTags, generateChapters, SummaryMode } from "../llm/summarize";
 import { enforceRateLimit } from "../common/rateLimit";
 import { getDecryptedConfig } from "./configStore";
 import { downloadWithDouyinDownloader, isDouyinDownloaderAvailable } from "../common/DouyinDownloaderFallback";
 import { formatDuration } from "../common/date";
+import { extractSessdata, resolveVideoStreamUrl } from "../routes/download";
+import { getVisionConfig, extractKeyframes, analyzeFrames, cleanupFrames } from "../vision/analyze";
 
 const MAX_DAILY_SUMMARIES = parseInt(process.env.MAX_DAILY_SUMMARIES || "10", 10);
 const MAX_SUBTITLE_CHARS = parseInt(process.env.MAX_SUBTITLE_CHARS || "60000", 10);
@@ -33,6 +35,7 @@ interface Task {
   url: string;
   body: any;
   res: Response | null; // SSE response to push to
+  charged?: boolean; // whether this task consumed a daily-usage quota
 }
 
 const tasks = new Map<string, Task>();
@@ -144,18 +147,25 @@ function countActiveUserTasks(userId: number): number {
   return count;
 }
 
-function chargeDailyUsage(db: Database.Database, userId: number, userEmail: string): boolean {
-  if (ADMIN_EMAIL && userEmail === ADMIN_EMAIL) return true;
+function chargeDailyUsage(db: Database.Database, userId: number, userEmail: string): { ok: boolean; charged: boolean } {
+  if (ADMIN_EMAIL && userEmail === ADMIN_EMAIL) return { ok: true, charged: false };
   const today = new Date().toISOString().slice(0, 10);
   const row = db
     .prepare("SELECT summarize_count FROM daily_usage WHERE user_id = ? AND date = ?")
     .get(userId, today) as { summarize_count?: number } | undefined;
-  if ((row?.summarize_count || 0) >= MAX_DAILY_SUMMARIES) return false;
+  if ((row?.summarize_count || 0) >= MAX_DAILY_SUMMARIES) return { ok: false, charged: false };
   db.prepare(
     `INSERT INTO daily_usage (user_id, date, summarize_count) VALUES (?, ?, 1)
      ON CONFLICT(user_id, date) DO UPDATE SET summarize_count = summarize_count + 1`
   ).run(userId, today);
-  return true;
+  return { ok: true, charged: true };
+}
+
+function refundDailyUsage(db: Database.Database, userId: number) {
+  const today = new Date().toISOString().slice(0, 10);
+  db.prepare(
+    `UPDATE daily_usage SET summarize_count = MAX(0, summarize_count - 1) WHERE user_id = ? AND date = ?`
+  ).run(userId, today);
 }
 
 function assertDurationWithinLimit(duration: number | undefined, label = "内容") {
@@ -194,7 +204,7 @@ export function createTaskRouter(db: Database.Database): Router {
       res.status(404).json({ success: false, error: "任务不存在" });
       return;
     }
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId || task.userId !== userId) {
       res.status(403).json({ success: false, error: "无权访问此任务" });
       return;
@@ -244,7 +254,7 @@ export function createTaskRouter(db: Database.Database): Router {
     }
     if (!task) { res.status(404).json({ success: false, error: "任务不存在" }); return; }
 
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId || task.userId !== userId) {
       res.status(403).json({ success: false, error: "无权访问此任务" });
       return;
@@ -262,8 +272,8 @@ export function createTaskRouter(db: Database.Database): Router {
 
   // Submit task
   router.post("/api/tasks/summarize", async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
-    const userEmail = (req as any).user?.email || "";
+    const userId = req.user?.id;
+    const userEmail = req.user?.email || "";
     if (!userId) {
       res.status(401).json({ success: false, error: "请先登录" });
       return;
@@ -274,27 +284,51 @@ export function createTaskRouter(db: Database.Database): Router {
     const url = String(req.body.url || "").trim();
     if (!url) { res.json({ success: false, error: "请输入视频链接" }); return; }
 
-    if (countActiveUserTasks(userId) >= MAX_PENDING_TASKS_PER_USER) {
-      res.status(429).json({ success: false, error: `排队任务过多，请等待当前任务完成后再提交` });
+    const submitted = submitSummaryTask(db, userId, userEmail, url, req.body);
+    if (!submitted.ok) {
+      res.status(429).json({ success: false, error: submitted.error });
       return;
     }
 
-    if (!chargeDailyUsage(db, userId, userEmail)) {
-      res.status(429).json({
-        success: false,
-        error: `今日总结次数已达上限（${MAX_DAILY_SUMMARIES} 次）`,
-      });
-      return;
-    }
-
-    const taskId = getOrCreateTaskId(db, userId, userEmail, url, req.body);
-    const task = tasks.get(taskId)!;
-
-    res.json({ success: true, task_id: taskId });
-    enqueueTask(db, task);
+    res.json({ success: true, task_id: submitted.task_id });
   });
 
   return router;
+}
+
+/** Submit a summarize task programmatically (shared by the HTTP route and MCP). */
+export function submitSummaryTask(
+  db: Database.Database,
+  userId: number,
+  userEmail: string,
+  url: string,
+  body: any,
+): { ok: boolean; error?: string; task_id?: string } {
+  if (countActiveUserTasks(userId) >= MAX_PENDING_TASKS_PER_USER) {
+    return { ok: false, error: `排队任务过多，请等待当前任务完成后再提交` };
+  }
+  const charge = chargeDailyUsage(db, userId, userEmail);
+  if (!charge.ok) {
+    return { ok: false, error: `今日总结次数已达上限（${MAX_DAILY_SUMMARIES} 次）` };
+  }
+  const taskId = getOrCreateTaskId(db, userId, userEmail, url, body);
+  const task = tasks.get(taskId)!;
+  task.charged = charge.charged;
+  enqueueTask(db, task);
+  return { ok: true, task_id: taskId };
+}
+
+/** Read a task's status/result from the DB (polling; also used by MCP). */
+export function getSummaryTask(
+  db: Database.Database,
+  taskId: string,
+  userId: number,
+): { status: string; result?: any; error?: string; progress?: string } | null {
+  const row = db.prepare("SELECT status, progress, result_json, error FROM summary_tasks WHERE id = ? AND user_id = ?").get(taskId, userId) as any;
+  if (!row) return null;
+  if (row.status === "done") return { status: "done", result: JSON.parse(row.result_json || "{}") };
+  if (row.status === "error") return { status: "error", error: row.error || "任务失败" };
+  return { status: row.status || "pending", progress: row.progress || "" };
 }
 
 /** Get whisper config with admin fallback */
@@ -385,6 +419,32 @@ async function processBilibili(
     author: info.author,
     duration: formatDuration(info.duration),
   });
+
+  // Visual understanding (opt-in via vision_model config). Only Bilibili for
+  // now — we already resolve its video stream. Failures are non-fatal.
+  const visionConfig = getVisionConfig(db, task.userId);
+  if (visionConfig) {
+    try {
+      const sessdata = extractSessdata(getDecryptedConfig(db, task.userId).yt_dlp_cookies || "");
+      const videoUrl = await resolveVideoStreamUrl(bvid, correctCid, sessdata);
+      if (videoUrl) {
+        updateProgress(db, task, "分析视频画面…");
+        const frames = await extractKeyframes(videoUrl, info.duration, 5, {
+          Referer: "https://www.bilibili.com",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        });
+        try {
+          const visual = await analyzeFrames(frames, visionConfig, { title: info.title, author: info.author });
+          if (visual.trim()) summary += `\n\n## 画面内容\n${visual.trim()}`;
+        } finally {
+          cleanupFrames(frames);
+        }
+      }
+    } catch (err: any) {
+      console.warn("[vision] analyze failed:", err?.message || err);
+    }
+  }
+
   if (transcriptTruncated) summary += `\n\n> 字幕过长（${originalTranscriptLength} 字），本总结基于截取后的 ${MAX_SUBTITLE_CHARS} 字内容生成。`;
 
   updateProgress(db, task, "生成标签…");
@@ -394,12 +454,15 @@ async function processBilibili(
     .filter((s: any) => s.content?.trim())
     .map((s: any) => ({ from: s.from, to: s.to, content: s.content.trim() }));
 
+  const chapters = await generateChapters(subtitles, llmConfig, info.duration);
+
   return {
     type: "bilibili" as const,
     video: { title: info.title, author: info.author, duration: info.duration, bvid, link: `https://www.bilibili.com/video/${bvid}`, pic: info.pic },
     subtitle_count: subtitles.length,
     transcript_source: "whisper" as const,
     subtitle_segments: subtitleSegments,
+    chapters,
     transcript,
     summary,
     mode,
@@ -473,12 +536,15 @@ async function processXiaoyuzhou(
     .filter((s: any) => s.content?.trim())
     .map((s: any) => ({ from: s.from, to: s.to, content: s.content.trim() }));
 
+  const chapters = await generateChapters(subtitles, llmConfig, episode.duration);
+
   return {
     type: "xiaoyuzhou" as const,
     podcast: { title: episode.title, author: episode.author, podcastName: episode.podcastName, duration: episode.duration, id: episodeId, link: episode.episodeUrl, cover: episode.coverUrl, audioUrl: episode.audioUrl },
     subtitle_count: subtitles.length,
     transcript_source: "whisper" as const,
     subtitle_segments: subtitleSegments,
+    chapters,
     transcript,
     summary,
     mode,
@@ -567,6 +633,27 @@ async function processWithYtDlp(
     author: videoInfo.author,
     duration: formatDuration(videoInfo.duration || 0),
   });
+
+  // Visual understanding (opt-in) for yt-dlp platforms (douyin/xiaohongshu/YouTube…).
+  const visionConfig = getVisionConfig(db, task.userId);
+  if (visionConfig) {
+    try {
+      const videoUrl = await extractVideoStreamUrl(cleanedUrl, ytDlpCookies);
+      if (videoUrl) {
+        updateProgress(db, task, "分析视频画面…");
+        const frames = await extractKeyframes(videoUrl, videoInfo.duration || 0, 5);
+        try {
+          const visual = await analyzeFrames(frames, visionConfig, { title: videoInfo.title, author: videoInfo.author });
+          if (visual.trim()) summary += `\n\n## 画面内容\n${visual.trim()}`;
+        } finally {
+          cleanupFrames(frames);
+        }
+      }
+    } catch (err: any) {
+      console.warn("[vision] analyze failed:", err?.message || err);
+    }
+  }
+
   if (transcriptTruncated) summary += `\n\n> 内容过长（${originalTranscriptLength} 字），本总结基于截取后的 ${MAX_SUBTITLE_CHARS} 字内容生成。`;
 
   updateProgress(db, task, "生成标签…");
@@ -575,6 +662,8 @@ async function processWithYtDlp(
   const subtitleSegments = subtitles
     .filter((s: any) => s.content?.trim())
     .map((s: any) => ({ from: s.from, to: s.to, content: s.content.trim() }));
+
+  const chapters = await generateChapters(subtitles, llmConfig, videoInfo.duration);
 
   // 返回类型根据平台判断
   const type = videoInfo.platform as any;
@@ -596,6 +685,7 @@ async function processWithYtDlp(
       subtitle_count: subtitles.length,
       transcript_source: "whisper" as const,
       subtitle_segments: subtitleSegments,
+      chapters,
       transcript,
       summary,
       mode,
@@ -616,6 +706,7 @@ async function processWithYtDlp(
     subtitle_count: subtitles.length,
     transcript_source: "whisper" as const,
     subtitle_segments: subtitleSegments,
+    chapters,
     transcript,
     summary,
     mode,
@@ -660,6 +751,24 @@ async function processWithDouyinDownloader(
     author: media.author,
     duration: '未知',
   });
+
+  // Visual understanding (opt-in) from the locally-downloaded douyin file.
+  const visionConfig = getVisionConfig(db, task.userId);
+  if (visionConfig && media.filePath) {
+    try {
+      updateProgress(db, task, "分析视频画面…");
+      const frames = await extractKeyframes(media.filePath, 0, 5);
+      try {
+        const visual = await analyzeFrames(frames, visionConfig, { title: media.title, author: media.author });
+        if (visual.trim()) summary += `\n\n## 画面内容\n${visual.trim()}`;
+      } finally {
+        cleanupFrames(frames);
+      }
+    } catch (err: any) {
+      console.warn("[vision] analyze failed:", err?.message || err);
+    }
+  }
+
   if (transcriptTruncated) summary += `\n\n> 内容过长（${originalTranscriptLength} 字），本总结基于截取后的 ${MAX_SUBTITLE_CHARS} 字内容生成。`;
 
   updateProgress(db, task, "生成标签…");
@@ -667,6 +776,8 @@ async function processWithDouyinDownloader(
   const subtitleSegments = subtitles
     .filter((seg: any) => seg.content?.trim())
     .map((seg: any) => ({ from: seg.from, to: seg.to, content: seg.content.trim() }));
+
+  const chapters = await generateChapters(subtitles, llmConfig, 0);
 
   return {
     type: "douyin" as const,
@@ -681,6 +792,7 @@ async function processWithDouyinDownloader(
     subtitle_count: subtitles.length,
     transcript_source: "whisper" as const,
     subtitle_segments: subtitleSegments,
+    chapters,
     transcript,
     summary,
     mode,
@@ -775,6 +887,7 @@ async function runTask(
     completeTask(db, task, result);
   } catch (err: any) {
     console.error("[task]", err);
+    if (task.charged) refundDailyUsage(db, task.userId);
     failTask(db, task, err.message || String(err));
   } finally {
     // If SSE still connected, close

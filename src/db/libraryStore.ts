@@ -22,6 +22,7 @@ export interface LibraryItem {
   mode: string;
   pic: string;
   subtitle_segments?: SubtitleSegmentData[];
+  chapters?: ChapterData[];
   snippet?: string;
   highlights?: string[];
 }
@@ -30,6 +31,13 @@ export interface SubtitleSegmentData {
   from: number;
   to: number;
   content: string;
+}
+
+export interface ChapterData {
+  from: number;
+  to: number;
+  title: string;
+  detail?: string;
 }
 
 export interface TagInfo {
@@ -78,33 +86,73 @@ export function queryLibrary(db: Database.Database, userId: number, options: Lib
   const page = Math.max(1, Number(options.page || 1));
   const pageSize = Math.min(100, Math.max(1, Number(options.pageSize || 20)));
   const q = String(options.q || "").trim();
-  const qLower = q.toLowerCase();
   const category = String(options.category || "").trim();
   const tag = String(options.tag || "").trim().toLowerCase();
   const sort = String(options.sort || "updated_desc");
 
-  const allItems = loadLibrary(db, userId);
-  const categories = [...new Set(allItems.map((i) => i.category).filter(Boolean))];
-  const tags = [...new Set(allItems.flatMap((i) => i.tags || []))];
+  // Facets come from light column reads, not full rows.
+  const categories = (
+    db.prepare("SELECT DISTINCT category FROM library_items WHERE user_id = ? AND category != '' ORDER BY category").all(userId) as Array<{ category: string }>
+  ).map((r) => r.category);
+  const tagRows = db.prepare("SELECT tags FROM library_items WHERE user_id = ?").all(userId) as Array<{ tags: string }>;
+  const tags = [...new Set(tagRows.flatMap((r) => parseTags(r.tags || "[]")))];
 
-  let filtered = q ? searchLibraryItems(db, userId, q, allItems) : allItems;
-  if (category) filtered = filtered.filter((i) => i.category === category);
-  if (tag) filtered = filtered.filter((i) => (i.tags || []).some((t) => t.toLowerCase() === tag));
-  if (q && !filtered.length) {
-    filtered = allItems.filter((i) => itemMatches(i, qLower)).map((i) => ({ ...i, snippet: makeSnippet(i, qLower), highlights: [q] }));
+  if (!q) {
+    // Browse path: filter/sort/paginate in SQL instead of loading every row.
+    const where: string[] = ["user_id = @userId"];
+    const params: Record<string, unknown> = { userId };
+    if (category) {
+      where.push("category = @category");
+      params.category = category;
+    }
+    if (tag) {
+      // tags is a JSON array string; match the quoted tag case-insensitively.
+      where.push("LOWER(tags) LIKE @tagLike ESCAPE '\\'");
+      params.tagLike = `%"${escapeLike(tag)}"%`;
+    }
+    const whereSql = where.join(" AND ");
+    const total = (db.prepare(`SELECT COUNT(*) AS c FROM library_items WHERE ${whereSql}`).get(params) as { c: number }).c;
+    const rows = db
+      .prepare(`SELECT * FROM library_items WHERE ${whereSql} ORDER BY ${sortToOrderBy(sort)} LIMIT @limit OFFSET @offset`)
+      .all({ ...params, limit: pageSize, offset: (page - 1) * pageSize }) as any[];
+    return { items: rows.map(rowToItem), total, page, pageSize, categories, tags };
   }
 
+  // Search path: FTS + in-memory scoring (result set is bounded by FTS LIMIT).
+  const allItems = loadLibrary(db, userId);
+  let filtered = searchLibraryItems(db, userId, q, allItems);
+  if (category) filtered = filtered.filter((i) => i.category === category);
+  if (tag) filtered = filtered.filter((i) => (i.tags || []).some((t) => t.toLowerCase() === tag));
+  if (!filtered.length) {
+    const qLower = q.toLowerCase();
+    filtered = allItems.filter((i) => itemMatches(i, qLower)).map((i) => ({ ...i, snippet: makeSnippet(i, qLower), highlights: [q] }));
+  }
   filtered = [...filtered].sort((a, b) => {
     if (sort === "updated_asc") return String(a.updated_at || a.created_at).localeCompare(String(b.updated_at || b.created_at));
     if (sort === "title_asc") return a.title.localeCompare(b.title, "zh-Hans-CN");
     if (sort === "duration_desc") return (b.duration || 0) - (a.duration || 0);
-    if (q) return 0;
-    return String(b.updated_at || b.created_at).localeCompare(String(a.updated_at || a.created_at));
+    return 0; // preserve FTS bm25 order
   });
-
   const total = filtered.length;
   const start = (page - 1) * pageSize;
   return { items: filtered.slice(start, start + pageSize), total, page, pageSize, categories, tags };
+}
+
+function sortToOrderBy(sort: string): string {
+  switch (sort) {
+    case "updated_asc":
+      return "updated_at ASC";
+    case "title_asc":
+      return "title COLLATE NOCASE ASC";
+    case "duration_desc":
+      return "duration DESC";
+    default:
+      return "updated_at DESC";
+  }
+}
+
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => "\\" + c);
 }
 
 function searchLibraryItems(db: Database.Database, userId: number, q: string, allItems: LibraryItem[]): LibraryItem[] {
@@ -193,6 +241,21 @@ function parseSubtitleSegments(raw: string | null | undefined): SubtitleSegmentD
   }
 }
 
+function serializeChapters(chapters?: ChapterData[] | null): string {
+  if (!chapters?.length) return "";
+  return JSON.stringify(chapters);
+}
+
+function parseChapters(raw: string | null | undefined): ChapterData[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? (arr as ChapterData[]) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function saveLibraryItem(db: Database.Database, userId: number, data: Partial<LibraryItem> & { id?: string }): LibraryItem {
   const now = nowSql();
   const id = data.id || crypto.randomUUID();
@@ -204,7 +267,7 @@ export function saveLibraryItem(db: Database.Database, userId: number, data: Par
       `UPDATE library_items SET
         updated_at = ?, title = ?, author = ?, duration = ?, bvid = ?, link = ?,
         summary = ?, transcript = ?, subtitle_count = ?, category = ?, tags = ?,
-        notes = ?, mode = ?, pic = ?, subtitle_segments = ?
+        notes = ?, mode = ?, pic = ?, subtitle_segments = ?, chapters_json = ?
        WHERE id = ? AND user_id = ?`
     ).run(
       now,
@@ -222,6 +285,7 @@ export function saveLibraryItem(db: Database.Database, userId: number, data: Par
       data.mode ?? existing.mode ?? "brief",
       data.pic ?? existing.pic ?? "",
       serializeSegments(data.subtitle_segments ?? existing.subtitle_segments),
+      data.chapters !== undefined ? serializeChapters(data.chapters) : existing.chapters_json,
       id,
       userId
     );
@@ -229,8 +293,8 @@ export function saveLibraryItem(db: Database.Database, userId: number, data: Par
     db.prepare(
       `INSERT INTO library_items
         (id, user_id, created_at, updated_at, title, author, duration, bvid, link,
-         summary, transcript, subtitle_count, category, tags, notes, mode, pic, subtitle_segments)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         summary, transcript, subtitle_count, category, tags, notes, mode, pic, subtitle_segments, chapters_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       userId,
@@ -249,7 +313,8 @@ export function saveLibraryItem(db: Database.Database, userId: number, data: Par
       data.notes || "",
       data.mode || "brief",
       data.pic || "",
-      serializeSegments(data.subtitle_segments)
+      serializeSegments(data.subtitle_segments),
+      serializeChapters(data.chapters)
     );
   }
 
@@ -445,6 +510,7 @@ function rowToItem(row: any): LibraryItem {
     notes: row.notes,
     mode: row.mode,
     pic: row.pic || "",
+    chapters: parseChapters(row.chapters_json),
   };
 }
 

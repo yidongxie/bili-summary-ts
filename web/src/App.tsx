@@ -92,6 +92,7 @@ function libraryItemToSummaryResult(item: LibraryItem): SummaryResult {
     transcript: transcriptText,
     subtitle_count: item.subtitle_count || subtitleSegments?.length || 0,
     subtitle_segments: subtitleSegments,
+    chapters: item.chapters || undefined,
     mode: item.mode || 'brief',
     suggested_tags: item.tags || [],
     transcript_source: 'whisper',

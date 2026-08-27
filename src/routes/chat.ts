@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { getOrCreateChatThread, listChatMessages, appendChatMessage } from "../db/usageStore";
 
 function requireUser(req: Request, res: Response): number | null {
-  const user = (req as any).user;
+  const user = req.user;
   if (!user) { res.status(401).json({ success: false, error: "请先登录" }); return null; }
   return user.id;
 }

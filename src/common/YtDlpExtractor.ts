@@ -191,6 +191,48 @@ export async function extractVideoInfo(url: string, cookies?: string): Promise<V
 }
 
 /**
+ * 获取视频的可直接访问的视频流 URL（用于抽帧/画面理解）。与 extractVideoInfo
+ * 不同，这里使用 `best` 格式（含视频轨）而不是 `bestaudio`。
+ */
+export async function extractVideoStreamUrl(url: string, cookies?: string): Promise<string | null> {
+  const ytDlpPath = findYtDlpPath();
+  if (!ytDlpPath) return null;
+
+  const args = [
+    "--no-playlist",
+    "--skip-download",
+    "--no-update",
+    "--format", "best",
+    "--get-url",
+  ];
+  let cookieFile = "";
+  try {
+    if (cookies?.trim()) {
+      cookieFile = path.join(process.cwd(), "data", `yt-dlp-video-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`);
+      fs.mkdirSync(path.dirname(cookieFile), { recursive: true });
+      fs.writeFileSync(cookieFile, cookies.trim() + "\n", { mode: 0o600 });
+      args.push("--cookies", cookieFile);
+    } else if (process.env.YT_DLP_COOKIES_FILE) {
+      args.push("--cookies", process.env.YT_DLP_COOKIES_FILE);
+    }
+  } catch (err: any) {
+    console.error("[yt-dlp] cookies setup failed:", err.message);
+  }
+  args.push(url);
+
+  try {
+    const { stdout } = await execFileAsync(ytDlpPath, args, { timeout: 60000 });
+    const line = stdout.split(/\r?\n/).map((s) => s.trim()).find((s) => /^https?:\/\//.test(s));
+    return line || null;
+  } catch (err: any) {
+    console.warn("[yt-dlp] extract video stream failed:", err.message);
+    return null;
+  } finally {
+    if (cookieFile) { try { fs.unlinkSync(cookieFile); } catch { /* ignore */ } }
+  }
+}
+
+/**
  * 检测 URL 是否支持
  */
 export function isUrlSupported(url: string): boolean {

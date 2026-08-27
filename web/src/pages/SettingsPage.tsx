@@ -6,6 +6,8 @@ import {
   saveConfig,
   testDeepSeekConfig,
   testWhisperConfig,
+  generateApiToken,
+  getApiTokenStatus,
   type AppConfig,
 } from '@/lib/api';
 import { copyText } from '@/lib/clipboard';
@@ -93,6 +95,7 @@ export function SettingsPage({
   const [whisperApiUrl, setWhisperApiUrl] = useState('https://api.siliconflow.cn/v1');
   const [whisperModel, setWhisperModel] = useState('TeleAI/TeleSpeechASR');
   const [embeddingModel, setEmbeddingModel] = useState('BAAI/bge-m3');
+  const [visionModel, setVisionModel] = useState('');
   const [defaultCategory, setDefaultCategory] = useState('待整理');
   const [ytDlpCookies, setYtDlpCookies] = useState('');
   const [obsidianVault, setObsidianVault] = useState('');
@@ -101,6 +104,8 @@ export function SettingsPage({
   const [apiKeySet, setApiKeySet] = useState(false);
   const [whisperKeySet, setWhisperKeySet] = useState(false);
   const [ytDlpCookiesSet, setYtDlpCookiesSet] = useState(false);
+  const [apiToken, setApiToken] = useState('');
+  const [apiTokenSet, setApiTokenSet] = useState(false);
 
   const [status, setStatus] = useState<{ msg: string; type: 'ok' | 'error' | 'info' } | null>(
     null,
@@ -121,13 +126,16 @@ export function SettingsPage({
       setWhisperApiUrl(cfg.whisper_base_url || 'https://api.siliconflow.cn/v1');
       setWhisperModel(cfg.whisper_model || 'TeleAI/TeleSpeechASR');
       setEmbeddingModel(cfg.embedding_model || 'BAAI/bge-m3');
+      setVisionModel(cfg.vision_model || '');
       setDefaultCategory(cfg.default_category || '待整理');
       setObsidianVault(cfg.obsidian_vault_name || '');
       setObsidianSubfolder(cfg.obsidian_folder || 'BiliStudy');
       setApiKeySet(!!cfg.api_key_set);
       setWhisperKeySet(!!cfg.whisper_api_key_set);
       setYtDlpCookiesSet(!!cfg.yt_dlp_cookies_set);
+      setApiTokenSet(!!cfg.api_token_set);
     });
+    getApiTokenStatus().then((r) => { if (!cancelled) setApiTokenSet(!!r.has_token); }).catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -228,6 +236,33 @@ export function SettingsPage({
     }
   }
 
+  async function handleGenerateToken() {
+    if (!isLoggedIn) {
+      setStatus({ msg: '请先登录', type: 'error' });
+      onRequireLogin();
+      return;
+    }
+    setStatus(null);
+    try {
+      const data = await generateApiToken();
+      setApiToken(data.token || '');
+      setApiTokenSet(true);
+      setStatus({ msg: '已生成新的 API Token，请妥善保存。', type: 'ok' });
+    } catch (err: any) {
+      setStatus({ msg: err.message || '生成失败', type: 'error' });
+    }
+  }
+
+  async function handleCopyToken() {
+    if (!apiToken) return;
+    try {
+      await copyText(apiToken);
+      setStatus({ msg: 'API Token 已复制到剪贴板', type: 'ok' });
+    } catch {
+      setStatus({ msg: '复制失败，请手动复制', type: 'error' });
+    }
+  }
+
   async function handleSave() {
     if (!isLoggedIn) {
       setStatus({ msg: '请先登录', type: 'error' });
@@ -243,6 +278,7 @@ export function SettingsPage({
         whisper_base_url: whisperApiUrl.trim() || 'https://api.siliconflow.cn/v1',
         whisper_model: whisperModel.trim() || 'TeleAI/TeleSpeechASR',
         embedding_model: embeddingModel.trim() || 'BAAI/bge-m3',
+        vision_model: visionModel.trim(),
         default_category: defaultCategory.trim() || '待整理',
         obsidian_vault_name: obsidianVault.trim(),
         obsidian_folder: obsidianSubfolder.trim() || 'BiliStudy',
@@ -421,6 +457,19 @@ export function SettingsPage({
                 placeholder="BAAI/bge-m3"
               />
             </div>
+            <div className="mt-3">
+              <label style={labelStyle}>视觉模型（画面理解，可选）</label>
+              <input
+                style={inputStyle}
+                type="text"
+                value={visionModel}
+                onChange={(e) => setVisionModel(e.target.value)}
+                placeholder="例如 Qwen/Qwen2.5-VL-72B-Instruct，留空则关闭画面分析"
+              />
+              <p className="text-xs mt-1.5" style={{ color: 'var(--stone)' }}>
+                复用上方 SiliconFlow 的 API Key 与地址。填写后，总结 B站视频时会额外提取关键帧做画面分析，追加「画面内容」章节。
+              </p>
+            </div>
           </div>
         </div>
 
@@ -529,6 +578,52 @@ export function SettingsPage({
               value={obsidianSubfolder}
               onChange={(e) => setObsidianSubfolder(e.target.value)}
             />
+          </div>
+        </div>
+
+        {/* API 访问 / MCP */}
+        <div className="rounded-lg p-5 flex flex-col gap-4" style={cardStyle}>
+          <div className="flex items-center gap-3">
+            <LogoIcon letter="A" gradient="linear-gradient(135deg,#f59e0b,#ef4444)" />
+            <SectionTitle
+              title="API 访问 / MCP"
+              desc="生成一个 API Token，供 MCP / OpenAPI / Agent 以 Bearer 方式调用你的收藏库。"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <KeyStatus configured={apiTokenSet} />
+              <button
+                type="button"
+                onClick={handleGenerateToken}
+                className="text-xs px-2.5 py-1 rounded-full font-medium"
+                style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--brand-warn)', border: '1px solid rgba(245,158,11,0.25)' }}
+              >
+                {apiTokenSet ? '重新生成 Token' : '生成 Token'}
+              </button>
+            </div>
+            {apiToken && (
+              <div className="mt-2 flex items-center gap-2">
+                <code
+                  className="flex-1 truncate rounded-md px-3 py-2 text-xs"
+                  style={{ background: 'rgba(0,0,0,0.05)', fontFamily: '"Geist Mono", monospace', color: 'var(--ink)' }}
+                >
+                  {apiToken}
+                </code>
+                <button
+                  type="button"
+                  onClick={handleCopyToken}
+                  className="text-xs px-2.5 py-1 rounded-full font-medium"
+                  style={{ color: 'var(--brand-tag)', background: 'rgba(55,114,207,0.10)', border: '1px solid rgba(55,114,207,0.22)' }}
+                >
+                  复制
+                </button>
+              </div>
+            )}
+            <p className="text-xs mt-2 leading-relaxed" style={{ color: 'var(--stone)' }}>
+              MCP 端点：<code style={{ fontFamily: '"Geist Mono", monospace' }}>/api/mcp</code>；OpenAPI 文档：<code style={{ fontFamily: '"Geist Mono", monospace' }}>/api/openapi.json</code>；发现文件：<code style={{ fontFamily: '"Geist Mono", monospace' }}>/.well-known/mcp.json</code>。调用时携带请求头 <code style={{ fontFamily: '"Geist Mono", monospace' }}>Authorization: Bearer &lt;token&gt;</code>。
+            </p>
           </div>
         </div>
       </div>

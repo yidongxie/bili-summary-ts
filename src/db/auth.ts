@@ -111,6 +111,7 @@ export function createAuthRouter(db: Database.Database): Router {
       const email = String(req.body.email || "").trim().toLowerCase();
       const password = String(req.body.password || "");
       if (!enforceRateLimit(req, res, "login", 10, 10 * 60 * 1000, email || "unknown")) return;
+      if (!enforceRateLimit(req, res, "login-ip", 30, 10 * 60 * 1000)) return;
 
       if (!email || !password) {
         res.status(400).json({ success: false, error: "邮箱和密码不能为空" });
@@ -159,9 +160,9 @@ export function createAuthRouter(db: Database.Database): Router {
       res.json({ success: true, authenticated: false });
       return;
     }
-    const sessionRow = db
-      .prepare("SELECT * FROM sessions WHERE sid = ? AND expires_at > datetime('now')")
-      .get(sid) as any;
+      const sessionRow = db
+        .prepare("SELECT * FROM sessions WHERE sid = ? AND datetime(expires_at) > datetime('now')")
+        .get(sid) as any;
     if (!sessionRow) {
       res.json({ success: true, authenticated: false });
       return;
@@ -216,16 +217,16 @@ export function createAuthRouter(db: Database.Database): Router {
           }
 
           const openId = wxData.openid;
-          // Check for existing user bound to this openId (we store it as github_id for simplicity)
-          let user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE github_id = ?").get(openId) as any;
+          // Check for existing user bound to this openId (stored in its own column).
+          let user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE wechat_openid = ?").get(openId) as any;
 
           if (!user) {
             // Only link an openId to an already-authenticated account (the user
             // explicitly linking their own WeChat). Never auto-bind by email —
             // that would let any WeChat user take over the admin account.
-            const authedUser = (req as any).user;
+            const authedUser = req.user;
             if (authedUser) {
-              db.prepare("UPDATE users SET github_id = ? WHERE id = ?").run(openId, authedUser.id);
+              db.prepare("UPDATE users SET wechat_openid = ? WHERE id = ?").run(openId, authedUser.id);
               user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?").get(authedUser.id) as any;
               console.log(`[wechat] Linked WeChat openId to authenticated user (id=${authedUser.id})`);
             }
@@ -233,7 +234,7 @@ export function createAuthRouter(db: Database.Database): Router {
 
           if (!user) {
             // Create new user bound to this WeChat openId
-            const info = db.prepare("INSERT INTO users (github_id, email, display_name) VALUES (?, ?, ?)").run(
+            const info = db.prepare("INSERT INTO users (wechat_openid, email, display_name) VALUES (?, ?, ?)").run(
               openId,
               `wechat_${openId.slice(0, 8)}@bilistudy.local`,
               displayName || `微信用户${openId.slice(-4)}`,

@@ -14,6 +14,8 @@ import { createAudioProxyRouter } from "./audioProxy";
 import { createYtDlpRouter } from "./ytDlp";
 import { createDownloadRouter } from "./download";
 import { createThemesRouter } from "./themes";
+import { createMcpRouter } from "./mcp";
+import { createOpenApiRouter } from "./openapi";
 
 export function createApiRouter(db: Database.Database): Router {
   const router = Router();
@@ -30,6 +32,8 @@ export function createApiRouter(db: Database.Database): Router {
   router.use(createYtDlpRouter());
   router.use(createDownloadRouter(db));
   router.use(createThemesRouter(db));
+  router.use(createMcpRouter(db));
+  router.use(createOpenApiRouter());
 
   return router;
 }

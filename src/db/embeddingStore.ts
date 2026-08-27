@@ -5,6 +5,30 @@ import crypto from "crypto";
 import { nowSql } from "../common/date";
 import { findLibraryItem, type LibraryItem } from "./libraryStore";
 
+// In-memory cache of parsed + normalized vectors so repeated semantic searches
+// avoid re-JSON-parsing the same rows. Cleared on every write; personal
+// libraries are small, so this is cheap and always correct.
+const vectorCache = new Map<string, number[]>();
+
+function clearVectorCache(): void {
+  vectorCache.clear();
+}
+
+function cachedVector(key: string, raw: string): number[] | null {
+  const hit = vectorCache.get(key);
+  if (hit) return hit;
+  try {
+    const v = normalize(JSON.parse(raw));
+    if (v.length) {
+      vectorCache.set(key, v);
+      return v;
+    }
+  } catch {
+    // skip malformed vector
+  }
+  return null;
+}
+
 // ── item-level (whole video topic) ────────────────────────────────────
 
 export function saveEmbedding(db: Database.Database, itemId: string, model: string, vector: number[]): void {
@@ -12,10 +36,12 @@ export function saveEmbedding(db: Database.Database, itemId: string, model: stri
     `INSERT INTO item_embeddings (library_item_id, model, vector, updated_at) VALUES (?, ?, ?, ?)
      ON CONFLICT(library_item_id) DO UPDATE SET model = excluded.model, vector = excluded.vector, updated_at = excluded.updated_at`
   ).run(itemId, model, JSON.stringify(vector), nowSql());
+  clearVectorCache();
 }
 
 export function deleteEmbedding(db: Database.Database, itemId: string): void {
   db.prepare("DELETE FROM item_embeddings WHERE library_item_id = ?").run(itemId);
+  clearVectorCache();
 }
 
 export function listMissingEmbeddingItems(db: Database.Database, userId: number): Array<{ id: string; title: string; summary: string; subtitle_segments: string }> {
@@ -46,10 +72,12 @@ export function saveSegmentEmbeddings(
     }
   });
   tx(chunks);
+  clearVectorCache();
 }
 
 export function deleteSegmentEmbeddings(db: Database.Database, itemId: string): void {
   db.prepare("DELETE FROM segment_embeddings WHERE library_item_id = ?").run(itemId);
+  clearVectorCache();
 }
 
 // ── math ─────────────────────────────────────────────────────────────
@@ -79,22 +107,18 @@ export interface SemanticHit {
 export function searchLibrarySemantic(db: Database.Database, userId: number, queryVector: number[], limit = 10): SemanticHit[] {
   const rows = db
     .prepare(
-      `SELECT e.library_item_id, e.start_sec, e.text, e.vector FROM segment_embeddings e
+      `SELECT e.id, e.library_item_id, e.start_sec, e.text, e.vector FROM segment_embeddings e
        JOIN library_items li ON li.id = e.library_item_id
        WHERE li.user_id = ?`
     )
-    .all(userId) as Array<{ library_item_id: string; start_sec: number; text: string; vector: string }>;
+    .all(userId) as Array<{ id: string; library_item_id: string; start_sec: number; text: string; vector: string }>;
 
   const q = normalize(queryVector);
   const scored: Array<{ itemId: string; startSec: number; text: string; score: number }> = [];
   for (const row of rows) {
-    try {
-      const v = normalize(JSON.parse(row.vector));
-      if (!v.length) continue;
-      scored.push({ itemId: row.library_item_id, startSec: Number(row.start_sec) || 0, text: row.text || "", score: dot(q, v) });
-    } catch {
-      // skip malformed vector
-    }
+    const v = cachedVector(row.id, row.vector);
+    if (!v) continue;
+    scored.push({ itemId: row.library_item_id, startSec: Number(row.start_sec) || 0, text: row.text || "", score: dot(q, v) });
   }
   scored.sort((a, b) => b.score - a.score);
 
@@ -130,13 +154,9 @@ export function searchSimilarItems(db: Database.Database, userId: number, queryV
   const q = normalize(queryVector);
   const scored: Array<{ itemId: string; score: number }> = [];
   for (const row of rows) {
-    try {
-      const v = normalize(JSON.parse(row.vector));
-      if (!v.length) continue;
-      scored.push({ itemId: row.library_item_id, score: dot(q, v) });
-    } catch {
-      // skip
-    }
+    const v = cachedVector(row.library_item_id, row.vector);
+    if (!v) continue;
+    scored.push({ itemId: row.library_item_id, score: dot(q, v) });
   }
   scored.sort((a, b) => b.score - a.score);
 

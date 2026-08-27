@@ -1,11 +1,11 @@
 import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
-import { getPublicConfig, getDecryptedConfig, saveConfig as saveUserConfig } from "../db/configStore";
+import { getPublicConfig, getDecryptedConfig, saveConfig as saveUserConfig, generateApiToken, getApiToken } from "../db/configStore";
 import { isSafeUpstreamUrl } from "./utils";
 import { enforceRateLimit } from "../common/rateLimit";
 
 function requireUser(req: Request, res: Response): number | null {
-  const user = (req as any).user;
+  const user = req.user;
   if (!user) { res.status(401).json({ success: false, error: "请先登录" }); return null; }
   return user.id;
 }
@@ -15,7 +15,7 @@ export function createConfigRouter(db: Database.Database): Router {
 
   // ── Public config ──────────────────────────────────────────────────
   router.get("/api/config", (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId) {
       res.json({
         success: true,
@@ -25,10 +25,13 @@ export function createConfigRouter(db: Database.Database): Router {
           deepseek_model: "deepseek-v4-flash",
           whisper_base_url: "https://api.siliconflow.cn/v1",
           whisper_model: "TeleAI/TeleSpeechASR",
+          embedding_model: "BAAI/bge-m3",
+          vision_model: "",
           obsidian_folder: "BiliStudy",
           obsidian_vault_name: "",
           api_key_set: false,
           whisper_api_key_set: false,
+          api_token_set: false,
         },
       });
       return;
@@ -38,11 +41,26 @@ export function createConfigRouter(db: Database.Database): Router {
   });
 
   router.post("/api/config", (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId) { res.status(401).json({ success: false, error: "请先登录" }); return; }
     saveUserConfig(db, userId, req.body);
     const pub = getPublicConfig(db, userId);
     res.json({ success: true, config: pub });
+  });
+
+  // ── API token (for MCP / OpenAPI / agent access) ────────────────────
+  router.get("/api/config/api-token", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    res.json({ success: true, has_token: !!getApiToken(db, userId) });
+  });
+
+  router.post("/api/config/api-token", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (!enforceRateLimit(req, res, "api-token", 10, 60 * 60 * 1000, String(userId))) return;
+    const token = generateApiToken(db, userId);
+    res.json({ success: true, token });
   });
 
   router.post("/api/config/test-deepseek", async (req: Request, res: Response) => {

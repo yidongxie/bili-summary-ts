@@ -2,6 +2,7 @@
 
 import Database from "better-sqlite3";
 import { postJson } from "../common/http";
+import { isSafeUpstreamUrl } from "../common/urlSafety";
 import { getDecryptedConfig } from "../db/configStore";
 import { saveEmbedding, saveSegmentEmbeddings } from "../db/embeddingStore";
 
@@ -42,6 +43,7 @@ interface EmbeddingResponse {
 
 export async function embedTexts(texts: string[], config: EmbeddingConfig): Promise<number[][]> {
   const url = config.baseUrl.replace(/\/+$/, "") + "/embeddings";
+  if (!isSafeUpstreamUrl(config.baseUrl)) throw new Error("不允许连接到该地址");
   const cleanKey = (config.apiKey || "").replace(/[\r\n\s]+/g, "").trim();
   const res = await postJson<EmbeddingResponse>(
     url,

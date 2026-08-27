@@ -1,6 +1,7 @@
 /** BiliStudy V2 �C main server entry point */
 
 import path from "path";
+import crypto from "crypto";
 import express, { Request, Response, NextFunction } from "express";
 import session from "express-session";
 import compression from "compression";
@@ -19,7 +20,7 @@ function getSessionSecret(): string {
   if (envSecret) return envSecret;
   if (process.env.NODE_ENV !== "production") {
     // Dev fallback: generate a random secret each time (launcher.ts sets a stable one)
-    const fallback = require("crypto").randomBytes(32).toString("hex");
+    const fallback = crypto.randomBytes(32).toString("hex");
     process.env.SESSION_SECRET = fallback;
     console.warn("[startup] Using auto-generated SESSION_SECRET — sessions will reset on restart.");
     return fallback;
@@ -97,29 +98,45 @@ app.use(
   })
 );
 
+// CSRF guard: reject cross-origin state-changing requests. sameSite=lax already
+// blocks cross-site cookies, but this adds a defense-in-depth Origin check.
+app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return next();
+  const origin = req.headers.origin;
+  if (!origin) return next(); // non-browser clients (curl, mini-programs) send no Origin
+  try {
+    const o = new URL(origin);
+    if (o.host !== req.headers.host) {
+      res.status(403).json({ success: false, error: "跨站请求被拒绝" });
+      return;
+    }
+  } catch {
+    res.status(403).json({ success: false, error: "非法请求来源" });
+    return;
+  }
+  next();
+});
+
 // Database
 const dataDir = path.resolve(__dirname, "..", "data");
 const db = createDb(dataDir);
 runStartupMaintenance(db);
 
 // Attach the authenticated user (if any) to req.user for downstream routes.
-// All API handlers read `(req as any).user`, so this middleware must run
-// before any router that depends on it.
+// All API handlers read `req.user`, so this middleware must run before any
+// router that depends on it.
 app.use("/api", (req: Request, _res: Response, next: NextFunction) => {
   try {
     const sid = req.sessionID;
     if (sid) {
-      const sessionRow = db
-        .prepare("SELECT user_id FROM sessions WHERE sid = ? AND expires_at > datetime('now')")
-        .get(sid) as { user_id: number } | undefined;
-      if (sessionRow) {
-        const user = db
-          .prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?")
-          .get(sessionRow.user_id);
-        if (user) {
-          (req as any).user = user;
-        }
-      }
+      // Single joined query instead of two round-trips; datetime() coerces the
+      // ISO-8601 expires_at into SQLite's canonical format before comparison.
+      const user = db
+        .prepare(
+          "SELECT u.id, u.email, u.display_name, u.created_at, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.sid = ? AND datetime(s.expires_at) > datetime('now')"
+        )
+        .get(sid) as { id: number; email: string; display_name: string; created_at: string; is_admin: number } | undefined;
+      if (user) req.user = user;
     }
   } catch (err) {
     console.error("[auth-middleware]", err);
@@ -160,6 +177,22 @@ app.get("/sitemap.xml", (req: Request, res: Response) => {
       `  <url><loc>${origin}/</loc><lastmod>${today}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>\n` +
       "</urlset>\n"
   );
+});
+
+// MCP server discovery (agents can read this to auto-configure the server URL).
+app.get("/.well-known/mcp.json", (req: Request, res: Response) => {
+  const origin = siteOrigin(req);
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.json({
+    mcpServers: {
+      bilistudy: {
+        name: "BiliStudy",
+        url: `${origin}/api/mcp`,
+        transport: "streamable-http",
+        auth: "Bearer <API token>",
+      },
+    },
+  });
 });
 
 // Static files (frontend)

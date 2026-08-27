@@ -11,7 +11,7 @@ export function runStartupMaintenance(db: Database.Database): void {
   const cutoff = now - TERMINAL_TASK_RETENTION_MS;
 
   try {
-    db.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')").run();
+    db.prepare("DELETE FROM sessions WHERE datetime(expires_at) <= datetime('now')").run();
   } catch (err) {
     console.error("[maintenance] session cleanup failed", err);
   }

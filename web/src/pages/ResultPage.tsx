@@ -555,7 +555,18 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, ini
   }, [runId, initialResult, initialSaved, reRunKey]);
 
   const meta = result?.video || result?.podcast;
-  const chapters = useMemo(() => buildChapters(result?.subtitle_segments, result?.summary || ''), [result]);
+  const chapters = useMemo(() => {
+    // Prefer LLM-generated chapters (real timestamps); fall back to heuristics.
+    if (result?.chapters?.length) {
+      return result.chapters.map((c) => ({
+        timestamp: formatTimelineTime(c.from),
+        from: c.from,
+        title: c.title,
+        detail: c.detail,
+      }));
+    }
+    return buildChapters(result?.subtitle_segments, result?.summary || '');
+  }, [result]);
   const notes = result?.summary || '';
   const subtitles = useMemo(() => {
     if (result?.subtitle_segments?.length) return result.subtitle_segments;
@@ -641,6 +652,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, ini
       transcript: result.transcript || '',
       subtitle_count: result.subtitle_count,
       subtitle_segments: result.subtitle_segments || [],
+      chapters: result.chapters || [],
       mode: result.mode || mode,
       // On update, omit notes/tags/category so the server keeps the user's
       // existing values instead of wiping them with the fresh task's defaults.
@@ -676,6 +688,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, ini
         transcript: data.transcript || '',
         subtitle_count: data.subtitle_count,
         subtitle_segments: data.subtitle_segments || [],
+        chapters: data.chapters || [],
         mode: data.mode || mode,
         category: config.default_category || '待整理',
         tags: data.suggested_tags || [],
@@ -825,6 +838,26 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, ini
                   </div>
                 </div>
               </div>
+              {chapters.length > 0 && (
+                <div className="rounded-lg p-4 space-y-2" style={darkCardStyle}>
+                  <div className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>章节</div>
+                  <div className="space-y-1 max-h-[320px] overflow-y-auto">
+                    {chapters.map((ch, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => seekVideo(ch.from)}
+                        className="w-full text-left px-2.5 py-1.5 rounded-md transition-colors hover:brightness-110"
+                        style={{ color: 'var(--steel)', background: 'var(--surface)' }}
+                      >
+                        <span className="block font-mono text-xs tabular-nums" style={{ color: muted }}>{ch.timestamp}</span>
+                        <span className="block truncate text-xs font-medium" style={{ color: 'var(--ink)' }}>{ch.title}</span>
+                        {ch.detail && <span className="block truncate text-[11px]" style={{ color: 'var(--steel)' }}>{ch.detail}</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <DarkButton variant="primary" onClick={handleSave} disabled={saved}><Save className="w-4 h-4" />{saved ? '已收藏' : savedItemId ? '更新收藏' : '保存到收藏库'}</DarkButton>
 
               {onOpenItem && similarItems.length > 0 && (

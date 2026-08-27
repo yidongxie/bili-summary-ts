@@ -21,7 +21,10 @@ setInterval(() => cleanupExpiredBuckets(), 10 * 60 * 1000).unref?.();
 
 export function getRateLimitKey(req: Request, scope: string, subject = ""): string {
   const ip = req.ip || req.socket.remoteAddress || "unknown";
-  return [scope, subject || ip, ip].join(":");
+  // Subject-scoped buckets (e.g. email) must NOT be tied to the caller's IP,
+  // otherwise the limit silently resets per-IP and is trivially bypassed.
+  // IP-only buckets keep the ip component so per-IP limits still apply.
+  return subject ? `${scope}:${subject}` : `${scope}:${ip}`;
 }
 
 export function consumeRateLimit(key: string, limit: number, windowMs: number) {

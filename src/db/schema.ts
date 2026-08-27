@@ -7,6 +7,7 @@ import fs from "fs";
 export interface DbUser {
   id: number;
   github_id: number | null;
+  wechat_openid: string | null;
   email: string;
   display_name: string;
   avatar_url: string;
@@ -324,6 +325,16 @@ export function createDb(dataDir: string): Database.Database {
   if (!haveUsers.has("is_admin")) {
     db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0");
   }
+  if (!haveUsers.has("wechat_openid")) {
+    db.exec("ALTER TABLE users ADD COLUMN wechat_openid TEXT");
+  }
+  try {
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_wechat_openid ON users(wechat_openid) WHERE wechat_openid IS NOT NULL");
+  } catch { /* ignore */ }
+  // Backfill: WeChat openIds were historically stored as TEXT inside github_id.
+  try {
+    db.exec("UPDATE users SET wechat_openid = github_id WHERE typeof(github_id) = 'text' AND (wechat_openid IS NULL OR wechat_openid = '')");
+  } catch { /* ignore */ }
 
   const cols = db.prepare("PRAGMA table_info(user_configs)").all() as Array<{ name: string }>;
   const have = new Set(cols.map((c) => c.name));
@@ -336,6 +347,15 @@ export function createDb(dataDir: string): Database.Database {
   if (!have.has("embedding_model")) {
     db.exec("ALTER TABLE user_configs ADD COLUMN embedding_model TEXT NOT NULL DEFAULT 'BAAI/bge-m3'");
   }
+  if (!have.has("vision_model")) {
+    db.exec("ALTER TABLE user_configs ADD COLUMN vision_model TEXT NOT NULL DEFAULT ''");
+  }
+  if (!have.has("api_token")) {
+    db.exec("ALTER TABLE user_configs ADD COLUMN api_token TEXT NOT NULL DEFAULT ''");
+  }
+  try {
+    db.exec("CREATE INDEX IF NOT EXISTS idx_user_configs_api_token ON user_configs(api_token)");
+  } catch { /* ignore */ }
 
   // Migration: add pic column for cover image
   const libCols = db.prepare("PRAGMA table_info(library_items)").all() as Array<{ name: string }>;
@@ -345,6 +365,9 @@ export function createDb(dataDir: string): Database.Database {
   }
   if (!haveLib.has("subtitle_segments")) {
     db.exec("ALTER TABLE library_items ADD COLUMN subtitle_segments TEXT NOT NULL DEFAULT ''");
+  }
+  if (!haveLib.has("chapters_json")) {
+    db.exec("ALTER TABLE library_items ADD COLUMN chapters_json TEXT NOT NULL DEFAULT ''");
   }
 
   // Migration: themes.synthesis (persisted cross-video synthesis)

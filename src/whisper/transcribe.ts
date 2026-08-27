@@ -7,6 +7,7 @@ import https from 'https';
 import http from 'http';
 import { URL } from 'url';
 import { spawn } from 'child_process';
+import { isSafeUpstreamUrl } from '../common/urlSafety';
 // Resolve a working ffmpeg binary path. Order of preference:
 //   1. FFMPEG_PATH env var (set by the deploy script to a static binary)
 //   2. @ffmpeg-installer/ffmpeg npm bundle (no postinstall network needed)
@@ -250,6 +251,10 @@ function postMultipartRaw(
   withWordTimestamps: boolean,
 ): Promise<{ text: string; segments?: TranscribedSegment[] }> {
   return new Promise((resolve, reject) => {
+    if (!isSafeUpstreamUrl(config.baseUrl)) {
+      reject(new Error('不允许连接到该地址'));
+      return;
+    }
     const base = config.baseUrl.replace(/\/+$/, '');
     const url = new URL(base + '/audio/transcriptions');
     const boundary = '----BiliStudyBoundary' + Math.random().toString(16).slice(2);

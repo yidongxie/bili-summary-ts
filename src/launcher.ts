@@ -2,6 +2,9 @@
 
 import net from "net";
 import http from "http";
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
 import { exec } from "child_process";
 import { startServer } from "./index";
 
@@ -56,13 +59,28 @@ async function main() {
   const port = await findFreePort();
   console.log(`端口: ${port}`);
 
-  // Generate a random encryption key for local dev.
-  // This key only needs to be stable within a dev session so previously-encrypted
-  // config values stored in SQLite remain readable across restarts.
-  // For production deployments, ENCRYPTION_KEY must be set in the environment.
+  // Use a stable encryption key persisted to data/.bilistudy-secret so that
+  // API keys / cookies already encrypted in SQLite remain readable across
+  // restarts. A fresh key is generated only on first run. Production sets
+  // ENCRYPTION_KEY in the environment instead.
   if (!process.env.ENCRYPTION_KEY) {
-    process.env.ENCRYPTION_KEY = require("crypto").randomBytes(32).toString("hex");
-    console.warn("[launcher] Auto-generated ENCRYPTION_KEY — will change each run.");
+    const secretFile = path.join(process.cwd(), "data", ".bilistudy-secret");
+    let key = "";
+    try {
+      if (fs.existsSync(secretFile)) key = fs.readFileSync(secretFile, "utf-8").trim();
+    } catch {
+      key = "";
+    }
+    if (!key) {
+      key = crypto.randomBytes(32).toString("hex");
+      try {
+        fs.mkdirSync(path.dirname(secretFile), { recursive: true });
+        fs.writeFileSync(secretFile, key, { mode: 0o600 });
+      } catch (err: any) {
+        console.warn("[launcher] Unable to persist ENCRYPTION_KEY:", err?.message || err);
+      }
+    }
+    process.env.ENCRYPTION_KEY = key;
   }
 
   await startServer(HOST, port);

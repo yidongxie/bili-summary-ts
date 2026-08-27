@@ -25,7 +25,7 @@ import { generateEmbeddingForItem, embedTexts, getEmbeddingConfig } from "../llm
 import { searchLibrarySemantic, searchSimilarItems, getItemVector, listMissingEmbeddingItems } from "../db/embeddingStore";
 
 function requireUser(req: Request, res: Response): number | null {
-  const user = (req as any).user;
+  const user = req.user;
   if (!user) { res.status(401).json({ success: false, error: "请先登录" }); return null; }
   return user.id;
 }
@@ -35,7 +35,7 @@ export function createLibraryRouter(db: Database.Database): Router {
 
   // ── Library list ────────────────────────────────────────────────────
   router.get("/api/library", (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId) {
       res.json({ success: true, items: [], categories: [], tags: [], total: 0, page: 1, page_size: 20 });
       return;
@@ -84,7 +84,7 @@ export function createLibraryRouter(db: Database.Database): Router {
   });
 
   router.get("/api/library/check/:bvid", (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId) { res.json({ success: true, saved: false }); return; }
     const found = findLibraryItemByBvid(db, userId, req.params.bvid);
     res.json({ success: true, saved: !!found, item: found || undefined });
@@ -121,7 +121,7 @@ export function createLibraryRouter(db: Database.Database): Router {
   });
 
   router.get("/api/library/:id", (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId) { res.status(401).json({ success: false, error: "请先登录" }); return; }
     const item = findLibraryItem(db, userId, req.params.id);
     if (!item) { res.json({ success: false, error: "未找到收藏" }); return; }
@@ -129,7 +129,7 @@ export function createLibraryRouter(db: Database.Database): Router {
   });
 
   router.post("/api/library", async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId) { res.status(401).json({ success: false, error: "请先登录" }); return; }
     const video = req.body.video ?? {};
     const summary = String(req.body.summary ?? "").trim();
@@ -146,6 +146,7 @@ export function createLibraryRouter(db: Database.Database): Router {
       transcript: String(req.body.transcript ?? "").trim(),
       subtitle_count: Number(req.body.subtitle_count ?? 0) || 0,
       subtitle_segments: Array.isArray(req.body.subtitle_segments) ? req.body.subtitle_segments : undefined,
+      chapters: Array.isArray(req.body.chapters) ? req.body.chapters : undefined,
       // Undefined when omitted so an update preserves the stored values.
       category: req.body.category == null ? undefined : String(req.body.category).trim() || "待整理",
       tags: Array.isArray(req.body.tags) ? req.body.tags : undefined,
@@ -170,7 +171,7 @@ export function createLibraryRouter(db: Database.Database): Router {
     res.json({ success: true, item, duplicates });
   });
   router.delete("/api/library/:id", (req: Request, res: Response) => {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId) { res.status(401).json({ success: false, error: "请先登录" }); return; }
     const ok = deleteLibraryItem(db, userId, req.params.id);
     res.json({ success: ok, error: ok ? undefined : "未找到收藏" });

@@ -1,6 +1,7 @@
 ﻿/** Config store – read/write user configs with encryption */
 
 import Database from "better-sqlite3";
+import crypto from "crypto";
 import { encrypt, decrypt } from "./crypto";
 
 export interface PublicConfig {
@@ -10,11 +11,13 @@ export interface PublicConfig {
   whisper_base_url: string;
   whisper_model: string;
   embedding_model: string;
+  vision_model: string;
   obsidian_folder: string;
   obsidian_vault_name: string;
   api_key_set: boolean;
   whisper_api_key_set: boolean;
   yt_dlp_cookies_set: boolean;
+  api_token_set: boolean;
 }
 
 export interface FullConfig {
@@ -24,11 +27,13 @@ export interface FullConfig {
   whisper_base_url: string;
   whisper_model: string;
   embedding_model: string;
+  vision_model: string;
   deepseek_base_url: string;
   deepseek_model: string;
   obsidian_folder: string;
   obsidian_vault_name: string;
   default_category: string;
+  api_token: string;
 }
 
 export function getPublicConfig(db: Database.Database, userId: number): PublicConfig {
@@ -41,11 +46,13 @@ export function getPublicConfig(db: Database.Database, userId: number): PublicCo
       whisper_base_url: "https://api.siliconflow.cn/v1",
       whisper_model: "TeleAI/TeleSpeechASR",
       embedding_model: "BAAI/bge-m3",
+      vision_model: "",
       obsidian_folder: "BiliStudy",
       obsidian_vault_name: "",
       api_key_set: false,
       whisper_api_key_set: false,
       yt_dlp_cookies_set: false,
+      api_token_set: false,
     };
   }
   return {
@@ -55,11 +62,13 @@ export function getPublicConfig(db: Database.Database, userId: number): PublicCo
     whisper_base_url: row.whisper_base_url || "https://api.siliconflow.cn/v1",
     whisper_model: row.whisper_model || "TeleAI/TeleSpeechASR",
     embedding_model: row.embedding_model || "BAAI/bge-m3",
+    vision_model: row.vision_model || "",
     obsidian_folder: row.obsidian_folder || "BiliStudy",
     obsidian_vault_name: row.obsidian_vault_name || "",
     api_key_set: !!row.api_key_enc,
     whisper_api_key_set: !!row.whisper_api_key_enc,
     yt_dlp_cookies_set: !!row.yt_dlp_cookies_enc,
+    api_token_set: !!row.api_token,
   };
 }
 
@@ -73,11 +82,13 @@ export function getDecryptedConfig(db: Database.Database, userId: number): FullC
       whisper_base_url: "https://api.siliconflow.cn/v1",
       whisper_model: "TeleAI/TeleSpeechASR",
       embedding_model: "BAAI/bge-m3",
+      vision_model: "",
       deepseek_base_url: "https://api.deepseek.com/v1",
       deepseek_model: "deepseek-v4-flash",
       obsidian_folder: "BiliStudy",
       obsidian_vault_name: "",
       default_category: "待整理",
+      api_token: "",
     };
   }
   return {
@@ -87,11 +98,13 @@ export function getDecryptedConfig(db: Database.Database, userId: number): FullC
     whisper_base_url: row.whisper_base_url || "https://api.siliconflow.cn/v1",
     whisper_model: row.whisper_model || "TeleAI/TeleSpeechASR",
     embedding_model: row.embedding_model || "BAAI/bge-m3",
+    vision_model: row.vision_model || "",
     deepseek_base_url: row.deepseek_base_url || "https://api.deepseek.com/v1",
     deepseek_model: row.deepseek_model || "deepseek-v4-flash",
     obsidian_folder: row.obsidian_folder || "BiliStudy",
     obsidian_vault_name: row.obsidian_vault_name || "",
     default_category: row.default_category || "待整理",
+    api_token: row.api_token || "",
   };
 }
 
@@ -143,6 +156,7 @@ export function saveConfig(
   if ("whisper_base_url" in patch) { updates.push("whisper_base_url = @whisper_base_url"); params.whisper_base_url = patch.whisper_base_url; }
   if ("whisper_model" in patch) { updates.push("whisper_model = @whisper_model"); params.whisper_model = patch.whisper_model; }
   if ("embedding_model" in patch) { updates.push("embedding_model = @embedding_model"); params.embedding_model = patch.embedding_model; }
+  if ("vision_model" in patch) { updates.push("vision_model = @vision_model"); params.vision_model = patch.vision_model; }
   if ("deepseek_base_url" in patch) { updates.push("deepseek_base_url = @deepseek_base_url"); params.deepseek_base_url = patch.deepseek_base_url; }
   if ("deepseek_model" in patch) { updates.push("deepseek_model = @deepseek_model"); params.deepseek_model = patch.deepseek_model; }
   if ("obsidian_folder" in patch) { updates.push("obsidian_folder = @obsidian_folder"); params.obsidian_folder = patch.obsidian_folder; }
@@ -153,4 +167,25 @@ export function saveConfig(
 
   params.user_id = userId;
   db.prepare(`UPDATE user_configs SET ${updates.join(", ")} WHERE user_id = @user_id`).run(params);
+}
+
+// ── API token (MCP / OpenAPI / agent access) ─────────────────────────
+
+export function generateApiToken(db: Database.Database, userId: number): string {
+  const token = "bs_" + crypto.randomBytes(24).toString("hex");
+  db.prepare("INSERT OR IGNORE INTO user_configs (user_id) VALUES (?)").run(userId);
+  db.prepare("UPDATE user_configs SET api_token = ? WHERE user_id = ?").run(token, userId);
+  return token;
+}
+
+export function getApiToken(db: Database.Database, userId: number): string {
+  const row = db.prepare("SELECT api_token FROM user_configs WHERE user_id = ?").get(userId) as { api_token?: string } | undefined;
+  return row?.api_token || "";
+}
+
+export function verifyApiToken(db: Database.Database, token: string): number | null {
+  const clean = String(token || "").trim();
+  if (!clean) return null;
+  const row = db.prepare("SELECT user_id FROM user_configs WHERE api_token = ?").get(clean) as { user_id: number } | undefined;
+  return row?.user_id ?? null;
 }

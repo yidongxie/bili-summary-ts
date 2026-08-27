@@ -4,6 +4,7 @@ import { formatDuration } from "../common/date";
 
 // Re-export so existing callers of routes/utils keep working.
 export { formatDuration };
+export { isSafeUpstreamUrl } from "../common/urlSafety";
 
 /** e.g. "2026-07-28 15:55:47" */
 export function nowSql(): string {
@@ -65,27 +66,6 @@ export function isAllowedAudioProxyUrl(rawUrl: string): boolean {
   if (parsed.protocol !== "https:") return false;
   const host = parsed.hostname.toLowerCase();
   return host === "media.xyzcdn.net" || host.endsWith(".media.xyzcdn.net");
-}
-
-/**
- * Guard against SSRF: reject non-http(s) URLs and loopback / link-local /
- * cloud-metadata hosts (localhost, 127.0.0.0/8, 0.0.0.0, 169.254.0.0/16, ::1).
- * Private LAN ranges (10.x, 172.16-31.x, 192.168.x) are still allowed so
- * self-hosted LLM endpoints keep working.
- */
-export function isSafeUpstreamUrl(rawUrl: string): boolean {
-  let parsed: URL;
-  try { parsed = new URL(rawUrl); } catch { return false; }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
-  const host = parsed.hostname.toLowerCase();
-  if (host === "localhost" || host === "0.0.0.0" || host === "::" || host === "::1") return false;
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
-    const a = Number(host.split(".")[0]);
-    const b = Number(host.split(".")[1]);
-    if (a === 127 || a === 0) return false; // loopback / unspecified
-    if (a === 169 && b === 254) return false; // link-local / cloud metadata
-  }
-  return true;
 }
 
 function yamlString(value: unknown): string {

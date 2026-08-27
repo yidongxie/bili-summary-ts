@@ -15,11 +15,13 @@ export type AppConfig = {
   api_key_set?: boolean;
   whisper_api_key_set?: boolean;
   yt_dlp_cookies_set?: boolean;
+  api_token_set?: boolean;
   deepseek_model?: string;
   deepseek_base_url?: string;
   whisper_base_url?: string;
   whisper_model?: string;
   embedding_model?: string;
+  vision_model?: string;
   default_category?: string;
   obsidian_vault_name?: string;
   obsidian_folder?: string;
@@ -55,6 +57,13 @@ export type SubtitleSegment = {
   content: string;
 };
 
+export type Chapter = {
+  from: number;
+  to: number;
+  title: string;
+  detail?: string;
+};
+
 export type SummaryResult = {
   id?: string;
   type?: 'bilibili' | 'xiaoyuzhou' | 'douyin' | 'xiaohongshu' | 'wechat' | 'youtube' | string;
@@ -64,6 +73,7 @@ export type SummaryResult = {
   transcript?: string;
   subtitle_count?: number;
   subtitle_segments?: SubtitleSegment[];
+  chapters?: Chapter[];
   mode?: string;
   suggested_tags?: string[];
   transcript_source?: 'whisper' | 'subtitle' | string;
@@ -82,6 +92,7 @@ export type LibraryItem = {
   transcript?: string;
   subtitle_count?: number;
   subtitle_segments?: SubtitleSegment[];
+  chapters?: Chapter[];
   category?: string;
   tags?: string[];
   notes?: string;
@@ -246,6 +257,14 @@ export function testWhisperConfig(payload: { whisper_api_key?: string; whisper_b
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export function getApiTokenStatus() {
+  return request<{ success: boolean; has_token: boolean }>('/api/config/api-token');
+}
+
+export function generateApiToken() {
+  return request<{ success: boolean; token: string }>('/api/config/api-token', { method: 'POST' });
 }
 
 
@@ -448,6 +467,7 @@ export function saveLibrary(payload: {
   transcript?: string;
   subtitle_count?: number;
   subtitle_segments?: SubtitleSegment[];
+  chapters?: Chapter[];
   mode?: string;
   category?: string;
   tags?: string[];
