@@ -1,27 +1,41 @@
 ﻿#!/bin/bash
-# BiliStudy V2 - 一键部署脚本（GitHub Actions + 阿里云）
+# BiliStudy V2 - 一键部署脚本
+# 用法（在服务器上，root 或 sudo）:
+#   REPO_URL=https://github.com/你的仓库.git DOMAIN=你的域名.com bash deploy.sh
+# 说明:
+#   - REPO_URL: 你的 git 仓库地址（默认当前 origin）
+#   - DOMAIN:   你的域名（留空则用服务器公网 IP 访问）
 set -e
 
 echo "===== BiliStudy V2 部署脚本 ====="
 
-# 1. 安装 Node.js
+REPO_URL="${REPO_URL:-https://github.com/yidongxie/bili-summary-ts.git}"
+DOMAIN="${DOMAIN:-}"
+
+# 1. 系统依赖（better-sqlite3 编译 + ffmpeg 转码/下载/抽帧 + yt-dlp 解析）
+echo ">>> 安装系统依赖..."
+apt-get update
+apt-get install -y build-essential python3 git curl ffmpeg ca-certificates
+
+# 2. 安装 Node.js 22
 if ! command -v node &> /dev/null; then
-  echo ">>> 安装 Node.js..."
+  echo ">>> 安装 Node.js 22..."
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs
 fi
-
 echo "Node.js: $(node -v)"
 
-# 2. 安装 git
-if ! command -v git &> /dev/null; then
-  echo ">>> 安装 git..."
-  apt-get install -y git
+# 3. 安装 yt-dlp（独立二进制，避免 pip 的 externally-managed 问题）
+if ! command -v yt-dlp &> /dev/null; then
+  echo ">>> 安装 yt-dlp..."
+  curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+  chmod +x /usr/local/bin/yt-dlp
 fi
+echo "yt-dlp: $(yt-dlp --version 2>/dev/null || echo '已安装')"
 
-# 3. 拉取代码
+# 4. 拉取代码
 REPO_DIR="/opt/bili-summary"
-if [ -d "$REPO_DIR" ]; then
+if [ -d "$REPO_DIR/.git" ]; then
   echo ">>> 更新代码..."
   cd "$REPO_DIR"
   git fetch origin
@@ -29,13 +43,11 @@ if [ -d "$REPO_DIR" ]; then
   git pull origin v2
 else
   echo ">>> 克隆代码..."
-  git clone -b v2 https://github.com/yidongxie/bili-summary-ts.git "$REPO_DIR"
+  git clone -b v2 "$REPO_URL" "$REPO_DIR"
   cd "$REPO_DIR"
 fi
 
-# 4. 安装依赖
-# 使用 npm ci 严格按照 package-lock.json 安装，保证服务器和本地构建产物一致。
-# 如果仓库里没有 lockfile（首次升级时），fall back 到 npm install。
+# 5. 安装依赖
 echo ">>> 安装 npm 依赖..."
 if [ -f package-lock.json ]; then
   npm ci
@@ -43,39 +55,37 @@ else
   npm install
 fi
 
-# 5. 编译后端 TypeScript
-echo ">>> 编译 TypeScript (后端)..."
+# 6. 构建（后端 tsc + 前端 vite）
+echo ">>> 编译后端 TypeScript..."
 npx tsc
-
-# 5b. 构建前端 (Vite -> public/dist/)
-echo ">>> 构建前端 (vite build)..."
+echo ">>> 构建前端..."
 npm run build:web
 
-# 6. 生成 ENCRYPTION_KEY
+# 7. 生成 .env
 ENV_FILE="$REPO_DIR/.env"
+gen() { node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"; }
 if [ ! -f "$ENV_FILE" ]; then
-  KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
-  SESSION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
-  echo "ENCRYPTION_KEY=$KEY" > "$ENV_FILE"
-  echo "SESSION_SECRET=$SESSION_KEY" >> "$ENV_FILE"
-  echo "PORT=8080" >> "$ENV_FILE"
-  echo "NODE_ENV=production" >> "$ENV_FILE"
-  echo "BASE_URL=https://xydong.site" >> "$ENV_FILE"
-  echo ">>> 已生成 ENCRYPTION_KEY 和 SESSION_SECRET"
+  cat > "$ENV_FILE" <<EOF
+ENCRYPTION_KEY=$(gen)
+SESSION_SECRET=$(gen)
+PORT=8080
+NODE_ENV=production
+BASE_URL=https://${DOMAIN}
+EOF
+  echo ">>> 已生成 .env（含 ENCRYPTION_KEY / SESSION_SECRET）"
 fi
-if ! grep -q '^SESSION_SECRET=' "$ENV_FILE"; then
-  echo "SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")" >> "$ENV_FILE"
-fi
-if ! grep -q '^NODE_ENV=' "$ENV_FILE"; then
-  echo "NODE_ENV=production" >> "$ENV_FILE"
-fi
-if ! grep -q '^BASE_URL=' "$ENV_FILE"; then
-  echo "BASE_URL=https://xydong.site" >> "$ENV_FILE"
+# 幂等补齐缺失字段
+grep -q '^ENCRYPTION_KEY=' "$ENV_FILE" || echo "ENCRYPTION_KEY=$(gen)" >> "$ENV_FILE"
+grep -q '^SESSION_SECRET=' "$ENV_FILE" || echo "SESSION_SECRET=$(gen)" >> "$ENV_FILE"
+grep -q '^NODE_ENV=' "$ENV_FILE" || echo "NODE_ENV=production" >> "$ENV_FILE"
+grep -q '^PORT=' "$ENV_FILE" || echo "PORT=8080" >> "$ENV_FILE"
+if [ -n "$DOMAIN" ] && ! grep -q '^BASE_URL=' "$ENV_FILE"; then
+  echo "BASE_URL=https://${DOMAIN}" >> "$ENV_FILE"
 fi
 
-source "$ENV_FILE"
+set -a; source "$ENV_FILE"; set +a
 
-# 7. 使用 PM2 保活
+# 8. 用 PM2 保活
 if ! command -v pm2 &> /dev/null; then
   echo ">>> 安装 pm2..."
   npm install -g pm2
@@ -83,16 +93,19 @@ fi
 
 echo ">>> 启动服务..."
 pm2 delete bilistudy 2>/dev/null || true
-ENCRYPTION_KEY=$ENCRYPTION_KEY SESSION_SECRET=$SESSION_SECRET NODE_ENV=${NODE_ENV:-production} BASE_URL=${BASE_URL:-https://xydong.site} FFMPEG_PATH=${FFMPEG_PATH:-} YT_DLP_PATH=${YT_DLP_PATH:-} YT_DLP_COOKIES_FILE=${YT_DLP_COOKIES_FILE:-} YT_DLP_BROWSER_COOKIES=${YT_DLP_BROWSER_COOKIES:-} pm2 start dist/index.js --name bilistudy --max-memory-restart 1G
+pm2 start dist/index.js --name bilistudy --max-memory-restart 1G
 pm2 status bilistudy
 
-# 8. 保存 PM2 配置，开机自启
+# 9. 开机自启
 pm2 save
-pm2 startup
+pm2 startup | tail -n 1 | bash
 
 echo ""
 echo "===== 部署完成 ====="
-echo "访问地址: http://$(curl -s ifconfig.me):8080"
-echo "管理命令: pm2 logs bilistudy  (查看日志)"
-echo "          pm2 restart bilistudy (重启)"
-echo "          pm2 stop bilistudy    (停止)"
+if [ -n "$DOMAIN" ]; then
+  echo "访问: https://${DOMAIN}（需再配 Nginx + HTTPS，见 ./nginx-setup.sh）"
+else
+  echo "访问: http://$(curl -s ifconfig.me):8080"
+fi
+echo "日志: pm2 logs bilistudy"
+echo "重启: pm2 restart bilistudy"

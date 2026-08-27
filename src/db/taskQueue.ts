@@ -9,6 +9,7 @@ import { isYtDlpAvailable, extractVideoInfo as extractWithYtDlp, extractVideoStr
 import { transcribeBilibiliAudio, transcribeAudioUrl, transcribeLocalMedia } from "../whisper/transcribe";
 import { summarizeText, suggestTags, generateChapters, SummaryMode } from "../llm/summarize";
 import { enforceRateLimit } from "../common/rateLimit";
+import { isPrivateEndpoint } from "../common/urlSafety";
 import { getDecryptedConfig } from "./configStore";
 import { downloadWithDouyinDownloader, isDouyinDownloaderAvailable } from "../common/DouyinDownloaderFallback";
 import { formatDuration } from "../common/date";
@@ -351,6 +352,12 @@ function getWhisperConfig(db: Database.Database, userEmail: string, body: any, c
         whisperModel = adminConfig.whisper_model || whisperModel;
       }
     }
+  }
+
+  // Self-hosted ASR (e.g. local FunASR) needs no API key — send a dummy one so
+  // the request still goes out; the local server ignores Authorization.
+  if (!whisperApiKey && isPrivateEndpoint(whisperBaseUrl)) {
+    whisperApiKey = "local";
   }
 
   return { apiKey: whisperApiKey, baseUrl: whisperBaseUrl, model: whisperModel };

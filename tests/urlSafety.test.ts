@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isSafeUpstreamUrl } from "../src/common/urlSafety";
+import { isSafeUpstreamUrl, isPrivateEndpoint } from "../src/common/urlSafety";
 
 test("allows normal https and private LAN", () => {
   assert.equal(isSafeUpstreamUrl("https://api.deepseek.com/v1"), true);
@@ -20,4 +20,13 @@ test("blocks non-http protocols and garbage", () => {
   assert.equal(isSafeUpstreamUrl("file:///etc/passwd"), false);
   assert.equal(isSafeUpstreamUrl("ftp://example.com"), false);
   assert.equal(isSafeUpstreamUrl("not a url"), false);
+});
+
+test("isPrivateEndpoint detects self-hosted hosts", () => {
+  assert.equal(isPrivateEndpoint("http://localhost:8000/v1"), true);
+  assert.equal(isPrivateEndpoint("http://127.0.0.1:8000"), true);
+  assert.equal(isPrivateEndpoint("http://192.168.1.10:8000"), true);
+  assert.equal(isPrivateEndpoint("http://10.0.0.5:8000"), true);
+  assert.equal(isPrivateEndpoint("http://172.16.0.2:8000"), true);
+  assert.equal(isPrivateEndpoint("https://api.siliconflow.cn/v1"), false);
 });

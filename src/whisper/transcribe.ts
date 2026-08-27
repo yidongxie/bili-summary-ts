@@ -55,6 +55,10 @@ const MAX_TRANSCRIBE_UPLOAD_BYTES = parseInt(process.env.MAX_TRANSCRIBE_UPLOAD_B
 // Long audio is split into chunks of this many seconds and transcribed separately,
 // then merged back with correct time offsets (ASR providers often cap single-request length).
 const MAX_TRANSCRIBE_DURATION_SECONDS = parseInt(process.env.MAX_TRANSCRIBE_DURATION_SECONDS || "1800", 10);
+// Number of audio chunks transcribed in parallel. Long audio is split into
+// ~30-min chunks; transcribing them concurrently (instead of one-by-one) is the
+// single biggest speedup for 1h+ videos/podcasts.
+const MAX_CONCURRENT_TRANSCRIBE = Math.max(1, parseInt(process.env.MAX_CONCURRENT_TRANSCRIBE || "3", 10));
 
 function assertUploadSize(filePath: string) {
   const size = fs.statSync(filePath).size;
@@ -158,7 +162,9 @@ function downloadToFile(url: string, dest: string, redirects = 5): Promise<void>
 
 /** Run ffmpeg to convert any input audio/video into a 16k mono mp3 (small + Whisper-friendly). */
 function ffmpegToMp3(input: string, output: string): Promise<void> {
-  return runFfmpeg(['-y', '-i', input, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k', output]);
+  // -threads 0 lets ffmpeg use all cores for decoding (lame MP3 encoding stays
+  // single-threaded, but the decode/decimate pass benefits).
+  return runFfmpeg(['-y', '-threads', '0', '-i', input, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k', output]);
 }
 
 /** Generic ffmpeg wrapper that resolves on exit 0 and rejects otherwise. */
@@ -178,7 +184,10 @@ function runFfmpeg(args: string[]): Promise<void> {
 /** Probe an audio file's duration in seconds (0 on failure). */
 function getAudioDuration(filePath: string): Promise<number> {
   return new Promise((resolve) => {
-    const p = spawn(ffmpegBinary, ['-i', filePath, '-f', 'null', '-'], { stdio: ['ignore', 'ignore', 'pipe'] });
+    // `ffmpeg -i file` (no output) reads only the container header and exits
+    // immediately, printing "Duration:" to stderr. Previously we used
+    // `-f null -` which DECODED the entire file just to get the duration.
+    const p = spawn(ffmpegBinary, ['-i', filePath], { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     p.stderr.on('data', (c) => { stderr += c.toString(); });
     p.on('close', () => {
@@ -337,10 +346,24 @@ async function postMultipartTranscribe(
   }
 }
 
+/** Run `fn` over `items` with bounded concurrency, preserving order. */
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 /**
  * Transcribe a 16k-mono mp3, splitting long audio into chunks and merging the
  * results with correct time offsets so 1-3h podcasts work even when the ASR
- * provider caps single-request length.
+ * provider caps single-request length. Chunks are transcribed in parallel.
  */
 async function transcribeFileSmart(
   filePath: string,
@@ -355,11 +378,15 @@ async function transcribeFileSmart(
   const chunksDir = path.join(path.dirname(filePath), 'chunks');
   fs.mkdirSync(chunksDir, { recursive: true });
   const chunks = await splitAudio(filePath, chunksDir, MAX_TRANSCRIBE_DURATION_SECONDS);
+
+  const results = await mapWithConcurrency(chunks, MAX_CONCURRENT_TRANSCRIBE, async (chunk) => {
+    assertUploadSize(chunk.file);
+    return { chunk, r: await postMultipartTranscribe(chunk.file, config) };
+  });
+
   const segments: TranscribedSegment[] = [];
   const texts: string[] = [];
-  for (const chunk of chunks) {
-    assertUploadSize(chunk.file);
-    const r = await postMultipartTranscribe(chunk.file, config);
+  for (const { chunk, r } of results) {
     texts.push(r.text);
     if (r.segments?.length) {
       for (const s of r.segments) {

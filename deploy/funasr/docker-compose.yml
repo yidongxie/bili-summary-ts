@@ -1,0 +1,16 @@
+services:
+  funasr:
+    build: .
+    container_name: funasr
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # paraformer | sensevoice | paraformer-en | fun-asr-nano
+      - MODEL=paraformer
+    # Persist downloaded models so restarts don't re-download (a few hundred MB).
+    volumes:
+      - funasr-cache:/root/.cache
+
+volumes:
+  funasr-cache:
