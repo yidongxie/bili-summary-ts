@@ -48,10 +48,31 @@ certbot --nginx -d 你的域名.com
 
 ## 三、自建 FunASR（可选，替代云端转写）
 
+> ⚠️ 内存要求：`paraformer`（中文最稳）约 1.5~2GB，`sensevoice`（最轻）约 1GB。
+> **1.6GB 内存的服务器跑不动**（available 常不足 600MB，会 OOM 或拖垮 MySQL/Node）。
+> 建议至少 4GB 内存再自建。
+
 ```bash
 cd deploy/funasr
 docker compose up -d --build
 # 首次启动自动从 ModelScope 下载模型（几百 MB）
+```
+
+pip 方式（不用 Docker，服务器已有 Python3 + PM2 时更省事）：
+
+```bash
+python3 -m venv /opt/funasr
+source /opt/funasr/bin/activate
+pip install --upgrade pip
+pip install torch torchaudio --index-url https://mirrors.aliyun.com/pytorch-wheels/cpu/ --extra-index-url https://mirrors.aliyun.com/pypi/simple/
+pip install "funasr>=1.3.30" fastapi uvicorn python-multipart modelscope -i https://mirrors.aliyun.com/pypi/simple/
+
+# 前台测试（看到 Uvicorn running 即成功，Ctrl+C 退出）
+funasr-server --model paraformer --device cpu --host 0.0.0.0 --port 8000
+
+# PM2 托管
+pm2 start "/opt/funasr/bin/funasr-server --model paraformer --device cpu --host 0.0.0.0 --port 8000" --name funasr
+pm2 save
 ```
 
 验证：
