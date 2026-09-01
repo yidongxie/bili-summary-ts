@@ -39,11 +39,11 @@ if [ -d "$REPO_DIR/.git" ]; then
   echo ">>> 更新代码..."
   cd "$REPO_DIR"
   git fetch origin
-  git checkout v2
-  git pull origin v2
+  git checkout main
+  git pull origin main
 else
   echo ">>> 克隆代码..."
-  git clone -b v2 "$REPO_URL" "$REPO_DIR"
+  git clone -b main "$REPO_URL" "$REPO_DIR"
   cd "$REPO_DIR"
 fi
 

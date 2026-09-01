@@ -20,7 +20,7 @@ curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr
 chmod +x /usr/local/bin/yt-dlp
 
 # 3. 拉代码（仓库地址/域名按需替换）
-git clone -b v2 https://github.com/yidongxie/bili-summary-ts.git /opt/bili-summary
+git clone -b main https://github.com/yidongxie/bili-summary-ts.git /opt/bili-summary
 cd /opt/bili-summary
 
 # 4. 构建
@@ -102,7 +102,7 @@ npm config get registry   # 确认是 registry.npmmirror.com
 **修复**：备份数据后原地硬切到已下载的远程引用（**无需联网**，对象已在本地 `.git` 里）：
 ```bash
 rm -f package-lock.json          # 删掉挡路的未跟踪 root lockfile
-git reset --hard origin/v2       # 切到新布局
+git reset --hard origin/main       # 切到新布局
 # 把 data 从旧嵌套位置迁到新根目录
 mkdir -p data && cp -a bili-summary-ts/data/. data/
 ```
@@ -111,7 +111,7 @@ mkdir -p data && cp -a bili-summary-ts/data/. data/
 **现象**：`fatal: unable to access ...: GnuTLS recv error (-110): The TLS connection was non-properly terminated.`
 **原因**：国内服务器直连 GitHub 被重置，且不稳定（`git fetch` 有时能过、`git clone` 常挂）。
 **对策**：
-- 优先用「已缓存的 objects 原地 `git reset --hard origin/v2`」（见坑 2），完全不走网络；
+- 优先用「已缓存的 objects 原地 `git reset --hard origin/main`」（见坑 2），完全不走网络；
 - 或挂代理 / 用 GitHub 镜像加速（如 `gitclone.com`、`ghproxy`，镜像地址时常变动）。
 
 ### 4. 数据迁移要「先停应用再备份」
@@ -135,7 +135,7 @@ FunASR 的 Docker 构建在海外源会卡：PyTorch CPU 轮子用 `https://mirr
 
 ```bash
 cd /opt/bili-summary
-git pull origin v2        # 国内服务器若失败，见「踩坑 3」
+git pull origin main        # 国内服务器若失败，见「踩坑 3」
 npm ci
 npx tsc
 npm run build:web
