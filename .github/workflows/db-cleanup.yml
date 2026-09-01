@@ -1,0 +1,59 @@
+name: DB cleanup
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Backup then remove redundant database copies
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.ALIYUN_HOST }}
+          username: ${{ secrets.ALIYUN_USER }}
+          key: ${{ secrets.ALIYUN_SSH_KEY }}
+          port: 22
+          command_timeout: 15m
+          script: |
+            set -e
+            BK=/opt/bili-summary/backups
+            mkdir -p "$BK"
+            TS=$(date +%Y%m%d-%H%M%S)
+            cd /opt/bili-summary/bili-summary-ts
+
+            echo "=== 0. fresh online backup before cleanup ==="
+            node -e '
+              (async () => {
+                const Database = require("./node_modules/better-sqlite3");
+                const db = new Database("./data/bilistudy.sqlite");
+                try { await db.backup(process.argv[1]); console.log("snapshot ok"); }
+                finally { db.close(); }
+              })().catch(e => { console.error("backup failed:", e.message); process.exit(1); });
+            ' "$BK/bilistudy-$TS.sqlite"
+            cp -a /opt/bili-summary/.env "$BK/bilistudy-$TS.env" 2>/dev/null || true
+            tar czf "$BK/bilistudy-$TS.tar.gz" -C "$BK" "bilistudy-$TS.sqlite" "bilistudy-$TS.env"
+            rm -f "$BK/bilistudy-$TS.sqlite" "$BK/bilistudy-$TS.env"
+            ls -1t "$BK"/*.tar.gz 2>/dev/null | tail -n +15 | xargs -r rm -f
+            echo "backup done"
+
+            echo "=== 1. remove empty-DB recovery-backup ==="
+            rm -rf /opt/bili-summary/recovery-backup
+            echo "removed recovery-backup"
+
+            echo "=== 2. remove legacy redundant /opt/bili-summary/data ==="
+            rm -rf /opt/bili-summary/data
+            echo "removed legacy data dir"
+
+            echo "=== 3. remove recycle-bin test databases ==="
+            find /.Recycle_bin -name "bilistudy.sqlite*" -delete 2>/dev/null || true
+            find /.Recycle_bin -type d -name "data" -empty -delete 2>/dev/null || true
+            echo "cleaned recycle bin"
+
+            echo "=== final DB state ==="
+            find / -name "bilistudy.sqlite*" 2>/dev/null | while read f; do
+              ls -la "$f" 2>/dev/null | awk '{print $5, $6, $7, $8, $9, $10}'
+            done
+            echo "=== backups ==="
+            ls -la "$BK"
+            echo "=== DONE ==="
