@@ -1,0 +1,55 @@
+name: Server survey
+
+on:
+  workflow_dispatch:
+
+jobs:
+  survey:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Survey server layout (read-only)
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.ALIYUN_HOST }}
+          username: ${{ secrets.ALIYUN_USER }}
+          key: ${{ secrets.ALIYUN_SSH_KEY }}
+          port: 22
+          command_timeout: 15m
+          script: |
+            echo "===== 1. /opt top level ====="
+            ls -la /opt/ 2>/dev/null
+            echo
+            echo "===== 2. /opt/bili-summary full ====="
+            ls -la /opt/bili-summary/ 2>/dev/null
+            echo
+            echo "===== 3. /opt/bili-summary/bili-summary-ts (app) ====="
+            ls -la /opt/bili-summary/bili-summary-ts/ 2>/dev/null
+            echo
+            echo "===== 4. /www top level (BT panel) ====="
+            ls -la /www/ 2>/dev/null
+            echo
+            echo "===== 5. /root and /home ====="
+            ls -la /root/ 2>/dev/null
+            ls -la /home/ 2>/dev/null
+            echo
+            echo "===== 6. node versions + pm2 ====="
+            which node 2>/dev/null; node -v 2>/dev/null
+            ls /www/server/nodejs/ 2>/dev/null
+            pm2 list 2>/dev/null
+            echo
+            echo "===== 7. nginx sites ====="
+            ls -la /www/server/panel/vhost/nginx/ 2>/dev/null || ls -la /etc/nginx/sites-enabled/ 2>/dev/null || echo "(nginx vhost dir not found)"
+            echo
+            echo "===== 8. recycle bin size + contents ====="
+            du -sh /.Recycle_bin 2>/dev/null
+            find /.Recycle_bin -maxdepth 1 -type d 2>/dev/null
+            echo
+            echo "===== 9. disk usage ====="
+            df -h / 2>/dev/null
+            echo
+            echo "===== 10. biggest dirs under /opt and /www (top 15) ====="
+            du -sh /opt/* /www/* 2>/dev/null | sort -rh | head -15
+            echo
+            echo "===== 11. any stray bilistudy / old app dirs ====="
+            find / -maxdepth 3 -type d -iname "*bilistudy*" 2>/dev/null
+            echo "===== DONE ====="
