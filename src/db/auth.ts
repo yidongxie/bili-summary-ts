@@ -58,6 +58,12 @@ export function createAuthRouter(db: Database.Database): Router {
   // ── Register ─────────────────────────────────────────────────────
   router.post("/api/auth/register", (req: Request, res: Response) => {
     try {
+      // Open registration is off by default (secure). Set ALLOW_REGISTRATION=true
+      // to enable public email sign-up. WeChat/GitHub login are unaffected.
+      if (process.env.ALLOW_REGISTRATION !== "true") {
+        res.status(403).json({ success: false, error: "注册已关闭，请联系管理员开通账号" });
+        return;
+      }
       if (!enforceRateLimit(req, res, "register", 5, 60 * 60 * 1000)) return;
       const email = String(req.body.email || "").trim().toLowerCase();
       const password = String(req.body.password || "");

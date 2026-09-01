@@ -173,12 +173,16 @@ export function saveConfig(
 
 export function generateApiToken(db: Database.Database, userId: number): string {
   const token = "bs_" + crypto.randomBytes(24).toString("hex");
+  // Store only a SHA-256 hash so a DB leak doesn't expose the raw token.
+  const hash = crypto.createHash("sha256").update(token).digest("hex");
   db.prepare("INSERT OR IGNORE INTO user_configs (user_id) VALUES (?)").run(userId);
-  db.prepare("UPDATE user_configs SET api_token = ? WHERE user_id = ?").run(token, userId);
+  db.prepare("UPDATE user_configs SET api_token = ? WHERE user_id = ?").run(hash, userId);
   return token;
 }
 
 export function getApiToken(db: Database.Database, userId: number): string {
+  // Returns the stored hash (truthy when a token exists). The raw token is
+  // only ever returned once, at generation time.
   const row = db.prepare("SELECT api_token FROM user_configs WHERE user_id = ?").get(userId) as { api_token?: string } | undefined;
   return row?.api_token || "";
 }
@@ -186,6 +190,12 @@ export function getApiToken(db: Database.Database, userId: number): string {
 export function verifyApiToken(db: Database.Database, token: string): number | null {
   const clean = String(token || "").trim();
   if (!clean) return null;
-  const row = db.prepare("SELECT user_id FROM user_configs WHERE api_token = ?").get(clean) as { user_id: number } | undefined;
-  return row?.user_id ?? null;
+  const hash = Buffer.from(crypto.createHash("sha256").update(clean).digest("hex"), "hex");
+  // Constant-time comparison against every stored token hash.
+  const rows = db.prepare("SELECT user_id, api_token FROM user_configs WHERE api_token != ''").all() as Array<{ user_id: number; api_token: string }>;
+  for (const row of rows) {
+    const stored = Buffer.from(row.api_token, "hex");
+    if (stored.length === hash.length && crypto.timingSafeEqual(stored, hash)) return row.user_id;
+  }
+  return null;
 }

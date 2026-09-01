@@ -2,12 +2,20 @@ import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
 import { getPublicConfig, getDecryptedConfig, saveConfig as saveUserConfig, generateApiToken, getApiToken } from "../db/configStore";
 import { isSafeUpstreamUrl } from "./utils";
+import { isSafePublicHttpUrl } from "../common/urlSafety";
 import { enforceRateLimit } from "../common/rateLimit";
 
 function requireUser(req: Request, res: Response): number | null {
   const user = req.user;
   if (!user) { res.status(401).json({ success: false, error: "请先登录" }); return null; }
   return user.id;
+}
+
+function isAdminUser(user: any): boolean {
+  if (!user) return false;
+  if (user.is_admin) return true;
+  const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "";
+  return !!ADMIN_EMAIL && String(user.email || "").trim().toLowerCase() === ADMIN_EMAIL;
 }
 
 export function createConfigRouter(db: Database.Database): Router {
@@ -43,6 +51,20 @@ export function createConfigRouter(db: Database.Database): Router {
   router.post("/api/config", (req: Request, res: Response) => {
     const userId = req.user?.id;
     if (!userId) { res.status(401).json({ success: false, error: "请先登录" }); return; }
+
+    // SSRF 防护：非管理员不得把 LLM/Whisper 基址指向内网/本地地址。
+    // 管理员不受限，以便接入自建 FunASR / 本地 LLM。
+    if (!isAdminUser(req.user)) {
+      const body = req.body || {};
+      const baseFields = [body.deepseek_base_url, body.whisper_base_url];
+      for (const base of baseFields) {
+        if (base && !isSafePublicHttpUrl(String(base))) {
+          res.status(400).json({ success: false, error: "不允许将服务地址指向内部或本地网络" });
+          return;
+        }
+      }
+    }
+
     saveUserConfig(db, userId, req.body);
     const pub = getPublicConfig(db, userId);
     res.json({ success: true, config: pub });

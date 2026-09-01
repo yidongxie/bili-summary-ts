@@ -9,7 +9,7 @@ import { isYtDlpAvailable, extractVideoInfo as extractWithYtDlp, extractVideoStr
 import { transcribeBilibiliAudio, transcribeAudioUrl, transcribeLocalMedia } from "../whisper/transcribe";
 import { summarizeText, suggestTags, generateChapters, SummaryMode } from "../llm/summarize";
 import { enforceRateLimit } from "../common/rateLimit";
-import { isPrivateEndpoint } from "../common/urlSafety";
+import { isPrivateEndpoint, assertSafePublicUrl } from "../common/urlSafety";
 import { getDecryptedConfig } from "./configStore";
 import { downloadWithDouyinDownloader, isDouyinDownloaderAvailable } from "../common/DouyinDownloaderFallback";
 import { formatDuration } from "../common/date";
@@ -851,6 +851,9 @@ async function runTask(
     // 第一步：清理 URL（从分享文本中提取纯 URL）
     const validation = validateUrl(url);
     const cleanedUrl = validation.cleanedUrl || url;
+
+    // SSRF 防护：拒绝内网/本地/云元数据地址，避免 yt-dlp 被用来探测内部网络。
+    await assertSafePublicUrl(cleanedUrl);
 
     // Determine platform and process accordingly
     let result;
