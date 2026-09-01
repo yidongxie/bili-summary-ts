@@ -1,0 +1,46 @@
+name: Server cleanup
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove stale app copy and empty recycle bin
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.ALIYUN_HOST }}
+          username: ${{ secrets.ALIYUN_USER }}
+          key: ${{ secrets.ALIYUN_SSH_KEY }}
+          port: 22
+          command_timeout: 15m
+          script: |
+            set -e
+            echo "===== before ====="
+            du -sh /opt/bili-summary 2>/dev/null
+            du -sh /.Recycle_bin 2>/dev/null
+
+            echo "===== 1. remove stale app copy at /opt/bili-summary (keep .env bin backups bili-summary-ts douyin-downloader) ====="
+            cd /opt/bili-summary
+            rm -rf \
+              API_INTEGRATION.md DESIGN.md INTEGRATION_GUIDE.md README.md UI_FUNCTIONAL_SPEC.md \
+              deploy-migrate.js deploy.sh nginx-setup.sh \
+              .gitignore .mcp.json package.json package-lock.json \
+              postcss.config.cjs Procfile tailwind.config.cjs tsconfig.json vite.config.ts .env.example \
+              assets deploy dist .git .github node_modules public src tools web
+            echo "removed stale app copy"
+
+            echo "===== 2. empty recycle bin ====="
+            rm -rf /.Recycle_bin/* 2>/dev/null || true
+            echo "emptied recycle bin"
+
+            echo "===== after ====="
+            echo "--- /opt/bili-summary (should be only: .env bin backups bili-summary-ts douyin-downloader) ---"
+            ls -la /opt/bili-summary/ 2>/dev/null
+            echo "--- sizes ---"
+            du -sh /opt/bili-summary 2>/dev/null
+            du -sh /.Recycle_bin 2>/dev/null
+            echo "--- disk ---"
+            df -h / 2>/dev/null
+            echo "===== DONE ====="
