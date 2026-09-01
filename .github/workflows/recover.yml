@@ -1,0 +1,67 @@
+name: Recover data
+
+on:
+  workflow_dispatch:
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore old database into app data dir
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.ALIYUN_HOST }}
+          username: ${{ secrets.ALIYUN_USER }}
+          key: ${{ secrets.ALIYUN_SSH_KEY }}
+          port: 22
+          command_timeout: 15m
+          script: |
+            set -e
+            SRC=/opt/bili-summary/data
+            DST=/opt/bili-summary/bili-summary-ts/data
+            BK=/opt/bili-summary/recovery-backup
+
+            echo "=== 1. stop app ==="
+            pm2 stop bilistudy 2>/dev/null || true
+
+            echo "=== 2. backup current (empty) DB ==="
+            mkdir -p "$BK"
+            TS=$(date +%s)
+            cp -a "$DST" "$BK/empty-data-$TS" 2>/dev/null || true
+            ls -la "$BK"
+
+            echo "=== 3. copy old DB (sqlite + wal, drop stale shm) ==="
+            cp -a "$SRC/bilistudy.sqlite" "$DST/bilistudy.sqlite"
+            rm -f "$DST/bilistudy.sqlite-shm"
+            rm -f "$DST/bilistudy.sqlite-wal"
+            if [ -f "$SRC/bilistudy.sqlite-wal" ]; then
+              cp -a "$SRC/bilistudy.sqlite-wal" "$DST/bilistudy.sqlite-wal"
+            fi
+            ls -la "$DST"
+
+            echo "=== 4. checkpoint WAL + verify counts ==="
+            cd /opt/bili-summary/bili-summary-ts
+            node -e '
+              const Database = require("./node_modules/better-sqlite3");
+              const db = new Database("./data/bilistudy.sqlite");
+              db.pragma("journal_mode = WAL");
+              const cp = db.pragma("wal_checkpoint(TRUNCATE)");
+              console.log("checkpoint:", JSON.stringify(cp));
+              const u = db.prepare("SELECT COUNT(*) c FROM users").get();
+              const i = db.prepare("SELECT COUNT(*) c FROM library_items").get();
+              console.log("users =", u.c, "| library_items =", i.c);
+              db.close();
+            '
+
+            echo "=== 5. ensure admin password is set ==="
+            source /opt/bili-summary/.env
+            ADMIN_EMAIL="${{ secrets.ADMIN_EMAIL }}" ADMIN_PASSWORD="${{ secrets.ADMIN_PASSWORD }}" node deploy-migrate.js
+
+            echo "=== 6. restart app ==="
+            pm2 restart bilistudy 2>/dev/null || pm2 start dist/index.js --name bilistudy --max-memory-restart 1G
+            pm2 save
+            sleep 5
+
+            echo "=== 7. verify ==="
+            curl -s http://127.0.0.1:8080/health && echo " - health OK"
+            echo "=== DONE ==="
