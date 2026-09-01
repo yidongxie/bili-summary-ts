@@ -7,7 +7,7 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
-      - name: Search server for residual database / backups (read-only)
+      - name: Inspect all sqlite databases (read-only)
         uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.ALIYUN_HOST }}
@@ -16,38 +16,36 @@ jobs:
           port: 22
           command_timeout: 15m
           script: |
-            echo "===== 1. /opt/bili-summary top level ====="
-            ls -la /opt/bili-summary/ 2>/dev/null || echo "(missing)"
+            echo "===== locating all bilistudy.sqlite files ====="
+            for f in $(find / -name "bilistudy.sqlite" 2>/dev/null); do
+              echo
+              echo "######## DB PATH: $f ########"
+              ls -la "$f" 2>/dev/null
+              ls -la "$f-wal" "$f-shm" 2>/dev/null || true
+              NODE_MOD="/opt/bili-summary/bili-summary-ts/node_modules/better-sqlite3"
+              if [ -d "$NODE_MOD" ]; then
+                node -e '
+                  const Database = require("/opt/bili-summary/bili-summary-ts/node_modules/better-sqlite3");
+                  let db;
+                  try {
+                    db = new Database(process.argv[1], { readonly: true, fileMustExist: true });
+                  } catch (e) { console.log("OPEN ERR:", e.message); process.exit(0); }
+                  try {
+                    const users = db.prepare("SELECT COUNT(*) c FROM users").get();
+                    const items = db.prepare("SELECT COUNT(*) c FROM library_items").get();
+                    console.log("users =", users.c, "| library_items =", items.c);
+                    const u = db.prepare("SELECT id, email, display_name, created_at FROM users ORDER BY id LIMIT 20").all();
+                    console.log("USERS:", JSON.stringify(u));
+                    const it = db.prepare("SELECT id, title, created_at FROM library_items ORDER BY created_at DESC LIMIT 8").all();
+                    console.log("ITEMS:", JSON.stringify(it));
+                  } catch (e) { console.log("QUERY ERR:", e.message); }
+                  db.close();
+                ' "$f"
+              else
+                echo "(better-sqlite3 module not found)"
+              fi
+            done
             echo
-            echo "===== 2. current app data dir ====="
-            ls -la /opt/bili-summary/bili-summary-ts/data/ 2>/dev/null || echo "(missing)"
-            echo
-            echo "===== 3. all sqlite/db files under /opt/bili-summary ====="
-            find /opt/bili-summary -name "*.sqlite*" -o -name "*.db" 2>/dev/null || true
-            echo
-            echo "===== 4. legacy nested data dirs ====="
-            ls -la /opt/bili-summary/bili-summary-ts/bili-summary-ts/data/ 2>/dev/null || echo "(no nested data)"
-            ls -la /opt/bili-summary/data/ 2>/dev/null || echo "(no /opt/bili-summary/data)"
-            echo
-            echo "===== 5. backups (tar/tgz/sqlite/db/bak) in likely spots ====="
-            find /opt/bili-summary /root /home /tmp /var/backups -maxdepth 5 \( -name "*.tar.gz" -o -name "*.tgz" -o -name "*.sqlite" -o -name "*.db" -o -name "*.bak" -o -name "*.backup" \) 2>/dev/null || true
-            echo
-            echo "===== 6. whole-filesystem search for bilistudy.sqlite ====="
-            find / -name "bilistudy.sqlite*" 2>/dev/null || true
-            echo
-            echo "===== 7. any deleted-but-open sqlite handles (recoverable) ====="
-            ls -la /proc/*/fd/* 2>/dev/null | grep -iE "sqlite|deleted" | head -60 || echo "(none found)"
-            echo
-            echo "===== 8. running node processes ====="
-            pgrep -af node 2>/dev/null || echo "(no node process)"
-            echo
-            echo "===== 9. /root and /home listing ====="
-            ls -la /root/ 2>/dev/null || echo "(cannot list /root)"
-            ls -la /home/ 2>/dev/null || echo "(no /home)"
-            echo
-            echo "===== 10. /tmp listing ====="
-            ls -la /tmp/ 2>/dev/null | head -60
-            echo
-            echo "===== 11. disk usage ====="
-            df -h 2>/dev/null
+            echo "===== recycle bin top-level listing ====="
+            find /.Recycle_bin -maxdepth 3 -name "*.sqlite*" 2>/dev/null || true
             echo "===== DONE ====="
