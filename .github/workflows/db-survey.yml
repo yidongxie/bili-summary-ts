@@ -1,0 +1,52 @@
+name: DB storage survey
+
+on:
+  workflow_dispatch:
+
+jobs:
+  survey:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Survey all database files and storage locations (read-only)
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.ALIYUN_HOST }}
+          username: ${{ secrets.ALIYUN_USER }}
+          key: ${{ secrets.ALIYUN_SSH_KEY }}
+          port: 22
+          command_timeout: 15m
+          script: |
+            echo "===== 1. all bilistudy.sqlite* files with size/date ====="
+            find / -name "bilistudy.sqlite*" 2>/dev/null | while read f; do
+              ls -la "$f" 2>/dev/null | awk '{print $5, $6, $7, $8, $9, $10}'
+            done
+
+            echo
+            echo "===== 2. active app data dir ====="
+            ls -la /opt/bili-summary/bili-summary-ts/data/ 2>/dev/null
+
+            echo
+            echo "===== 3. legacy /opt/bili-summary/data ====="
+            ls -la /opt/bili-summary/data/ 2>/dev/null
+
+            echo
+            echo "===== 4. backups dir ====="
+            ls -la /opt/bili-summary/backups/ 2>/dev/null
+
+            echo
+            echo "===== 5. recovery-backup dir ====="
+            ls -la /opt/bili-summary/recovery-backup/ 2>/dev/null
+
+            echo
+            echo "===== 6. recycle bin contents ====="
+            find /.Recycle_bin -maxdepth 4 2>/dev/null | head -60
+
+            echo
+            echo "===== 7. disk usage ====="
+            df -h / 2>/dev/null
+
+            echo
+            echo "===== 8. .env location and key presence ====="
+            ls -la /opt/bili-summary/.env 2>/dev/null
+            grep -c "ENCRYPTION_KEY=" /opt/bili-summary/.env 2>/dev/null
+            echo "===== DONE ====="
