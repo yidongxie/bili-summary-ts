@@ -598,6 +598,21 @@ export function getAdminUsage() {
   return request<{ success: boolean; usage: any[] }>('/api/admin/usage');
 }
 
+export type DbStatus = {
+  db_path: string;
+  db_size: number;
+  wal_size: number;
+  shm_size: number;
+  backups_dir: string;
+  backups_count: number;
+  latest_backup: { name: string; size: number; mtime: string } | null;
+  backups: Array<{ name: string; size: number; mtime: string }>;
+};
+
+export function getDbStatus() {
+  return request<{ success: boolean; db: DbStatus }>('/api/admin/db-status');
+}
+
 // ---- export --------------------------------------------------------------
 
 export function getObsidianPayload(id: string) {

@@ -1,5 +1,7 @@
 import Database from "better-sqlite3";
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import { nowSql } from "../common/date";
 
 export function recordApiUsage(db: Database.Database, userId: number, usage: {
@@ -80,6 +82,54 @@ export function listAdminUsage(db: Database.Database) {
      ORDER BY calls DESC
      LIMIT 100`
   ).all();
+}
+
+export interface DbStatus {
+  db_path: string;
+  db_size: number;
+  wal_size: number;
+  shm_size: number;
+  backups_dir: string;
+  backups_count: number;
+  latest_backup: { name: string; size: number; mtime: string } | null;
+  backups: Array<{ name: string; size: number; mtime: string }>;
+}
+
+/** Report the on-disk SQLite footprint and scheduled-backup state for the admin panel. */
+export function getDbStatus(db: Database.Database): DbStatus {
+  const dbPath = String(db.name || "");
+  const dataDir = path.dirname(dbPath);
+  // Backups live one level above the app dir (see the Backup data workflow):
+  // dataDir is /opt/bili-summary/bili-summary-ts/data -> backups at /opt/bili-summary/backups.
+  const backupsDir = process.env.BACKUP_DIR || path.resolve(dataDir, "..", "..", "backups");
+
+  const sizeOf = (p: string): number => {
+    try { return fs.statSync(p).size; } catch { return 0; }
+  };
+
+  let backups: DbStatus["backups"] = [];
+  try {
+    backups = fs
+      .readdirSync(backupsDir)
+      .filter((f) => f.endsWith(".tar.gz"))
+      .map((f) => {
+        const full = path.join(backupsDir, f);
+        const st = fs.statSync(full);
+        return { name: f, size: st.size, mtime: new Date(st.mtimeMs).toISOString() };
+      })
+      .sort((a, b) => b.mtime.localeCompare(a.mtime));
+  } catch { /* backups dir may not exist yet */ }
+
+  return {
+    db_path: dbPath,
+    db_size: sizeOf(dbPath),
+    wal_size: sizeOf(dbPath + "-wal"),
+    shm_size: sizeOf(dbPath + "-shm"),
+    backups_dir: backupsDir,
+    backups_count: backups.length,
+    latest_backup: backups[0] || null,
+    backups: backups.slice(0, 5),
+  };
 }
 
 export function getOrCreateChatThread(db: Database.Database, userId: number, input: { library_item_id?: string; target_key?: string; title?: string }) {

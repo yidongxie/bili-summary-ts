@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import Database from "better-sqlite3";
-import { getAdminStats, listAdminUsers, listAdminTasks, listAdminUsage } from "../db/usageStore";
+import { getAdminStats, listAdminUsers, listAdminTasks, listAdminUsage, getDbStatus } from "../db/usageStore";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() || "";
 
@@ -34,6 +34,11 @@ export function createAdminRouter(db: Database.Database): Router {
   router.get("/api/admin/usage", (req: Request, res: Response) => {
     if (!requireAdmin(req, res)) return;
     res.json({ success: true, usage: listAdminUsage(db) });
+  });
+
+  router.get("/api/admin/db-status", (req: Request, res: Response) => {
+    if (!requireAdmin(req, res)) return;
+    res.json({ success: true, db: getDbStatus(db) });
   });
 
   return router;

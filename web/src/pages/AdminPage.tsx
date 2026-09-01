@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Activity, Users, AlertTriangle, DollarSign } from 'lucide-react';
-import { getAdminStats, getAdminTasks, getAdminUsage, getAdminUsers, type AdminStats } from '@/lib/api';
+import { getAdminStats, getAdminTasks, getAdminUsage, getAdminUsers, getDbStatus, type AdminStats, type DbStatus } from '@/lib/api';
 
 interface AdminPageProps {
   onShowToast: (msg: string, type: 'ok' | 'error' | 'info') => void;
@@ -11,19 +11,28 @@ const cardStyle: React.CSSProperties = {
   border: '1px solid var(--hairline)',
 };
 
+function fmtBytes(n: number): string {
+  if (!n) return '0 B';
+  if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(2) + ' MB';
+  if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+  return n + ' B';
+}
+
 export function AdminPage({ onShowToast }: AdminPageProps) {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [usage, setUsage] = useState<any[]>([]);
+  const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
 
   async function reload() {
     try {
-      const [s, u, t, g] = await Promise.all([getAdminStats(), getAdminUsers(), getAdminTasks(), getAdminUsage()]);
+      const [s, u, t, g, d] = await Promise.all([getAdminStats(), getAdminUsers(), getAdminTasks(), getAdminUsage(), getDbStatus()]);
       setStats(s.stats);
       setUsers(u.users || []);
       setTasks(t.tasks || []);
       setUsage(g.usage || []);
+      setDbStatus(d.db || null);
     } catch (err: any) {
       onShowToast('加载管理后台失败：' + (err.message || ''), 'error');
     }
@@ -52,6 +61,12 @@ export function AdminPage({ onShowToast }: AdminPageProps) {
         </Panel>
         <Panel title="API 使用 / 成本">
           {usage.slice(0, 20).map((u, idx) => <Row key={idx} left={`${u.provider}/${u.model || '-'}`} right={`${u.calls || 0} 次 · $${Number(u.estimated_cost_usd || 0).toFixed(4)}`} />)}
+        </Panel>
+        <Panel title="数据库">
+          <Row left="主库大小" right={fmtBytes(dbStatus?.db_size || 0)} />
+          <Row left="WAL 大小" right={fmtBytes(dbStatus?.wal_size || 0)} />
+          <Row left="备份数量" right={`${dbStatus?.backups_count || 0} 份`} />
+          <Row left="最近备份" right={dbStatus?.latest_backup?.name || '无'} />
         </Panel>
       </div>
     </div>
