@@ -1,0 +1,46 @@
+name: Backup data
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Snapshot database + .env (retain last 14)
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.ALIYUN_HOST }}
+          username: ${{ secrets.ALIYUN_USER }}
+          key: ${{ secrets.ALIYUN_SSH_KEY }}
+          port: 22
+          command_timeout: 10m
+          script: |
+            set -e
+            BK=/opt/bili-summary/backups
+            mkdir -p "$BK"
+            TS=$(date +%Y%m%d-%H%M%S)
+            cd /opt/bili-summary/bili-summary-ts
+
+            echo "=== online snapshot via better-sqlite3 ==="
+            node -e '
+              (async () => {
+                const Database = require("./node_modules/better-sqlite3");
+                const db = new Database("./data/bilistudy.sqlite");
+                try { await db.backup(process.argv[1]); console.log("snapshot ok"); }
+                finally { db.close(); }
+              })().catch(e => { console.error("backup failed:", e.message); process.exit(1); });
+            ' "$BK/bilistudy-$TS.sqlite"
+
+            echo "=== include .env (holds ENCRYPTION_KEY) ==="
+            cp -a /opt/bili-summary/.env "$BK/bilistudy-$TS.env" 2>/dev/null || true
+            tar czf "$BK/bilistudy-$TS.tar.gz" -C "$BK" "bilistudy-$TS.sqlite" "bilistudy-$TS.env"
+            rm -f "$BK/bilistudy-$TS.sqlite" "$BK/bilistudy-$TS.env"
+
+            echo "=== prune to last 14 ==="
+            ls -1t "$BK"/*.tar.gz 2>/dev/null | tail -n +15 | xargs -r rm -f
+
+            echo "=== backup complete ==="
+            ls -la "$BK" | tail -6
