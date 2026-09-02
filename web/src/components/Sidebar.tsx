@@ -5,8 +5,6 @@ import { LogoMark } from './AmbientBackdrop';
 
 export type NavKey = 'home' | 'library' | 'ask' | 'learning' | 'admin' | 'settings';
 
-const ADMIN_EMAIL = '444925817@qq.com';
-
 const BASE_ITEMS: Array<{ key: NavKey; icon: typeof Library; label: string; sub?: string }> = [
   { key: 'home', icon: Library, label: '总结', sub: 'Home' },
   { key: 'library', icon: FileText, label: '收藏库', sub: 'Library' },
@@ -23,7 +21,7 @@ interface SidebarProps {
 }
 
 export const Sidebar = React.memo(function Sidebar({ active, onChange, user, onUserClick }: SidebarProps) {
-  const isAdmin = (user?.email || '').trim().toLowerCase() === ADMIN_EMAIL;
+  const isAdmin = !!user?.is_admin;
   const items = isAdmin
     ? [
         ...BASE_ITEMS.filter((i) => i.key !== 'settings'),

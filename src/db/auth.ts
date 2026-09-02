@@ -5,6 +5,16 @@ import Database from "better-sqlite3";
 import crypto from "crypto";
 import { enforceRateLimit } from "../common/rateLimit";
 
+function publicUser(u: any) {
+  return {
+    id: u.id,
+    email: u.email,
+    display_name: u.display_name,
+    created_at: u.created_at,
+    is_admin: u.is_admin ? 1 : 0,
+  };
+}
+
 function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
@@ -102,8 +112,8 @@ export function createAuthRouter(db: Database.Database): Router {
        );
 
       createSession(db, req, res, userId, () => {
-        const user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?").get(userId) as any;
-        res.json({ success: true, user: { id: user.id, email: user.email, display_name: user.display_name, created_at: user.created_at } });
+        const user = db.prepare("SELECT id, email, display_name, created_at, is_admin FROM users WHERE id = ?").get(userId) as any;
+        res.json({ success: true, user: publicUser(user) });
       });
     } catch (err: any) {
       console.error("[register]", err);
@@ -124,7 +134,7 @@ export function createAuthRouter(db: Database.Database): Router {
         return;
       }
 
-      const user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE email = ?").get(email) as any;
+      const user = db.prepare("SELECT id, email, display_name, created_at, is_admin FROM users WHERE email = ?").get(email) as any;
       if (!user) {
         res.status(401).json({ success: false, error: "邮箱或密码错误" });
         return;
@@ -151,7 +161,7 @@ export function createAuthRouter(db: Database.Database): Router {
       createSession(db, req, res, user.id, () => {
         res.json({
           success: true,
-          user: { id: user.id, email: user.email, display_name: user.display_name, created_at: user.created_at },
+          user: publicUser(user),
         });
       });
     } catch (err: any) {
@@ -174,13 +184,13 @@ export function createAuthRouter(db: Database.Database): Router {
       return;
     }
     const user = db
-      .prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?")
+      .prepare("SELECT id, email, display_name, created_at, is_admin FROM users WHERE id = ?")
       .get(sessionRow.user_id) as any;
     if (!user) {
       res.json({ success: true, authenticated: false });
       return;
     }
-    res.json({ success: true, authenticated: true, user });
+    res.json({ success: true, authenticated: true, user: publicUser(user) });
   });
 
   router.post("/api/auth/logout", (req: Request, res: Response) => {
@@ -224,7 +234,7 @@ export function createAuthRouter(db: Database.Database): Router {
 
           const openId = wxData.openid;
           // Check for existing user bound to this openId (stored in its own column).
-          let user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE wechat_openid = ?").get(openId) as any;
+          let user = db.prepare("SELECT id, email, display_name, created_at, is_admin FROM users WHERE wechat_openid = ?").get(openId) as any;
 
           if (!user) {
             // Only link an openId to an already-authenticated account (the user
@@ -233,7 +243,7 @@ export function createAuthRouter(db: Database.Database): Router {
             const authedUser = req.user;
             if (authedUser) {
               db.prepare("UPDATE users SET wechat_openid = ? WHERE id = ?").run(openId, authedUser.id);
-              user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?").get(authedUser.id) as any;
+              user = db.prepare("SELECT id, email, display_name, created_at, is_admin FROM users WHERE id = ?").get(authedUser.id) as any;
               console.log(`[wechat] Linked WeChat openId to authenticated user (id=${authedUser.id})`);
             }
           }
@@ -247,11 +257,11 @@ export function createAuthRouter(db: Database.Database): Router {
             );
             const userId = info.lastInsertRowid as number;
             db.prepare("INSERT OR IGNORE INTO user_configs (user_id) VALUES (?)").run(userId);
-            user = db.prepare("SELECT id, email, display_name, created_at FROM users WHERE id = ?").get(userId) as any;
+            user = db.prepare("SELECT id, email, display_name, created_at, is_admin FROM users WHERE id = ?").get(userId) as any;
           }
 
           createSession(db, req, res, user.id, () => {
-            res.json({ success: true, user: { id: user.id, email: user.email, display_name: user.display_name, created_at: user.created_at } });
+            res.json({ success: true, user: publicUser(user) });
           });
         })
         .catch((err: any) => {

@@ -70,9 +70,9 @@ export function LoginOverlay({ open, onClose, onSuccess }: LoginOverlayProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(10,10,10,0.42)' }} onClick={onClose}>
-      <div className="w-full max-w-sm rounded-lg p-7" onClick={(e) => e.stopPropagation()} style={overlayCard}>
+      <div role="dialog" aria-modal="true" aria-label="登录或注册" className="w-full max-w-sm rounded-lg p-7" onClick={(e) => e.stopPropagation()} style={overlayCard}>
         <div className="flex justify-end -mt-2 -mr-2">
-          <button type="button" onClick={onClose} title="关闭"><CloseIcon className="w-4 h-4" style={{ color: 'var(--steel)' }} /></button>
+          <button type="button" onClick={onClose} aria-label="关闭"><CloseIcon className="w-4 h-4" style={{ color: 'var(--steel)' }} /></button>
         </div>
         <div className="text-center mb-6">
           <div className="inline-flex"><LogoMark size={48} /></div>

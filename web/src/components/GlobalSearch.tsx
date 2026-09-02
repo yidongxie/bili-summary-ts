@@ -88,12 +88,12 @@ export function GlobalSearch({ open, onClose, onPick }: GlobalSearchProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4" style={{ background: 'rgba(10,10,10,0.36)' }} onClick={onClose}>
-      <div className="w-full max-w-xl rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()} style={{ background: 'var(--canvas)', border: '1px solid var(--hairline)', boxShadow: 'rgba(0,0,0,0.12) 0px 24px 48px -8px' }}>
+      <div role="dialog" aria-modal="true" aria-label="全局搜索" className="w-full max-w-xl rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()} style={{ background: 'var(--canvas)', border: '1px solid var(--hairline)', boxShadow: 'rgba(0,0,0,0.12) 0px 24px 48px -8px' }}>
         <div className="flex items-center gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--hairline)' }}>
           <Search className="w-4 h-4" style={{ color: 'var(--steel)' }} />
           <input ref={inputRef} type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索收藏库（标题 / UP主 / 总结 / 标签）" className="flex-1 bg-transparent outline-none text-sm" style={{ color: 'var(--ink)' }} />
           <span className="px-1.5 py-0.5 rounded-xs text-[10px] font-mono" style={{ background: 'var(--surface)', color: 'var(--stone)', border: '1px solid var(--hairline)' }}>ESC</span>
-          <button type="button" onClick={onClose} title="关闭"><CloseIcon className="w-4 h-4" style={{ color: 'var(--steel)' }} /></button>
+          <button type="button" onClick={onClose} aria-label="关闭搜索"><CloseIcon className="w-4 h-4" style={{ color: 'var(--steel)' }} /></button>
         </div>
         <div className="max-h-[50vh] overflow-y-auto">
           {!query.trim() && <div className="px-4 py-8 text-center text-sm" style={{ color: 'var(--steel)' }}>输入关键词，搜索你已收藏的视频</div>}

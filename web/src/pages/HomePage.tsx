@@ -28,7 +28,13 @@ const PLATFORMS = [
 const QUICK_TAGS = [
   { label: '🏄 刷刷热门', sample: 'https://www.bilibili.com/video/BV1Pr4y1z7Yi' },
   { label: '📚 学术论文', sample: 'https://www.bilibili.com/video/BV1uv411q7Mv' },
-  { label: '🎙️ 播客摘要', sample: '' },
+];
+
+const MODES: Array<{ key: SummaryMode; label: string }> = [
+  { key: 'brief', label: '简要' },
+  { key: 'detailed', label: '详细' },
+  { key: 'timeline', label: '时间轴' },
+  { key: 'knowledge', label: '知识' },
 ];
 
 interface HomePageProps {
@@ -44,6 +50,7 @@ export type SummaryMode = 'brief' | 'detailed' | 'timeline' | 'knowledge';
 export function HomePage({ isLoggedIn, onSubmit, onOpenItem, refreshKey, onShowToast }: HomePageProps) {
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  const [mode, setMode] = useState<SummaryMode>('brief');
   const [recent, setRecent] = useState<LibraryItem[]>([]);
   const [hint, setHint] = useState<string | null>(null);
   const [showUploaderModal, setShowUploaderModal] = useState(false);
@@ -62,7 +69,7 @@ export function HomePage({ isLoggedIn, onSubmit, onOpenItem, refreshKey, onShowT
     const trimmed = query.trim();
     if (!trimmed) { setHint('请输入视频或播客链接'); return; }
     setHint(null);
-    onSubmit(trimmed, 'brief');
+    onSubmit(trimmed, mode);
   }
 
   async function handleDownload() {
@@ -153,6 +160,27 @@ export function HomePage({ isLoggedIn, onSubmit, onOpenItem, refreshKey, onShowT
           </div>
         </div>
 
+        {/* Summary mode selector */}
+        <div className="flex items-center gap-2 mt-3 flex-wrap">
+          <span className="section-label">模式</span>
+          {MODES.map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => setMode(m.key)}
+              aria-pressed={mode === m.key}
+              className="text-xs px-3 py-1.5 rounded-full transition-colors"
+              style={{
+                background: mode === m.key ? 'var(--primary)' : 'var(--surface)',
+                color: mode === m.key ? 'var(--on-primary)' : 'var(--steel)',
+                border: `1px solid ${mode === m.key ? 'var(--primary)' : 'var(--hairline)'}`,
+              }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+
         {hint && (
           <div className="mt-3 px-4 py-2.5 rounded-lg text-xs font-medium" style={{ background: 'rgba(251,146,60,0.10)', border: '1px solid rgba(251,146,60,0.28)', color: '#b45309' }}>
             {hint}
@@ -174,7 +202,7 @@ export function HomePage({ isLoggedIn, onSubmit, onOpenItem, refreshKey, onShowT
         <div className="flex items-center gap-2 mt-3 flex-wrap">
           <span className="section-label">快捷</span>
           {QUICK_TAGS.map((tag) => (
-            <button key={tag.label} type="button" onClick={() => { if (tag.sample) { setQuery(tag.sample); } else { setHint('该入口暂未上线，先用粘贴链接的方式总结一个吧。'); } }}
+            <button key={tag.label} type="button" onClick={() => setQuery(tag.sample)}
               className="btn-secondary text-xs px-3 py-1.5">
               {tag.label}
             </button>
@@ -185,23 +213,29 @@ export function HomePage({ isLoggedIn, onSubmit, onOpenItem, refreshKey, onShowT
       <UploaderModal open={showUploaderModal} url={uploaderUrl} onClose={() => setShowUploaderModal(false)} onShowToast={onShowToast} />
 
       {/* Recent summaries */}
-      {recent.length > 0 && (
+      {isLoggedIn && (
         <div className="w-full max-w-2xl">
           <div className="flex items-center gap-2 mb-3">
             <Clock className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} />
             <span className="section-label">最近总结</span>
           </div>
-          <div className="flex flex-col gap-2">
-            {recent.map((s) => (
-              <button key={s.id} type="button" onClick={() => onOpenItem(s)} className="recent-item text-left">
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: '#e91e8c' }} />
-                <span className="flex-1 text-sm truncate font-medium" style={{ color: 'var(--ink)' }}>{s.title}</span>
-                <span className="tag-pill shrink-0">{s.category || 'B站'}</span>
-                <span className="text-xs shrink-0" style={{ color: 'var(--muted)' }}>{relativeTime(s.created_at)}</span>
-                <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-50 transition-opacity" style={{ color: 'var(--steel)' }} />
-              </button>
-            ))}
-          </div>
+          {recent.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {recent.map((s) => (
+                <button key={s.id} type="button" onClick={() => onOpenItem(s)} className="recent-item text-left">
+                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background: '#e91e8c' }} />
+                  <span className="flex-1 text-sm truncate font-medium" style={{ color: 'var(--ink)' }}>{s.title}</span>
+                  <span className="tag-pill shrink-0">{s.category || 'B站'}</span>
+                  <span className="text-xs shrink-0" style={{ color: 'var(--muted)' }}>{relativeTime(s.created_at)}</span>
+                  <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-50 transition-opacity" style={{ color: 'var(--steel)' }} />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm py-6 text-center rounded-lg" style={{ color: 'var(--stone)', border: '1px dashed var(--hairline)' }}>
+              还没有收藏。总结一个视频后，最近内容会显示在这里。
+            </div>
+          )}
         </div>
       )}
     </main>

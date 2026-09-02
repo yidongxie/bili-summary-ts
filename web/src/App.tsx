@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { AmbientBackdrop } from './components/AmbientBackdrop';
 import { Library, FileText, Settings, User, GraduationCap, MessageCircle } from 'lucide-react';
 import { ThemeProvider } from './lib/theme';
@@ -8,13 +8,15 @@ import { GlobalSearch } from './components/GlobalSearch';
 import { LoginOverlay } from './components/LoginOverlay';
 import { Toast, type ToastState } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { HomePage, type SummaryMode } from './pages/HomePage';
-import { ResultPage } from './pages/ResultPage';
-import { AskPage } from './pages/AskPage';
-import { FavoritesPage } from './pages/FavoritesPage';
-import { LearningPage } from './pages/LearningPage';
-import { AdminPage } from './pages/AdminPage';
-import { SettingsPage } from './pages/SettingsPage';
+import type { SummaryMode } from './pages/HomePage';
+
+const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })));
+const ResultPage = lazy(() => import('./pages/ResultPage').then((m) => ({ default: m.ResultPage })));
+const AskPage = lazy(() => import('./pages/AskPage').then((m) => ({ default: m.AskPage })));
+const FavoritesPage = lazy(() => import('./pages/FavoritesPage').then((m) => ({ default: m.FavoritesPage })));
+const LearningPage = lazy(() => import('./pages/LearningPage').then((m) => ({ default: m.LearningPage })));
+const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 import {
   getMe,
   getConfig,
@@ -131,6 +133,17 @@ function parseTranscriptToSegments(text: string): SubtitleSegment[] | undefined 
   return segments.length ? segments : undefined;
 }
 
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center py-24">
+      <div
+        className="w-6 h-6 rounded-full border-2 animate-spin"
+        style={{ borderColor: 'var(--hairline)', borderTopColor: 'var(--brand-green)' }}
+      />
+    </div>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [config, setConfig] = useState<AppConfig>({});
@@ -139,6 +152,7 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
   const [refreshKey, setRefreshKey] = useState(0); // bumps to force HomePage / FavoritesPage to reload
+  const pendingSubmitRef = useRef<{ url: string; mode: SummaryMode } | null>(null);
 
   const showToast = useCallback((msg: string, type: 'ok' | 'error' | 'info') => {
     setToast({ id: Date.now(), msg, type });
@@ -207,6 +221,7 @@ export default function App() {
 
   const handleSubmitSummary = useCallback((url: string, mode: SummaryMode) => {
     if (!user) {
+      pendingSubmitRef.current = { url, mode };
       showToast('请先登录', 'error');
       setLoginOpen(true);
       return;
@@ -256,6 +271,16 @@ export default function App() {
     setUser(u);
     setConfig(c);
     showToast('登录成功', 'ok');
+    const pending = pendingSubmitRef.current;
+    pendingSubmitRef.current = null;
+    if (pending) {
+      if (!c.api_key_set && !c.api_key) {
+        showToast('请先在设置中填写 DeepSeek API Key', 'error');
+        setView({ kind: 'settings' });
+        return;
+      }
+      setView({ kind: 'result', url: pending.url, mode: pending.mode });
+    }
   }, [showToast]);
 
   return (
@@ -288,6 +313,7 @@ export default function App() {
             onLogout={handleLogout}
           />
 
+          <Suspense fallback={<PageLoader />}>
           {view.kind === 'home' && (
             <ErrorBoundary onReset={() => setView({ kind: 'home' })}>
               <HomePage
@@ -368,6 +394,7 @@ export default function App() {
               />
             </ErrorBoundary>
           )}
+          </Suspense>
 
           <footer className="relative z-10 px-6 py-4 text-center text-xs" style={{ color: 'var(--stone)' }}>
             <a
@@ -393,7 +420,7 @@ export default function App() {
           { key: 'library' as NavKey, label: '收藏', icon: FileText },
           { key: 'ask' as NavKey, label: '问库', icon: MessageCircle },
           { key: 'learning' as NavKey, label: '学习', icon: GraduationCap },
-          ...(user?.email === '444925817@qq.com' ? [{ key: 'admin' as any, label: '管理', icon: Settings }] : []),
+          ...(user?.is_admin ? [{ key: 'admin' as any, label: '管理', icon: Settings }] : []),
           { key: 'settings' as NavKey, label: '设置', icon: Settings },
         ].map((item) => {
           const Icon = item.icon;
@@ -424,7 +451,7 @@ export default function App() {
 
       <LoginOverlay
         open={loginOpen}
-        onClose={() => setLoginOpen(false)}
+        onClose={() => { pendingSubmitRef.current = null; setLoginOpen(false); }}
         onSuccess={handleLoginSuccess}
       />
 
