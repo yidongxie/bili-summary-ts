@@ -48,6 +48,10 @@ if (!email) {
     console.log("Admin user exists (id=" + uid + ")");
   }
 
+  // Ensure the admin flag is set. The is_admin column was added later, so
+  // accounts created before it defaulted to 0 — flip it back for the admin.
+  db.prepare("UPDATE users SET is_admin = 1 WHERE id = ?").run(uid);
+
   if (password && password.length >= 12) {
     const cfg = db.prepare("SELECT password_hash FROM user_configs WHERE user_id = ?").get(uid);
     if (!cfg || !cfg.password_hash) {
