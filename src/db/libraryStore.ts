@@ -171,7 +171,13 @@ function searchLibraryItems(db: Database.Database, userId: number, q: string, al
     return rows
       .map((row) => {
         const item = byId.get(row.id);
-        return item ? { ...item, snippet: cleanSnippet(row.snippet || makeSnippet(item, q.toLowerCase())), highlights: [q] } : null;
+        if (!item) return null;
+        // snippet() highlights a fixed column (title/author), so a query that
+        // matches only a later column (transcript/article) carries no <mark>.
+        // Rebuild the excerpt from the item text in that case so the hit stays
+        // highlighted wherever it landed.
+        const raw = row.snippet?.includes("<mark>") ? row.snippet : makeSnippet(item, q.toLowerCase());
+        return { ...item, snippet: cleanSnippet(raw), highlights: [q] };
       })
       .filter(Boolean) as LibraryItem[];
   } catch {
@@ -196,20 +202,23 @@ function cleanSnippet(snippet: string): string {
 }
 
 function itemMatches(item: LibraryItem, q: string): boolean {
-  return [item.title, item.author, item.summary, item.transcript, item.category, item.notes, ...(item.tags || [])]
+  return [item.title, item.author, item.summary, item.transcript, item.article, item.category, item.notes, ...(item.tags || [])]
     .join("\n")
     .toLowerCase()
     .includes(q);
 }
 
 function makeSnippet(item: LibraryItem, q: string): string {
-  const haystack = [item.summary, item.transcript, item.notes, item.title].filter(Boolean).join("\n");
+  const haystack = [item.summary, item.article, item.transcript, item.notes, item.title].filter(Boolean).join("\n").replace(/\s+/g, " ");
   const lower = haystack.toLowerCase();
   const idx = q ? lower.indexOf(q) : -1;
-  if (idx < 0) return haystack.replace(/\s+/g, " ").slice(0, 180);
+  if (idx < 0) return haystack.slice(0, 180);
   const start = Math.max(0, idx - 70);
   const end = Math.min(haystack.length, idx + q.length + 110);
-  return (start > 0 ? "…" : "") + haystack.slice(start, end).replace(/\s+/g, " ") + (end < haystack.length ? "…" : "");
+  const before = (start > 0 ? "…" : "") + haystack.slice(start, idx);
+  const hit = haystack.slice(idx, idx + q.length);
+  const after = haystack.slice(idx + q.length, end) + (end < haystack.length ? "…" : "");
+  return before + "<mark>" + hit + "</mark>" + after;
 }
 
 export function findLibraryItem(db: Database.Database, userId: number, id: string): LibraryItem | null {
@@ -335,6 +344,11 @@ export function updateLibraryArticle(db: Database.Database, userId: number, id: 
   const info = db
     .prepare("UPDATE library_items SET article = ?, updated_at = ? WHERE id = ? AND user_id = ?")
     .run(String(article || "").trim(), nowSql(), id, userId);
+  if (info.changes > 0) {
+    // article is part of the FTS index, so keep the searchable copy in sync.
+    const item = findLibraryItem(db, userId, id);
+    if (item) syncLibraryFtsItem(db, userId, item);
+  }
   return info.changes > 0;
 }
 
@@ -360,9 +374,9 @@ export function syncLibraryFtsItem(db: Database.Database, userId: number, item: 
   try {
     db.prepare("DELETE FROM library_items_fts WHERE id = ? AND user_id = ?").run(item.id, String(userId));
     db.prepare(
-      `INSERT INTO library_items_fts (id, user_id, title, author, summary, transcript, category, tags, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(item.id, String(userId), item.title || "", item.author || "", item.summary || "", item.transcript || "", item.category || "", (item.tags || []).join(" "), item.notes || "");
+      `INSERT INTO library_items_fts (id, user_id, title, author, summary, transcript, category, tags, notes, article)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(item.id, String(userId), item.title || "", item.author || "", item.summary || "", item.transcript || "", item.category || "", (item.tags || []).join(" "), item.notes || "", item.article || "");
   } catch { /* FTS5 unavailable */ }
 }
 

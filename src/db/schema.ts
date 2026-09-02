@@ -386,7 +386,11 @@ export function createDb(dataDir: string): Database.Database {
   // unicode61 tokenizer treats a whole CJK run as a single token and breaks Chinese search.
   try {
     const existing = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'library_items_fts'").get() as { sql?: string } | undefined;
-    const needsRebuild = !!existing && !/trigram/i.test(existing.sql || "");
+    // FTS5 virtual tables can't ALTER their columns, so any schema drift (an
+    // index built without trigram, or before the article column existed) means
+    // we must drop and rebuild from library_items.
+    const ftsSql = existing?.sql || "";
+    const needsRebuild = !!existing && (!/trigram/i.test(ftsSql) || !/\barticle\b/i.test(ftsSql));
     if (needsRebuild) {
       db.exec("DROP TABLE IF EXISTS library_items_fts");
     }
@@ -401,16 +405,17 @@ export function createDb(dataDir: string): Database.Database {
         category,
         tags,
         notes,
+        article,
         tokenize = 'trigram'
       );
     `);
     const count = db.prepare("SELECT COUNT(*) AS count FROM library_items_fts").get() as { count: number };
     if (needsRebuild || !count.count) {
-      const rows = db.prepare("SELECT id, user_id, title, author, summary, transcript, category, tags, notes FROM library_items").all() as any[];
-      const insert = db.prepare(`INSERT INTO library_items_fts (id, user_id, title, author, summary, transcript, category, tags, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      const rows = db.prepare("SELECT id, user_id, title, author, summary, transcript, category, tags, notes, article FROM library_items").all() as any[];
+      const insert = db.prepare(`INSERT INTO library_items_fts (id, user_id, title, author, summary, transcript, category, tags, notes, article) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
       const tx = db.transaction((items: any[]) => {
         for (const item of items) {
-          insert.run(item.id, String(item.user_id), item.title || "", item.author || "", item.summary || "", item.transcript || "", item.category || "", item.tags || "", item.notes || "");
+          insert.run(item.id, String(item.user_id), item.title || "", item.author || "", item.summary || "", item.transcript || "", item.category || "", item.tags || "", item.notes || "", item.article || "");
         }
       });
       tx(rows);

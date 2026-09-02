@@ -9,6 +9,7 @@ import {
   saveLibraryItem,
   updateLibraryArticle,
   findLibraryItem,
+  queryLibrary,
 } from "../src/db/libraryStore";
 
 function makeDb(): { db: Database.Database; dir: string } {
@@ -68,6 +69,101 @@ test("updateLibraryArticle changes only article and preserves the rest of the it
     assert.equal(loaded.mode, "timeline"); // untouched
     assert.equal(loaded.transcript, "字幕文本"); // untouched
     assert.equal(loaded.tags.join(","), "ai"); // untouched
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("article text is full-text searchable with a highlighted snippet", () => {
+  const { db, dir } = makeDb();
+  try {
+    const userId = addUser(db);
+    const phrase = "甲乙丙丁戊己";
+    const saved = saveLibraryItem(db, userId, {
+      ...sample("这篇文章里出现了" + phrase + "这样的独特表述"),
+      summary: "与关键词无关的总结",
+    });
+    const res = queryLibrary(db, userId, { q: phrase });
+    assert.ok(res.items.some((i) => i.id === saved.id), "search should match text that lives only in the article");
+    const hit = res.items.find((i) => i.id === saved.id)!;
+    assert.ok((hit.snippet || "").includes("<mark>"), "snippet should highlight where the article hit");
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("updating an article keeps the search index in sync", () => {
+  const { db, dir } = makeDb();
+  try {
+    const userId = addUser(db);
+    const oldPhrase = "甲乙老内容";
+    const newPhrase = "丙丁新内容";
+    const saved = saveLibraryItem(db, userId, {
+      ...sample("旧文章里有" + oldPhrase),
+      summary: "无关总结",
+    });
+    assert.ok(queryLibrary(db, userId, { q: oldPhrase }).items.some((i) => i.id === saved.id));
+
+    updateLibraryArticle(db, userId, saved.id, "新文章讲的是" + newPhrase);
+
+    assert.equal(queryLibrary(db, userId, { q: oldPhrase }).items.length, 0, "old text should no longer match");
+    assert.ok(queryLibrary(db, userId, { q: newPhrase }).items.some((i) => i.id === saved.id), "new text should match");
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("FTS index built before the article column is rebuilt on startup", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bilistudy-migrate-"));
+  const phrase = "独特术语字词串";
+  let userId = 0;
+  let itemId = "";
+  let db: Database.Database = createDb(dir);
+  try {
+    userId = addUser(db);
+    itemId = saveLibraryItem(db, userId, {
+      ...sample("含" + phrase + "的迁移文章"),
+      summary: "无关总结",
+    }).id;
+
+    // Simulate a database created before article was indexed: trigram FTS with
+    // the 9 original columns, backfilled from library_items.
+    db.exec("DROP TABLE IF EXISTS library_items_fts");
+    db.exec(`CREATE VIRTUAL TABLE library_items_fts USING fts5(
+      id UNINDEXED,
+      user_id UNINDEXED,
+      title,
+      author,
+      summary,
+      transcript,
+      category,
+      tags,
+      notes,
+      tokenize = 'trigram'
+    )`);
+    db.prepare(
+      `INSERT INTO library_items_fts (id, user_id, title, author, summary, transcript, category, tags, notes)
+       SELECT id, user_id, title, author, summary, transcript, category, tags, notes FROM library_items`
+    ).run();
+    const legacy = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'library_items_fts'").get() as { sql: string };
+    assert.ok(!/\barticle\b/i.test(legacy.sql), "sanity: legacy index lacks article");
+    db.close();
+  } catch (err) {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+    throw err;
+  }
+
+  // Reopening runs createDb, which must drop and rebuild the stale index.
+  db = createDb(dir);
+  try {
+    const sql = (db.prepare("SELECT sql FROM sqlite_master WHERE name = 'library_items_fts'").get() as { sql: string }).sql;
+    assert.ok(/\barticle\b/i.test(sql), "rebuilt index should include an article column");
+    const res = queryLibrary(db, userId, { q: phrase });
+    assert.ok(res.items.some((i) => i.id === itemId), "article should be searchable after the rebuild");
   } finally {
     db.close();
     fs.rmSync(dir, { recursive: true, force: true });
