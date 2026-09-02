@@ -3,8 +3,7 @@
 import { postJson } from "../common/http";
 import { isSafeUpstreamUrl } from "../common/urlSafety";
 import {
-  SUMMARY_PROMPTS,
-  SUMMARIZE_SYSTEM_PROMPT,
+  SUMMARIZE_SYSTEM_PROMPTS,
   buildSummarizeUserPrompt,
   TAG_SYSTEM_PROMPT,
   buildTagSuggestUserPrompt,
@@ -116,16 +115,41 @@ export async function summarizeText(
   config: LlmConfig,
   mode: SummaryMode,
   meta?: { title?: string; author?: string; duration?: string },
+  segments?: Array<{ from: number; to?: number; content: string }>,
 ): Promise<string> {
   if (!text.trim()) return "视频没有可用的转写文本，无法总结。";
   const maxInput = 16000;
-  const input = text.length > maxInput ? text.slice(0, maxInput) + "\n\n...[内容较长，已截断]" : text;
-  const instruction = SUMMARY_PROMPTS[mode] ?? SUMMARY_PROMPTS.brief;
+  let input = text.length > maxInput ? text.slice(0, maxInput) + "\n\n...[内容较长，已截断]" : text;
+
+  // Timeline mode needs real timestamps so the model can produce an accurate
+  // timeline. When segment timestamps are available, feed those instead of the
+  // plain transcript text.
+  if (mode === "timeline" && segments?.length) {
+    input = formatTimelineSegments(segments);
+  }
+
+  const systemPrompt = SUMMARIZE_SYSTEM_PROMPTS[mode] ?? SUMMARIZE_SYSTEM_PROMPTS.brief;
   const messages = [
-    { role: "system", content: SUMMARIZE_SYSTEM_PROMPT },
-    { role: "user", content: buildSummarizeUserPrompt(instruction, input, meta) },
+    { role: "system", content: systemPrompt },
+    { role: "user", content: buildSummarizeUserPrompt(input, meta) },
   ];
   return chatCompletion(config, messages, 2400, mode);
+}
+
+function formatTimelineSegments(segments: Array<{ from: number; to?: number; content: string }>): string {
+  const fmt = (s: number) => {
+    const total = Math.max(0, Math.floor(Number(s) || 0));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const sec = total % 60;
+    return h > 0
+      ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+      : `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  };
+  return segments
+    .filter((s) => s.content?.trim())
+    .map((s) => `[${fmt(s.from)} - ${fmt(s.to ?? s.from + 3)}] ${s.content}`)
+    .join('\n');
 }
 
 // ── Tag Suggestion ─────────────────────────────────────────────────

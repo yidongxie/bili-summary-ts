@@ -425,7 +425,7 @@ async function processBilibili(
     title: info.title,
     author: info.author,
     duration: formatDuration(info.duration),
-  });
+  }, subtitles);
 
   // Visual understanding (opt-in via vision_model config). Only Bilibili for
   // now — we already resolve its video stream. Failures are non-fatal.
@@ -533,7 +533,7 @@ async function processXiaoyuzhou(
     title: episode.title,
     author: episode.author,
     duration: formatDuration(episode.duration || 0),
-  });
+  }, subtitles);
   if (transcriptTruncated) summary += `\n\n> 内容过长（${originalTranscriptLength} 字），本总结基于截取后的 ${MAX_SUBTITLE_CHARS} 字内容生成。`;
 
   updateProgress(db, task, "生成标签…");
@@ -639,7 +639,7 @@ async function processWithYtDlp(
     title: videoInfo.title,
     author: videoInfo.author,
     duration: formatDuration(videoInfo.duration || 0),
-  });
+  }, subtitles);
 
   // Visual understanding (opt-in) for yt-dlp platforms (douyin/xiaohongshu/YouTube…).
   const visionConfig = getVisionConfig(db, task.userId);
@@ -757,7 +757,7 @@ async function processWithDouyinDownloader(
     title: media.title,
     author: media.author,
     duration: '未知',
-  });
+  }, subtitles);
 
   // Visual understanding (opt-in) from the locally-downloaded douyin file.
   const visionConfig = getVisionConfig(db, task.userId);
