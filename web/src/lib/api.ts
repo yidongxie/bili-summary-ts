@@ -78,6 +78,7 @@ export type SummaryResult = {
   mode?: string;
   suggested_tags?: string[];
   transcript_source?: 'whisper' | 'subtitle' | string;
+  article?: string;
 };
 
 export type LibraryItem = {
@@ -99,6 +100,7 @@ export type LibraryItem = {
   notes?: string;
   mode?: string;
   pic?: string;
+  article?: string;
   snippet?: string;
   highlights?: string[];
 };
@@ -473,10 +475,18 @@ export function saveLibrary(payload: {
   category?: string;
   tags?: string[];
   notes?: string;
+  article?: string;
 }) {
   return request<{ item: LibraryItem; duplicates?: Array<{ id: string; title: string }> }>('/api/library', {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export function updateLibraryArticle(id: string, article: string) {
+  return request<{ success: boolean }>('/api/library/' + encodeURIComponent(id) + '/article', {
+    method: 'POST',
+    body: JSON.stringify({ article }),
   });
 }
 

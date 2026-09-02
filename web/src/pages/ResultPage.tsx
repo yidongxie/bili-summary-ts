@@ -25,6 +25,7 @@ import {
   type LibraryItem,
   rewriteApi,
   articleApi,
+  updateLibraryArticle,
   translateApi,
 } from '@/lib/api';
 import { copyText } from '@/lib/clipboard';
@@ -137,7 +138,7 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, ini
   const closeRef = useRef<(() => void) | null>(null);
 
   const [activeTab, setActiveTab] = useState<TabKey>('summary');
-  const [article, setArticle] = useState('');
+  const [article, setArticle] = useState(initialResult?.article || '');
   const [generatingArticle, setGeneratingArticle] = useState(false);
   const [copiedNotes, setCopiedNotes] = useState(false);
   const [rewritePlatform, setRewritePlatform] = useState('小红书');
@@ -347,6 +348,9 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, ini
       subtitle_segments: result.subtitle_segments || [],
       chapters: result.chapters || [],
       mode: result.mode || mode,
+      // Empty string → undefined so an update omits article and keeps the stored
+      // text, while a create still defaults to ''.
+      article: article || undefined,
       // On update, omit notes/tags/category so the server keeps the user's
       // existing values instead of wiping them with the fresh task's defaults.
       ...(isUpdate ? {} : {
@@ -444,7 +448,18 @@ export function ResultPage({ url, mode, config, initialResult, initialSaved, ini
     setArticle('');
     try {
       const data = await articleApi({ text: raw });
-      setArticle(data.article || '');
+      const text = data.article || '';
+      setArticle(text);
+      // Persist so the article survives reloads / later views from the library.
+      // Best-effort: if it fails, a later 保存/更新收藏 still carries the article.
+      if (text && savedItemId) {
+        try {
+          await updateLibraryArticle(savedItemId, text);
+          onShowToast('文章已保存到收藏', 'info');
+        } catch {
+          /* keep showing the generated article */
+        }
+      }
     } catch (e: any) {
       onShowToast('生成失败：' + (e?.message || ''), 'error');
     } finally {

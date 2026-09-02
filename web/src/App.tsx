@@ -98,6 +98,7 @@ function libraryItemToSummaryResult(item: LibraryItem): SummaryResult {
     mode: item.mode || 'brief',
     suggested_tags: item.tags || [],
     transcript_source: 'whisper',
+    article: item.article || '',
   };
 }
 

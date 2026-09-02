@@ -6,6 +6,7 @@ import {
   findLibraryItemByBvid,
   saveLibraryItem,
   deleteLibraryItem,
+  updateLibraryArticle,
   reindexLibraryFts,
   listTags,
   updateTagMetadata,
@@ -151,6 +152,7 @@ export function createLibraryRouter(db: Database.Database): Router {
       category: req.body.category == null ? undefined : String(req.body.category).trim() || "待整理",
       tags: Array.isArray(req.body.tags) ? req.body.tags : undefined,
       notes: req.body.notes == null ? undefined : String(req.body.notes).trim(),
+      article: req.body.article == null ? undefined : String(req.body.article).trim(),
       mode: String(req.body.mode ?? "brief").trim() || "brief",
     });
     // Generate semantic index (bounded to 6s) so we can also detect semantic
@@ -175,6 +177,18 @@ export function createLibraryRouter(db: Database.Database): Router {
     if (!userId) { res.status(401).json({ success: false, error: "请先登录" }); return; }
     const ok = deleteLibraryItem(db, userId, req.params.id);
     res.json({ success: ok, error: ok ? undefined : "未找到收藏" });
+  });
+
+  // Persist a (re)generated article without touching the rest of the item —
+  // keeps notes/tags/category intact and skips embedding re-index/dupe checks.
+  router.post("/api/library/:id/article", (req: Request, res: Response) => {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (!findLibraryItem(db, userId, req.params.id)) {
+      res.status(404).json({ success: false, error: "未找到收藏" }); return;
+    }
+    updateLibraryArticle(db, userId, req.params.id, String(req.body.article ?? ""));
+    res.json({ success: true });
   });
 
   // ── Tags ────────────────────────────────────────────────────────────

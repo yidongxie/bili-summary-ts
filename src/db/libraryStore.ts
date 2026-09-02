@@ -21,6 +21,7 @@ export interface LibraryItem {
   notes: string;
   mode: string;
   pic: string;
+  article: string;
   subtitle_segments?: SubtitleSegmentData[];
   chapters?: ChapterData[];
   snippet?: string;
@@ -267,7 +268,7 @@ export function saveLibraryItem(db: Database.Database, userId: number, data: Par
       `UPDATE library_items SET
         updated_at = ?, title = ?, author = ?, duration = ?, bvid = ?, link = ?,
         summary = ?, transcript = ?, subtitle_count = ?, category = ?, tags = ?,
-        notes = ?, mode = ?, pic = ?, subtitle_segments = ?, chapters_json = ?
+        notes = ?, mode = ?, pic = ?, subtitle_segments = ?, chapters_json = ?, article = ?
        WHERE id = ? AND user_id = ?`
     ).run(
       now,
@@ -286,6 +287,7 @@ export function saveLibraryItem(db: Database.Database, userId: number, data: Par
       data.pic ?? existing.pic ?? "",
       serializeSegments(data.subtitle_segments ?? existing.subtitle_segments),
       data.chapters !== undefined ? serializeChapters(data.chapters) : existing.chapters_json,
+      data.article ?? existing.article ?? "",
       id,
       userId
     );
@@ -293,8 +295,8 @@ export function saveLibraryItem(db: Database.Database, userId: number, data: Par
     db.prepare(
       `INSERT INTO library_items
         (id, user_id, created_at, updated_at, title, author, duration, bvid, link,
-         summary, transcript, subtitle_count, category, tags, notes, mode, pic, subtitle_segments, chapters_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         summary, transcript, subtitle_count, category, tags, notes, mode, pic, subtitle_segments, chapters_json, article)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       userId,
@@ -314,13 +316,26 @@ export function saveLibraryItem(db: Database.Database, userId: number, data: Par
       data.mode || "brief",
       data.pic || "",
       serializeSegments(data.subtitle_segments),
-      serializeChapters(data.chapters)
+      serializeChapters(data.chapters),
+      data.article || ""
     );
   }
 
   const item = findLibraryItem(db, userId, id)!;
   syncLibraryFtsItem(db, userId, item);
   return item;
+}
+
+/**
+ * Update just a saved item's article text (used when the user (re)generates an
+ * article). Unlike saveLibraryItem this touches only article + updated_at, so a
+ * heavy article write can't clobber notes/tags/subtitles or re-index embeddings.
+ */
+export function updateLibraryArticle(db: Database.Database, userId: number, id: string, article: string): boolean {
+  const info = db
+    .prepare("UPDATE library_items SET article = ?, updated_at = ? WHERE id = ? AND user_id = ?")
+    .run(String(article || "").trim(), nowSql(), id, userId);
+  return info.changes > 0;
 }
 
 export function deleteLibraryItem(db: Database.Database, userId: number, id: string): boolean {
@@ -510,6 +525,7 @@ function rowToItem(row: any): LibraryItem {
     notes: row.notes,
     mode: row.mode,
     pic: row.pic || "",
+    article: row.article || "",
     chapters: parseChapters(row.chapters_json),
   };
 }

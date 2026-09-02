@@ -118,7 +118,8 @@ export function createDb(dataDir: string): Database.Database {
       notes TEXT NOT NULL DEFAULT '',
       mode TEXT NOT NULL DEFAULT 'brief',
       pic TEXT NOT NULL DEFAULT '',
-      subtitle_segments TEXT NOT NULL DEFAULT ''
+      subtitle_segments TEXT NOT NULL DEFAULT '',
+      article TEXT NOT NULL DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS user_configs (
@@ -368,6 +369,9 @@ export function createDb(dataDir: string): Database.Database {
   }
   if (!haveLib.has("chapters_json")) {
     db.exec("ALTER TABLE library_items ADD COLUMN chapters_json TEXT NOT NULL DEFAULT ''");
+  }
+  if (!haveLib.has("article")) {
+    db.exec("ALTER TABLE library_items ADD COLUMN article TEXT NOT NULL DEFAULT ''");
   }
 
   // Migration: themes.synthesis (persisted cross-video synthesis)
